@@ -12,9 +12,11 @@ import { mexicanismos, vaguedad } from "../fixtures/catalogos";
 import { configuracionInicial, modelosDisponibles } from "../fixtures/configuracion";
 import { lelAdicional } from "../fixtures/lel";
 import { corpus } from "../fixtures/corpus";
+import { proyectosSemilla, asignacionSemilla } from "../fixtures/proyectos";
 import { generarMaterial, construirProceso, trazaVisible, ubicarMarcados, evaluarCorpus } from "./simulacion";
 
-const CLAVE = "dudamel.mockdb.v1";
+const CLAVE = "dudamel.mockdb.v2";
+const VERSION = 2;
 const MS_POR_ITEM_CORPUS = 550;
 const clonar = (x) => structuredClone(x);
 
@@ -34,11 +36,14 @@ function sembrar() {
       comentario: h.comentario ?? "",
     }));
     const validado = humano.some((h) => h.estado === E.VALIDADO);
+    const [proyectoId, ciclo] = asignacionSemilla[r.id] ?? ["P-01", 1];
     return {
       id: r.id,
       texto: r.texto,
       origen: r.origen,
       creadoEn: r.creadoEn,
+      proyectoId,
+      ciclo,
       material: { ...material, id: undefined, texto: undefined, humano: undefined },
       config: clonar(config),
       inicioMs,
@@ -50,7 +55,9 @@ function sembrar() {
   });
 
   const db = {
-    version: 1,
+    version: VERSION,
+    proyectos: clonar(proyectosSemilla),
+    siguienteProyecto: proyectosSemilla.length + 1,
     config,
     historialConfig: [{ en: new Date(ahora - 86400000 * 2).toISOString(), config: clonar(config), nota: "Valores iniciales" }],
     catalogos,
@@ -82,7 +89,7 @@ let db = cargar();
 function cargar() {
   try {
     const guardado = JSON.parse(localStorage.getItem(CLAVE));
-    if (guardado?.version === 1) return guardado;
+    if (guardado?.version === VERSION) return guardado;
   } catch { /* sin almacenamiento: se usa la semilla */ }
   return sembrar();
 }
@@ -128,6 +135,9 @@ function vista(reg, { completo = true } = {}) {
     texto: reg.texto,
     origen: reg.origen,
     creadoEn: reg.creadoEn,
+    proyectoId: reg.proyectoId,
+    ciclo: reg.ciclo,
+    reprocesos: reg.intentosPrevios.length,
     estado,
     actualizadoEn,
     similitud: traza.divergencia?.similitud ?? null,
@@ -179,7 +189,10 @@ export const obtenerEstadoRequisito = (id) => {
   return { id, estado, actualizadoEn };
 };
 
-export function crearRequisitos(lista) {
+export function crearRequisitos(lista, proyectoId) {
+  if (!db.proyectos.some((p) => p.id === proyectoId)) throw new Error(`No existe el proyecto ${proyectoId}`);
+  // Cada lote analizado es un ciclo nuevo del proyecto
+  const ciclo = Math.max(0, ...db.requisitos.filter((r) => r.proyectoId === proyectoId).map((r) => r.ciclo)) + 1;
   // Un solo flujo de agentes: cada requisito empieza cuando termina el anterior
   let inicio = Date.now() + 600;
   const ids = lista.map((item) => {
@@ -189,6 +202,8 @@ export function crearRequisitos(lista) {
       texto: item.texto.trim(),
       origen: item.origen || "texto pegado",
       creadoEn: new Date().toISOString(),
+      proyectoId,
+      ciclo,
       material: generarMaterial({ id, texto: item.texto }, db.catalogos),
       config: clonar(db.config),
       inicioMs: inicio,
@@ -249,7 +264,8 @@ export function lel() {
   const principales = db.requisitos
     .filter((r) => vista(r, { completo: false }).estado === E.FORMALIZADO && r.artefactosValidados)
     .map((r) => ({ id: `lel-${r.id}`, ...r.artefactosValidados.lel, requisitoId: r.id, principal: true }));
-  return [...principales, ...db.lelAdicional];
+  const proyectoDe = Object.fromEntries(db.requisitos.map((r) => [r.id, r.proyectoId]));
+  return [...principales, ...db.lelAdicional].map((e) => ({ ...e, proyectoId: proyectoDe[e.requisitoId] }));
 }
 
 /* ---------- catálogos ---------- */
@@ -302,3 +318,109 @@ function vistaEjecucion(ej) {
 }
 export const ejecuciones = () => db.ejecuciones.map(vistaEjecucion).reverse();
 export const ejecucion = (id) => vistaEjecucion(db.ejecuciones.find((e) => e.id === id));
+
+/* ---------- proyectos ---------- */
+function resumenProyecto(p) {
+  const reqs = db.requisitos.filter((r) => r.proyectoId === p.id).map((r) => vista(r));
+  const cuenta = (f) => reqs.filter(f).length;
+  return {
+    ...p,
+    requisitos: reqs.length,
+    ciclos: new Set(reqs.map((r) => r.ciclo)).size,
+    enProceso: cuenta((r) => [E.CARGADO, E.EXTRAIDO, E.INTERPRETADO, E.EN_DEBATE].includes(r.estado)),
+    porValidar: cuenta((r) => r.estado === E.PENDIENTE_VALIDACION),
+    formalizados: cuenta((r) => r.estado === E.FORMALIZADO),
+    ambiguedades: reqs.reduce((a, r) => a + (r.traza.extraccion?.marcados.length ?? 0), 0),
+    actualizadoEn: reqs.map((r) => r.historial.at(-1).en).sort().at(-1) ?? p.creadoEn,
+  };
+}
+
+export const proyectos = () => db.proyectos.map(resumenProyecto);
+
+export function proyecto(id) {
+  const p = db.proyectos.find((x) => x.id === id);
+  if (!p) throw new Error(`No existe el proyecto ${id}`);
+  return {
+    ...resumenProyecto(p),
+    lista: db.requisitos.filter((r) => r.proyectoId === id).map((r) => vista(r)),
+  };
+}
+
+export function crearProyecto({ nombre, descripcion = "" }) {
+  const id = `P-${String(db.siguienteProyecto++).padStart(2, "0")}`;
+  db.proyectos.push({ id, nombre: nombre.trim(), descripcion: descripcion.trim(), creadoEn: new Date().toISOString() });
+  guardar();
+  return id;
+}
+
+/* ---------- ambigüedades: cada término y dónde/cómo se resolvió ---------- */
+const norm = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+
+export function ambiguedades() {
+  const nombres = Object.fromEntries(db.proyectos.map((p) => [p.id, p.nombre]));
+  const grupos = new Map();
+  for (const reg of db.requisitos) {
+    const r = vista(reg);
+    const t = r.traza;
+    for (const m of t.extraccion?.marcados ?? []) {
+      const clave = norm(m.texto);
+      if (!grupos.has(clave)) grupos.set(clave, { termino: m.texto, tipo: m.tipo, fuente: m.fuente, apariciones: [] });
+      // Lectura adoptada: la del arbitraje, o la A si hubo consenso o aceptación directa
+      const clave2 = t.resolucion?.via === "arbitraje" ? t.resolucion.eleccion : "A";
+      const lectura = (k) => t.clasificacion?.interpretaciones[k]?.lecturas.find((l) => norm(l.termino) === clave)?.significado ?? null;
+      grupos.get(clave).apariciones.push({
+        requisitoId: r.id,
+        texto: r.texto,
+        marcados: t.extraccion.marcados,
+        proyectoId: r.proyectoId,
+        proyecto: nombres[r.proyectoId],
+        estado: r.estado,
+        via: t.resolucion?.via ?? null,
+        similitud: t.divergencia?.similitud ?? null,
+        rondas: t.debate?.rondas.length ?? 0,
+        lecturas: { A: lectura("A"), B: lectura("B") },
+        adoptada: t.resolucion ? lectura(clave2) : null,
+      });
+    }
+  }
+  return [...grupos.values()]
+    .map((g) => {
+      const resueltas = [...new Set(g.apariciones.map((a) => a.adoptada).filter(Boolean).map(norm))];
+      return { ...g, inconsistente: resueltas.length > 1 };
+    })
+    .sort((a, b) => b.apariciones.length - a.apariciones.length || a.termino.localeCompare(b.termino, "es"));
+}
+
+/* ---------- flujo de conocimiento continuo (al estilo KMoS-SSA) ---------- */
+export function flujo(proyectoId) {
+  const reqs = db.requisitos.filter((r) => !proyectoId || r.proyectoId === proyectoId).map((r) => ({ v: vista(r), reg: r }));
+  const ciclos = [...new Set(reqs.map((x) => x.v.ciclo))].sort((a, b) => a - b);
+  const medir = (lista) => {
+    const n = (f) => lista.reduce((a, x) => a + f(x), 0);
+    const t = (x) => x.v.traza;
+    const h = (x, e) => x.reg.humano.filter((y) => y.estado === e).length + x.reg.intentosPrevios.reduce((a, i) => a + i.humano.filter((y) => y.estado === e).length, 0);
+    return {
+      elicitacion: { requisitos: lista.length, terminos: n((x) => t(x).extraccion?.terminos.length ?? 0), marcados: n((x) => t(x).extraccion?.marcados.length ?? 0) },
+      estructuracion: { interpretaciones: n((x) => (t(x).clasificacion ? 2 : 0)), similitudes: n((x) => (t(x).divergencia ? 1 : 0)), directos: n((x) => (t(x).divergencia?.decision === "directo" ? 1 : 0)) },
+      enriquecimiento: { debates: n((x) => (t(x).debate ? 1 : 0)), rondas: n((x) => t(x).debate?.rondas.length ?? 0), consensos: n((x) => (t(x).resolucion?.via === "consenso" ? 1 : 0)), arbitrajes: n((x) => (t(x).resolucion?.via === "arbitraje" ? 1 : 0)) },
+      generacion: { artefactos: n((x) => (t(x).artefactos ? 3 : 0)), lel: n((x) => (t(x).artefactos ? 1 : 0)) },
+      validacion: { validados: n((x) => h(x, E.VALIDADO)), rechazados: n((x) => h(x, E.RECHAZADO)), formalizados: n((x) => h(x, E.FORMALIZADO)), reprocesos: n((x) => x.reg.intentosPrevios.length) },
+    };
+  };
+  const porCiclo = ciclos.map((c) => ({ ciclo: c, ...medir(reqs.filter((x) => x.v.ciclo === c)) }));
+  const total = medir(reqs);
+  const humanas = total.validacion.validados + total.validacion.rechazados + total.validacion.formalizados;
+  const agentes = {
+    extractor: total.elicitacion.requisitos - reqs.filter((x) => !x.v.traza.extraccion).length,
+    clasificador: total.estructuracion.interpretaciones / 2 + total.enriquecimiento.rondas * 2,
+    critico: total.enriquecimiento.rondas + total.enriquecimiento.arbitrajes,
+    modelador: total.generacion.lel,
+    humano: humanas,
+  };
+  return {
+    ciclos: porCiclo,
+    total,
+    agentes,
+    interacciones: Object.values(agentes).reduce((a, b) => a + b, 0) + total.estructuracion.similitudes,
+  };
+}

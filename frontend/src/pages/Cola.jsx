@@ -71,6 +71,7 @@ export default function Cola() {
               >
                 <td className="px-3 py-2 font-mono text-xs">
                   <Link to={`/requisitos/${r.id}`} onClick={(e) => e.stopPropagation()} className="hover:underline">{r.id}</Link>
+                  <span className="block text-[10px] text-slate-400">{r.proyectoId} · C{r.ciclo}</span>
                 </td>
                 <td className="px-3 py-2"><p className="line-clamp-2">{r.texto}</p></td>
                 <td className="px-3 py-2">

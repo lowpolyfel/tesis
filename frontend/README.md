@@ -26,12 +26,15 @@ una membrana las une mientras se separan.
 | `/inicio` | «¿Qué analizamos hoy?»: suelta el archivo sobre la esfera o pega el texto; confirmas la separación |
 | `/analisis?ids=` | La esfera se divide en Extractor, Clasificador, Crítico y Modelador. Si hay debate, el Clasificador se divide en Lectura A y B, que se acercan según la similitud; al consenso se funden, en arbitraje las absorbe el Crítico. Al final todo vuelve a una esfera y aparecen los resultados |
 | `/lel/generar?ids=` | El Modelador redacta el LEL; editas y apruebas |
-| `/big-picture?ids=` | Panorama del lote y descarga en JSON |
+| `/big-picture?ids=` | Panorama del lote (JSON) y modelo conceptual UML (Mermaid; exporta PNG, SVG, .mmd y .puml) |
+| `/flujo?proyecto=` | Flujo de conocimiento continuo en espiral (adaptado de KMoS-SSA / SysM2): anillos = ciclos, sectores = fases, conteo de interacciones por agente |
 
 ## Herramientas (menú superior)
 
 | Ruta | Pantalla |
 |---|---|
+| `/proyectos`, `/proyectos/:id` | Cada proyecto con sus requisitos por ciclo, su LEL, su Big Picture y su modelo conceptual |
+| `/ambiguedades` | Cada término ambiguo, dónde aparece, qué lectura se adoptó; señala resoluciones distintas y compara requisitos |
 | `/historial` | Todos los requisitos con filtro por estado |
 | `/requisitos/:id` | Traza completa por etapas y debate (`?figura=1` versión clara para la tesis) |
 | `/requisitos/:id/validacion` | Validación detallada de LEL, metas y Big Picture |

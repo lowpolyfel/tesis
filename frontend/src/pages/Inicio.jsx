@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { useOrb, usePoseEsfera } from "../components/orb/useOrb";
 import { crearRequisitos, extraerTextoDeArchivo, separarRequisitos } from "../services/api";
 import { documentoEjemplo } from "../fixtures/documentoEjemplo";
+import SelectorProyecto, { proyectoRecordado } from "../components/SelectorProyecto";
 
 /*
  * Analizar, paso 1. La esfera recibe el archivo:
@@ -23,6 +24,8 @@ const MIN_LECTURA_MS = 1400;
 export default function Inicio() {
   const orb = useOrb();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const [proyectoId, setProyectoId] = useState(() => params.get("proyecto") ?? proyectoRecordado());
   const [fase, setFase] = useState("inicio");
   const [arrastrando, setArrastrando] = useState(false);
   const [texto, setTexto] = useState("");
@@ -107,7 +110,7 @@ export default function Inicio() {
   const analizar = async () => {
     setSaliendo(true);
     orb.poke(1.4);
-    const { ids } = await crearRequisitos(validas.map((p) => ({ texto: p.texto, origen })));
+    const { ids } = await crearRequisitos(validas.map((p) => ({ texto: p.texto, origen })), proyectoId);
     navigate(`/analisis?ids=${ids.join(",")}`);
   };
 
@@ -116,7 +119,8 @@ export default function Inicio() {
       <input ref={archivo} type="file" accept=".txt,.pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) leerArchivo(f); }} />
 
       {fase === "inicio" && (
-        <section key="inicio" className="fixed inset-x-0 bottom-[9vh] flex flex-col items-center gap-6 px-6 text-center">
+        <section key="inicio" className="fixed inset-x-0 bottom-[7vh] flex flex-col items-center gap-6 px-6 text-center">
+          <div className="sube" style={{ "--i": 0 }}><SelectorProyecto valor={proyectoId} onCambio={setProyectoId} /></div>
           <h1 className="serif sube text-[clamp(44px,5.6vw,84px)] leading-[.95]" style={{ "--i": 0 }}>
             ¿Qué <em>analizamos</em> hoy?
           </h1>
@@ -168,6 +172,7 @@ export default function Inicio() {
       {fase === "confirmar" && (
         <section key="confirmar" className={`mx-auto flex min-h-screen max-w-2xl flex-col justify-center gap-5 px-6 pt-[34vh] pb-12 md:mr-[6vw] md:pt-28 ${saliendo ? "sale" : ""}`}>
           <p className="mono sube text-[10px] text-[var(--bone-faint)]" style={{ "--i": 0 }}>Paso 2 · confirma la separación · {origen}</p>
+          <div className="sube -mt-2 [&>div]:justify-start" style={{ "--i": 0 }}><SelectorProyecto valor={proyectoId} onCambio={setProyectoId} /></div>
           <h1 className="serif sube text-[clamp(40px,4vw,64px)] leading-[.95]" style={{ "--i": 1 }}>
             Encontré <em>{validas.length}</em> {validas.length === 1 ? "requisito" : "requisitos"}.
           </h1>
@@ -201,7 +206,7 @@ export default function Inicio() {
             + agregar requisito
           </button>
           <div className="sube flex flex-wrap gap-3 pt-2" style={{ "--i": 5 + piezas.length }}>
-            <button className="pill" disabled={!validas.length || saliendo} onClick={analizar} onPointerEnter={() => orb.poke(0.3)}>
+            <button className="pill" disabled={!validas.length || saliendo || !proyectoId} onClick={analizar} onPointerEnter={() => orb.poke(0.3)}>
               Analizar {validas.length} {validas.length === 1 ? "requisito" : "requisitos"}
             </button>
             <button className="pill ghost" onClick={() => { setPiezas([]); setFase("inicio"); }}>Empezar de nuevo</button>

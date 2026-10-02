@@ -1,6 +1,6 @@
 import { Link, useSearchParams } from "react-router";
 import { useApi } from "../hooks/useApi";
-import { obtenerLel } from "../services/api";
+import { listarProyectos, obtenerLel } from "../services/api";
 import { TIPOS_LEL } from "../constants/agentes";
 
 const normalizar = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
@@ -8,9 +8,11 @@ const normalizar = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase
 /* Pantalla 6: léxico acumulado, con búsqueda por símbolo y filtro por tipo */
 export default function Lel() {
   const { datos: entradas, cargando } = useApi(obtenerLel);
+  const { datos: proyectos } = useApi(listarProyectos);
   const [params, setParams] = useSearchParams();
   const q = params.get("q") ?? "";
   const tipo = params.get("tipo") ?? "";
+  const proyecto = params.get("proyecto") ?? "";
   const actualizar = (cambios) => {
     const p = Object.fromEntries(params);
     setParams(Object.fromEntries(Object.entries({ ...p, ...cambios }).filter(([, v]) => v)), { replace: true });
@@ -19,6 +21,7 @@ export default function Lel() {
   if (cargando) return <p className="text-sm text-slate-500">Cargando el LEL…</p>;
 
   const visibles = entradas
+    .filter((e) => !proyecto || e.proyectoId === proyecto)
     .filter((e) => !tipo || e.tipo === tipo)
     .filter((e) => !q || [e.simbolo, ...(e.sinonimos ?? [])].some((s) => normalizar(s).includes(normalizar(q))))
     .sort((a, b) => a.simbolo.localeCompare(b.simbolo, "es"));
@@ -37,6 +40,14 @@ export default function Lel() {
           placeholder="Buscar símbolo o sinónimo…"
           className="w-64 rounded border border-slate-300 px-3 py-1.5 text-sm"
         />
+        <select
+          value={proyecto}
+          onChange={(e) => actualizar({ proyecto: e.target.value })}
+          className="rounded-full border border-slate-300 bg-transparent px-3 py-1.5 text-sm"
+        >
+          <option value="">Todos los proyectos</option>
+          {(proyectos ?? []).map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+        </select>
         <div className="flex gap-1.5">
           {["", ...TIPOS_LEL].map((t) => (
             <button
@@ -59,6 +70,11 @@ export default function Lel() {
               <Link to={`/requisitos/${e.requisitoId}`} className="ml-auto font-mono text-xs text-indigo-700 hover:underline">
                 resuelto en {e.requisitoId} →
               </Link>
+              {e.proyectoId && (
+                <Link to={`/proyectos/${e.proyectoId}`} className="w-full text-xs text-slate-500 hover:underline">
+                  {(proyectos ?? []).find((p) => p.id === e.proyectoId)?.nombre ?? e.proyectoId}
+                </Link>
+              )}
             </header>
             {e.sinonimos?.length > 0 && <p className="mb-2 text-xs text-slate-500">Sinónimos: {e.sinonimos.join(", ")}</p>}
             <p className="text-xs font-medium text-slate-500">Noción</p>
