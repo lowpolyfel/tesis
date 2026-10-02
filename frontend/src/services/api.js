@@ -32,10 +32,23 @@ export const extraerTextoDeArchivo = (file) => leerArchivo(file);
  */
 export function separarRequisitos(texto) {
   return responder(() => {
-    const lineas = texto
-      .split(/\r?\n/)
-      .map((l) => l.replace(/^\s*(?:[-•*]|\d+[.)-]|RF-?\d+[:.)-]?|R\d+[:.)-]?)\s*/i, "").trim())
-      .filter(Boolean);
+    // Reconstruye párrafos: en un PDF un requisito largo ocupa varios renglones.
+    // Empieza uno nuevo con una viñeta/numeración, tras un renglón vacío o
+    // cuando el anterior cerró con punto; si no, el renglón es continuación.
+    const MARCA = /^(?:[-•*]|\d+[.)-]|RF-?\d+[:.)-]?|R\d+[:.)-]?)\s*/i;
+    const bloques = [];
+    let corte = true;
+    for (const crudo of texto.split(/\r?\n/)) {
+      const l = crudo.trim();
+      if (!l) { corte = true; continue; }
+      const limpio = l.replace(MARCA, "").trim();
+      const previo = bloques.at(-1);
+      if (corte || MARCA.test(l) || /[.:;]$/.test(previo)) bloques.push(limpio);
+      else if (previo.endsWith("-")) bloques[bloques.length - 1] = previo.slice(0, -1) + limpio; // palabra partida
+      else bloques[bloques.length - 1] = `${previo} ${limpio}`;
+      corte = false;
+    }
+    const lineas = bloques.filter(Boolean);
     const piezas = [];
     for (const linea of lineas) {
       // Una línea con varias oraciones obligatorias se separa por oración
