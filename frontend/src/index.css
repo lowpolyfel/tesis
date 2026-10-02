@@ -3,9 +3,54 @@
 @theme {
   --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-serif: "Instrument Serif", ui-serif, Georgia, serif;
+  --color-sobre: #ffffff; /* texto sobre un fondo de acento */
 }
 
-/* Vista para captura (?figura=1): ancho fijo y sin navegación */
+/*
+ * Tema oscuro de Dudamel para las pantallas de herramientas. Las utilidades
+ * de Tailwind leen variables de color: aquí se reinterpretan sobre el fondo
+ * vivo de la esfera (tintes translúcidos, texto hueso). Sin esta clase (vista
+ * ?figura=1) la misma pantalla queda clara, lista para imprimir.
+ */
+.tema-oscuro {
+  --color-sobre: #16130f;
+  --color-white: rgba(239, 233, 222, 0.035);
+  --color-slate-50: rgba(239, 233, 222, 0.025);
+  --color-slate-100: rgba(239, 233, 222, 0.06);
+  --color-slate-200: rgba(239, 233, 222, 0.1);
+  --color-slate-300: rgba(239, 233, 222, 0.18);
+  --color-slate-400: rgba(239, 233, 222, 0.4);
+  --color-slate-500: rgba(239, 233, 222, 0.52);
+  --color-slate-600: rgba(239, 233, 222, 0.66);
+  --color-slate-700: rgba(239, 233, 222, 0.8);
+  --color-slate-800: rgba(239, 233, 222, 0.9);
+  --color-slate-900: #efe9de;
+  color: #efe9de;
+
+  --color-sky-50: rgb(56 189 248 / 0.08);  --color-sky-100: rgb(56 189 248 / 0.14);  --color-sky-200: rgb(56 189 248 / 0.22);  --color-sky-300: rgb(56 189 248 / 0.38);  --color-sky-400: #38bdf8; --color-sky-500: #38bdf8; --color-sky-600: #38bdf8; --color-sky-700: #bae6fd; --color-sky-800: #bae6fd; --color-sky-900: #e0f2fe;
+  --color-blue-50: rgb(96 165 250 / 0.08); --color-blue-100: rgb(96 165 250 / 0.14); --color-blue-200: rgb(96 165 250 / 0.22); --color-blue-300: rgb(96 165 250 / 0.38); --color-blue-400: #60a5fa; --color-blue-500: #60a5fa; --color-blue-600: #60a5fa; --color-blue-700: #bfdbfe; --color-blue-800: #bfdbfe; --color-blue-900: #dbeafe;
+  --color-teal-50: rgb(45 212 191 / 0.08); --color-teal-100: rgb(45 212 191 / 0.14); --color-teal-200: rgb(45 212 191 / 0.22); --color-teal-300: rgb(45 212 191 / 0.38); --color-teal-400: #2dd4bf; --color-teal-500: #2dd4bf; --color-teal-600: #2dd4bf; --color-teal-700: #99f6e4; --color-teal-800: #99f6e4; --color-teal-900: #ccfbf1;
+  --color-amber-50: rgb(251 191 36 / 0.08); --color-amber-100: rgb(251 191 36 / 0.14); --color-amber-200: rgb(251 191 36 / 0.22); --color-amber-300: rgb(251 191 36 / 0.38); --color-amber-400: #fbbf24; --color-amber-500: #fbbf24; --color-amber-600: #fbbf24; --color-amber-700: #fde68a; --color-amber-800: #fde68a; --color-amber-900: #fef3c7;
+  --color-emerald-50: rgb(52 211 153 / 0.08); --color-emerald-100: rgb(52 211 153 / 0.14); --color-emerald-200: rgb(52 211 153 / 0.22); --color-emerald-300: rgb(52 211 153 / 0.38); --color-emerald-400: #34d399; --color-emerald-500: #34d399; --color-emerald-600: #34d399; --color-emerald-700: #a7f3d0; --color-emerald-800: #a7f3d0; --color-emerald-900: #d1fae5;
+  --color-orange-50: rgb(251 146 60 / 0.08); --color-orange-100: rgb(251 146 60 / 0.14); --color-orange-200: rgb(251 146 60 / 0.22); --color-orange-300: rgb(251 146 60 / 0.38); --color-orange-400: #fb923c; --color-orange-500: #fb923c; --color-orange-600: #fb923c; --color-orange-700: #fed7aa; --color-orange-800: #fed7aa; --color-orange-900: #ffedd5;
+  --color-violet-50: rgb(167 139 250 / 0.08); --color-violet-100: rgb(167 139 250 / 0.14); --color-violet-200: rgb(167 139 250 / 0.22); --color-violet-300: rgb(167 139 250 / 0.38); --color-violet-400: #a78bfa; --color-violet-500: #a78bfa; --color-violet-600: #a78bfa; --color-violet-700: #ddd6fe; --color-violet-800: #ddd6fe; --color-violet-900: #ede9fe;
+  --color-green-50: rgb(74 222 128 / 0.08); --color-green-100: rgb(74 222 128 / 0.14); --color-green-200: rgb(74 222 128 / 0.22); --color-green-300: rgb(74 222 128 / 0.38); --color-green-400: #4ade80; --color-green-500: #4ade80; --color-green-600: #4ade80; --color-green-700: #bbf7d0; --color-green-800: #bbf7d0; --color-green-900: #dcfce7;
+  --color-red-50: rgb(248 113 113 / 0.08); --color-red-100: rgb(248 113 113 / 0.14); --color-red-200: rgb(248 113 113 / 0.22); --color-red-300: rgb(248 113 113 / 0.38); --color-red-400: #f87171; --color-red-500: #f87171; --color-red-600: #f87171; --color-red-700: #fecaca; --color-red-800: #fecaca; --color-red-900: #fee2e2;
+  --color-indigo-50: rgb(129 140 248 / 0.08); --color-indigo-100: rgb(129 140 248 / 0.14); --color-indigo-200: rgb(129 140 248 / 0.22); --color-indigo-300: rgb(129 140 248 / 0.38); --color-indigo-400: #818cf8; --color-indigo-500: #818cf8; --color-indigo-600: #818cf8; --color-indigo-700: #c7d2fe; --color-indigo-800: #c7d2fe; --color-indigo-900: #e0e7ff;
+}
+.tema-oscuro h1 {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: clamp(2.4rem, 3.6vw, 3.4rem);
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+.tema-oscuro h2 { font-family: var(--font-mono); letter-spacing: 0.14em; font-weight: 500; font-size: 11px; }
+.tema-oscuro option { background: #16130f; color: #efe9de; }
+.tema-oscuro input, .tema-oscuro textarea, .tema-oscuro select { color: inherit; }
+.tema-oscuro ::placeholder { color: rgba(239, 233, 222, 0.32); }
+
 @media print {
   .no-print { display: none !important; }
 }

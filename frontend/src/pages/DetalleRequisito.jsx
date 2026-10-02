@@ -1,5 +1,6 @@
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useOrb } from "../components/orb/useOrb";
 import { useRequisito } from "../hooks/useRequisito";
 import { reprocesarRequisito } from "../services/api";
 import { ESTADOS as E, INFO_ESTADO, VIAS_RESOLUCION as V, estaEnProceso } from "../constants/estados";
@@ -33,6 +34,19 @@ export default function DetalleRequisito() {
   const [params] = useSearchParams();
   const figura = params.get("figura") === "1";
   const { requisito: r, recargar } = useRequisito(id);
+  const orb = useOrb();
+
+  // La esfera toma el tono de cómo se resolvió (o de quién trabaja ahora)
+  const tono = !r ? "idle"
+    : r.via === V.ARBITRAJE ? "critico"
+    : r.via === V.CONSENSO ? "clasificador"
+    : r.via === V.DIRECTO ? "modelador"
+    : estaEnProceso(r.estado) ? "thinking" : "idle";
+  useEffect(() => {
+    orb.setMood(tono);
+    orb.update("core", { sub: r ? r.id : null, active: r ? estaEnProceso(r.estado) : false });
+  }, [orb, tono, r]);
+  useEffect(() => () => { orb.setMood("idle"); orb.update("core", { active: false }); }, [orb]);
 
   if (!r) return <p className="text-sm text-slate-500">Cargando {id}…</p>;
 
@@ -196,7 +210,7 @@ function Encabezado({ r, figura, recargar }) {
     <header className="space-y-3">
       {!figura && (
         <nav className="text-sm text-slate-500">
-          <Link to="/cola" className="hover:underline">Cola</Link> / {r.id}
+          <Link to="/historial" className="hover:underline">Historial</Link> / {r.id}
         </nav>
       )}
       <div className="flex flex-wrap items-center gap-3">
@@ -211,12 +225,12 @@ function Encabezado({ r, figura, recargar }) {
         {!figura && (
           <div className="ml-auto flex flex-wrap gap-2">
             {r.estado === E.PENDIENTE_VALIDACION && (
-              <button onClick={() => navigate(`/requisitos/${r.id}/validacion`)} className="rounded bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700">
+              <button onClick={() => navigate(`/requisitos/${r.id}/validacion`)} className="rounded bg-violet-600 px-3 py-1.5 text-sm font-medium text-sobre hover:bg-violet-700">
                 Validar artefactos
               </button>
             )}
             {r.estado === E.RECHAZADO && (
-              <button onClick={reprocesar} disabled={ocupado} className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50">
+              <button onClick={reprocesar} disabled={ocupado} className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-sobre hover:bg-slate-700 disabled:opacity-50">
                 Reprocesar con la configuración actual
               </button>
             )}

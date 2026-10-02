@@ -27,6 +27,37 @@ export const MOODS = {
     scale: 1.04, fog: 1.25, glow: 0.68,
     amp: 1.6, speed: 2.3, turbulence: 0.7, pulse: 0, breathe: 0.02, wobble: 1,
   },
+  /* ---- un tono por agente, para cuando la esfera se divide ---- */
+  extractor: {
+    c1: "#41efff", c2: "#2d87ff", bg: "#02090e",
+    scale: 1, fog: 1.1, glow: 0.55,
+    amp: 1.1, speed: 1.2, turbulence: 0.08, pulse: 0.6, breathe: 0.03, wobble: 0,
+  },
+  clasificador: {
+    c1: "#8f8bff", c2: "#c46dff", bg: "#0a0812",
+    scale: 1, fog: 1.1, glow: 0.55,
+    amp: 1.1, speed: 1.2, turbulence: 0.1, pulse: 0, breathe: 0.035, wobble: 0,
+  },
+  critico: {
+    c1: "#ffd44f", c2: "#ff8f31", bg: "#0d0902",
+    scale: 1, fog: 1.15, glow: 0.6,
+    amp: 1.2, speed: 1.4, turbulence: 0.2, pulse: 0, breathe: 0.04, wobble: 0,
+  },
+  modelador: {
+    c1: "#57f7a7", c2: "#00cb89", bg: "#020b07",
+    scale: 1, fog: 1.05, glow: 0.55,
+    amp: 0.9, speed: 1, turbulence: 0, pulse: 0, breathe: 0.03, wobble: 0,
+  },
+  lecturaA: {
+    c1: "#5cc8ff", c2: "#3b82f6", bg: "#030812",
+    scale: 1, fog: 1.1, glow: 0.6,
+    amp: 1.4, speed: 1.7, turbulence: 0.3, pulse: 0, breathe: 0.04, wobble: 0,
+  },
+  lecturaB: {
+    c1: "#ffb347", c2: "#ff6a3d", bg: "#100602",
+    scale: 1, fog: 1.1, glow: 0.6,
+    amp: 1.4, speed: 1.7, turbulence: 0.3, pulse: 0, breathe: 0.04, wobble: 0,
+  },
 };
 
 export const NUM_KEYS = ["scale", "fog", "glow", "amp", "speed", "turbulence", "pulse", "breathe", "wobble"];

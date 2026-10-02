@@ -180,22 +180,25 @@ export const obtenerEstadoRequisito = (id) => {
 };
 
 export function crearRequisitos(lista) {
-  const ahora = Date.now();
-  const ids = lista.map((item, i) => {
+  // Un solo flujo de agentes: cada requisito empieza cuando termina el anterior
+  let inicio = Date.now() + 600;
+  const ids = lista.map((item) => {
     const id = `REQ-${String(db.siguienteId++).padStart(3, "0")}`;
-    db.requisitos.push({
+    const reg = {
       id,
       texto: item.texto.trim(),
       origen: item.origen || "texto pegado",
-      creadoEn: new Date(ahora).toISOString(),
+      creadoEn: new Date().toISOString(),
       material: generarMaterial({ id, texto: item.texto }, db.catalogos),
       config: clonar(db.config),
-      inicioMs: ahora + i * 1500, // escalonados, como una cola real
+      inicioMs: inicio,
       humano: [],
       borrador: null,
       artefactosValidados: null,
       intentosPrevios: [],
-    });
+    };
+    db.requisitos.push(reg);
+    inicio += proceso(reg).duracionMs + 900;
     return id;
   });
   guardar();

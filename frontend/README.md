@@ -11,19 +11,34 @@ npm run dev      # http://localhost:5173
 npm run build
 ```
 
-## Rutas
+## La esfera
+
+La esfera está montada una sola vez en `App.jsx` (`components/orb/OrbField.jsx`)
+y nunca se desmonta: cada pantalla solo le dice dónde estar y qué hacer
+(`useOrb()`). Puede dividirse en varias esferas (mitosis) y volver a fundirse;
+una membrana las une mientras se separan.
+
+## Flujo principal
+
+| Ruta | Qué pasa |
+|---|---|
+| `/` | Carga en blanco, nace la esfera, clic para empezar, login/registro (sin validar) |
+| `/inicio` | «¿Qué analizamos hoy?»: suelta el archivo sobre la esfera o pega el texto; confirmas la separación |
+| `/analisis?ids=` | La esfera se divide en Extractor, Clasificador, Crítico y Modelador. Si hay debate, el Clasificador se divide en Lectura A y B, que se acercan según la similitud; al consenso se funden, en arbitraje las absorbe el Crítico. Al final todo vuelve a una esfera y aparecen los resultados |
+| `/lel/generar?ids=` | El Modelador redacta el LEL; editas y apruebas |
+| `/big-picture?ids=` | Panorama del lote y descarga en JSON |
+
+## Herramientas (menú superior)
 
 | Ruta | Pantalla |
 |---|---|
-| `/` | Portada (orbe, login y registro sin validación) → `/cola` |
-| `/cargar` | 1. Carga de requisitos (texto, .txt o .pdf) y confirmación de la separación |
-| `/cola` | 2. Cola de requisitos con filtro `?estado=` |
-| `/requisitos/:id` | 3 y 4. Traza completa y panel de debate (`?figura=1` para capturas) |
-| `/requisitos/:id/validacion` | 5. Validación y edición de artefactos |
-| `/lel` | 6. LEL acumulado (`?q=`, `?tipo=`) |
-| `/catalogos/:tipo` | 7. Catálogos `mexicanismos` y `vaguedad` |
-| `/calibracion` | 8. Umbral, rondas y modelo por agente |
-| `/evaluacion` | 9. Corpus contra ground truth |
+| `/historial` | Todos los requisitos con filtro por estado |
+| `/requisitos/:id` | Traza completa por etapas y debate (`?figura=1` versión clara para la tesis) |
+| `/requisitos/:id/validacion` | Validación detallada de LEL, metas y Big Picture |
+| `/lel` | Léxico acumulado |
+| `/catalogos/:tipo` | Mexicanismos y vaguedad |
+| `/calibracion` | Umbral, rondas y modelo por agente |
+| `/evaluacion` | Corpus contra ground truth |
 
 ## Dónde está cada cosa
 
@@ -38,5 +53,5 @@ npm run build
   REQ-002 (consenso en ronda 1), REQ-003 (arbitraje).
 
 Los cambios hechos en la interfaz se guardan en localStorage. «Restaurar datos
-de prueba» (menú lateral) vuelve al estado inicial y relanza los requisitos que
+de prueba» (al pie de Calibración) vuelve al estado inicial y relanza los requisitos que
 se ven procesándose en vivo.

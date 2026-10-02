@@ -66,3 +66,22 @@ export function seguirEjecucion(id, onCambio, { intervaloMs = 700 } = {}) {
   tick();
   return () => { activo = false; clearTimeout(timer); };
 }
+
+/** Sigue un lote de requisitos (traza completa de cada uno) hasta que todos terminan. */
+export function seguirLote(ids, onCambio, { intervaloMs = 900 } = {}) {
+  let activo = true;
+  let timer;
+  const tick = async () => {
+    try {
+      const lista = await Promise.all(ids.map((id) => api.obtenerRequisito(id)));
+      if (!activo) return;
+      onCambio(lista);
+      if (lista.some((r) => estaEnProceso(r.estado))) timer = setTimeout(tick, intervaloMs);
+    } catch (e) {
+      console.error("Sondeo de lote", e);
+      if (activo) timer = setTimeout(tick, intervaloMs * 2);
+    }
+  };
+  tick();
+  return () => { activo = false; clearTimeout(timer); };
+}

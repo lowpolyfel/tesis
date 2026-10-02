@@ -68,7 +68,7 @@ export default function Catalogos() {
             nuevaFila={() => ({ id: `${tipo}-${Date.now()}`, expresion: "", clasificacion: "", lecturas: [""], tratamiento: "" })}
           />
           <div className="flex items-center gap-3">
-            <button onClick={guardar} disabled={!sucio} className="rounded bg-slate-900 px-4 py-1.5 text-sm font-medium text-white disabled:opacity-40">
+            <button onClick={guardar} disabled={!sucio} className="rounded bg-slate-900 px-4 py-1.5 text-sm font-medium text-sobre disabled:opacity-40">
               Guardar cambios
             </button>
             <button onClick={() => setFilas(original)} disabled={!sucio} className="rounded border border-slate-300 px-4 py-1.5 text-sm disabled:opacity-40">

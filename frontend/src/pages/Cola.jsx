@@ -25,17 +25,17 @@ export default function Cola() {
   return (
     <div className="space-y-4">
       <header className="flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-semibold">Cola de requisitos</h1>
+        <h1 className="text-2xl font-semibold">Historial</h1>
         <span className="text-sm text-slate-500">{lista.length} requisitos</span>
-        <Link to="/cargar" className="ml-auto rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700">
-          + Cargar requisitos
+        <Link to="/inicio" className="ml-auto rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-sobre hover:bg-slate-700">
+          + Analizar documento
         </Link>
       </header>
 
       <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filtrar por estado">
         <button
           onClick={() => filtrar(null)}
-          className={`rounded-full px-2.5 py-0.5 text-xs ring-1 ring-inset ${!filtro ? "bg-slate-900 text-white ring-slate-900" : "bg-white text-slate-600 ring-slate-300"}`}
+          className={`rounded-full px-2.5 py-0.5 text-xs ring-1 ring-inset ${!filtro ? "bg-slate-900 text-sobre ring-slate-900" : "bg-white text-slate-600 ring-slate-300"}`}
         >
           Todos ({lista.length})
         </button>

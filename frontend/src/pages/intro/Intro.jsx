@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
-import Orb from "../../components/orb/Orb";
-import { createOrbController } from "../../components/orb/controller";
+import { useOrb } from "../../components/orb/useOrb";
 import TopBar from "../../components/intro/TopBar";
 import { AppContext } from "../../components/intro/useApp";
-import { poseFor } from "./poses";
+import { poseFor } from "../../components/orb/poses";
 import Loader from "./Loader";
 import Welcome from "./Welcome";
 import Landing from "./Landing";
@@ -15,15 +14,14 @@ import "./intro.css";
 /*
  * Portada de Dudamel: carga en blanco, clic para empezar, bienvenida,
  * login y registro. El acceso no valida nada (monousuario local):
- * entrar o registrarse lleva directo a la cola de requisitos.
+ * entrar o registrarse lleva directo a «Analizar».
  */
 const PAGES = { welcome: Welcome, landing: Landing, login: Login, register: Register };
 const EXIT_MS = 420;
 
 export default function Intro() {
-  const rootRef = useRef(null);
   const navigate = useNavigate();
-  const orb = useMemo(() => createOrbController(), []);
+  const orb = useOrb();
   const [booting, setBooting] = useState(true);
   const [screen, setScreen] = useState("loading");
   const [leaving, setLeaving] = useState(false);
@@ -51,7 +49,7 @@ export default function Intro() {
   const enter = useCallback(() => {
     pose("welcome");
     setLeaving(true);
-    exitTimer.current = setTimeout(() => navigate("/cola"), EXIT_MS + 200);
+    exitTimer.current = setTimeout(() => navigate("/inicio"), EXIT_MS + 200);
   }, [navigate, pose]);
 
   useEffect(() => {
@@ -68,9 +66,7 @@ export default function Intro() {
 
   return (
     <AppContext.Provider value={ctx}>
-      <div ref={rootRef} className="app">
-        <Orb controller={orb} rootRef={rootRef} />
-        <div className="grain" aria-hidden="true" />
+      <div className="app">
 
         {screen !== "loading" && <TopBar screen={screen} />}
         {Page && (
