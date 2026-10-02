@@ -62,10 +62,11 @@ export function separarRequisitos(texto) {
 }
 
 /**
- * Registra los requisitos confirmados y arranca su procesamiento.
- * Futuro: POST /requisitos [{ texto, origen }] → { ids }
+ * Registra los requisitos confirmados dentro de un proyecto (un ciclo nuevo)
+ * y arranca su procesamiento.
+ * Futuro: POST /proyectos/:id/requisitos [{ texto, origen }] → { ids }
  */
-export const crearRequisitos = (lista) => responder(() => ({ ids: db.crearRequisitos(lista) }));
+export const crearRequisitos = (lista, proyectoId) => responder(() => ({ ids: db.crearRequisitos(lista, proyectoId) }));
 
 /* ======================= Requisitos ======================= */
 
@@ -129,6 +130,33 @@ export const obtenerEjecucion = (id) => responder(() => db.ejecucion(id));
 
 /** Futuro: GET /evaluaciones */
 export const listarEjecuciones = () => responder(() => db.ejecuciones());
+
+/* ======================= Proyectos ======================= */
+
+/** Futuro: GET /proyectos → resumen de cada proyecto */
+export const listarProyectos = () => responder(() => db.proyectos());
+
+/** Futuro: GET /proyectos/:id → proyecto con sus requisitos (traza completa) */
+export const obtenerProyecto = (id) => responder(() => db.proyecto(id));
+
+/** Futuro: POST /proyectos { nombre, descripcion } → { id } */
+export const crearProyecto = (datos) => responder(() => ({ id: db.crearProyecto(datos) }));
+
+/* ======================= Ambigüedades ======================= */
+
+/**
+ * Términos ambiguos detectados en todos los requisitos, con dónde aparecen y
+ * qué lectura se adoptó en cada uno. Futuro: GET /ambiguedades
+ */
+export const obtenerAmbiguedades = () => responder(() => db.ambiguedades());
+
+/* ======================= Flujo de conocimiento ======================= */
+
+/**
+ * Métricas por ciclo y por fase del flujo de conocimiento continuo.
+ * proyectoId opcional (todos si se omite). Futuro: GET /flujo?proyecto=
+ */
+export const obtenerFlujo = (proyectoId) => responder(() => db.flujo(proyectoId));
 
 /* ======================= Solo para la simulación ======================= */
 

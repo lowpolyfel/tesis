@@ -330,6 +330,9 @@ function Resultados({ lista, ids }) {
       <div className="sube flex flex-wrap gap-3 pt-3" style={{ "--i": 4 + lista.length }}>
         <button className="pill" onClick={() => navigate(`/lel/generar?ids=${q}`)}>Generar LEL</button>
         <button className="pill ghost" onClick={() => navigate(`/big-picture?ids=${q}`)}>Generar Big Picture</button>
+        {lista[0]?.proyectoId && (
+          <Link to={`/proyectos/${lista[0].proyectoId}`} className="mono self-center px-2 text-[10px] text-[var(--bone-faint)] hover:text-[var(--bone)]">Ver el proyecto</Link>
+        )}
         <Link to="/inicio" className="mono self-center px-2 text-[10px] text-[var(--bone-faint)] hover:text-[var(--bone)]">Analizar otro documento</Link>
       </div>
     </section>

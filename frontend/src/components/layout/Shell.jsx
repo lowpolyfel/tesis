@@ -1,17 +1,25 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useSearchParams } from "react-router";
 import { useOrb, usePoseEsfera } from "../orb/useOrb";
 
 const ENLACES = [
   { a: "/inicio", texto: "Analizar" },
+  { a: "/proyectos", texto: "Proyectos" },
+  { a: "/ambiguedades", texto: "Ambigüedades" },
+  { a: "/flujo", texto: "Flujo" },
   { a: "/historial", texto: "Historial" },
   { a: "/lel", texto: "Léxico" },
+];
+const AJUSTES = [
   { a: "/catalogos", texto: "Catálogos" },
   { a: "/calibracion", texto: "Calibración" },
   { a: "/evaluacion", texto: "Evaluación" },
 ];
 
 const TITULOS = [
+  [/^\/proyectos\/[^/]+/, "Proyecto"],
+  [/^\/proyectos/, "Proyectos"],
+  [/^\/ambiguedades/, "Ambigüedades"],
   [/^\/historial/, "Historial"],
   [/^\/requisitos\/[^/]+\/validacion/, "Validación"],
   [/^\/requisitos\//, "Traza"],
@@ -59,18 +67,41 @@ function BarraSuperior() {
       </Link>
       <nav className="flex flex-wrap justify-end gap-x-5 gap-y-1">
         {ENLACES.map((e) => (
-          <NavLink
-            key={e.a}
-            to={e.a}
-            className={({ isActive }) =>
-              `mono text-[10px] transition-colors ${isActive ? "text-[var(--bone)] underline decoration-[var(--c1)] underline-offset-[6px]" : "text-[var(--bone-faint)] hover:text-[var(--bone)]"}`
-            }
-          >
+          <NavLink key={e.a} to={e.a} end={e.a === "/lel"} className={claseEnlace}>
             {e.texto}
           </NavLink>
         ))}
+        <Ajustes />
       </nav>
     </header>
+  );
+}
+
+const claseEnlace = ({ isActive }) =>
+  `mono text-[10px] transition-colors ${isActive ? "text-[var(--bone)] underline decoration-[var(--c1)] underline-offset-[6px]" : "text-[var(--bone-faint)] hover:text-[var(--bone)]"}`;
+
+/* Catálogos, calibración y evaluación: herramientas de experimentación, agrupadas */
+function Ajustes() {
+  const [abierto, setAbierto] = useState(false);
+  const ref = useRef(null);
+  const { pathname } = useLocation();
+  const activo = AJUSTES.some((e) => pathname.startsWith(e.a));
+  useEffect(() => setAbierto(false), [pathname]);
+  useEffect(() => {
+    if (!abierto) return;
+    const fuera = (e) => { if (!ref.current?.contains(e.target)) setAbierto(false); };
+    document.addEventListener("pointerdown", fuera);
+    return () => document.removeEventListener("pointerdown", fuera);
+  }, [abierto]);
+  return (
+    <div ref={ref} className="relative">
+      <button onClick={() => setAbierto((x) => !x)} className={claseEnlace({ isActive: activo })}>Ajustes ▾</button>
+      {abierto && (
+        <div className="sube absolute top-7 right-0 flex min-w-40 flex-col gap-3 rounded-xl border border-[var(--line)] bg-[color-mix(in_oklab,var(--bg)_92%,transparent)] p-4 backdrop-blur-xl">
+          {AJUSTES.map((e) => <NavLink key={e.a} to={e.a} className={claseEnlace}>{e.texto}</NavLink>)}
+        </div>
+      )}
+    </div>
   );
 }
 
