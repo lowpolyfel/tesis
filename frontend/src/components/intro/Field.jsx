@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { useApp } from "../../hooks/useApp";
+import { useApp } from "./useApp";
 
 /*
  * Campo de formulario. Al enfocarlo el orbe escucha; al escribir reacciona a

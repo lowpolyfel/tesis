@@ -1,16 +1,16 @@
 import { useEffect } from "react";
-import { useApp } from "../hooks/useApp";
+import { useApp } from "../../components/intro/useApp";
 
 /* Pantalla de “clic para empezar”: cualquier clic o tecla despierta al orbe */
 export default function Welcome() {
-  const { go, orb, session } = useApp();
+  const { go, orb } = useApp();
 
   useEffect(() => {
     const start = (e) => {
       if (e.type === "keydown" && ["Tab", "Shift", "Alt", "Control", "Meta"].includes(e.key)) return;
       orb.poke(1.4);
       orb.setMood("listening", { revertAfter: 900 });
-      go(session ? "home" : "landing");
+      go("landing");
       window.removeEventListener("pointerdown", start);
       window.removeEventListener("keydown", start);
     };
@@ -20,7 +20,7 @@ export default function Welcome() {
       window.removeEventListener("pointerdown", start);
       window.removeEventListener("keydown", start);
     };
-  }, [go, orb, session]);
+  }, [go, orb]);
 
   return (
     <div className="welcome">
