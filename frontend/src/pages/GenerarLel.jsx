@@ -79,11 +79,20 @@ export default function GenerarLel() {
           <p className="sube text-sm text-[var(--bone-dim)]" style={{ "--i": 2 }}>
             Una entrada por requisito. Edita lo que no te convenza: tu versión y la del agente se mezclan antes de aprobar.
           </p>
+          <div className="sube sticky top-20 z-10 -mx-3 flex flex-wrap items-center gap-3 rounded-full px-3 py-2 backdrop-blur-xl" style={{ "--i": 3 }}>
+            {aprobables.length > 0 && (
+              <button className="pill" disabled={aprobando} onClick={aprobarTodo}>
+                {aprobando ? "Incorporando…" : `Aprobar e incorporar ${aprobables.length}`}
+              </button>
+            )}
+            <Link to="/lel" className="pill ghost">Ver léxico completo</Link>
+            <Link to={`/big-picture?ids=${ids.join(",")}`} className="mono px-2 text-[10px] text-[var(--bone-faint)] hover:text-[var(--bone)]">Generar Big Picture →</Link>
+          </div>
           <ol className="space-y-3">
             {entradas.map((r, i) => (
               <Entrada
                 key={r.id}
-                i={i}
+                i={Math.min(i, 8)}
                 r={r}
                 lel={lelDe(r)}
                 editada={Boolean(edicion[r.id])}
@@ -94,15 +103,6 @@ export default function GenerarLel() {
               />
             ))}
           </ol>
-          <div className="sube flex flex-wrap items-center gap-3 pt-2" style={{ "--i": 4 + entradas.length }}>
-            {aprobables.length > 0 && (
-              <button className="pill" disabled={aprobando} onClick={aprobarTodo}>
-                {aprobando ? "Incorporando…" : `Aprobar e incorporar ${aprobables.length}`}
-              </button>
-            )}
-            <Link to="/lel" className="pill ghost">Ver léxico completo</Link>
-            <Link to={`/big-picture?ids=${ids.join(",")}`} className="mono px-2 text-[10px] text-[var(--bone-faint)] hover:text-[var(--bone)]">Generar Big Picture →</Link>
-          </div>
           {aviso && <p className="text-sm text-[#8ff5c0]">{aviso}</p>}
         </>
       )}

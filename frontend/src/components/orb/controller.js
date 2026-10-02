@@ -12,7 +12,8 @@
 export function createOrbController() {
   const bodies = new Map();
   const listeners = new Set();
-  const state = { bodies, ambient: "idle", shy: false };
+  const state = { bodies, ambient: "idle", shy: false, membranaHasta: 0 };
+  const membrana = (ms = 1500) => { state.membranaHasta = performance.now() + ms; };
   const emit = () => listeners.forEach((fn) => fn());
   let moodTimer;
 
@@ -71,6 +72,7 @@ export function createOrbController() {
         });
       }
       if (parent) parent.kick += 0.9;
+      membrana();
       emit();
     },
 
@@ -80,6 +82,7 @@ export function createOrbController() {
         const b = bodies.get(id);
         if (b && id !== intoId) b.fuseInto = intoId;
       }
+      membrana(1200);
     },
 
     update(id, patch) {

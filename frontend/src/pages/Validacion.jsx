@@ -128,7 +128,7 @@ export default function Validacion() {
       {aviso && <p className="text-sm text-slate-700">{aviso}</p>}
 
       {editable && (
-        <footer className="fixed inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-[color-mix(in_oklab,var(--bg)_88%,transparent)] px-4 py-3 backdrop-blur md:left-[30vw]">
+        <footer className="fixed inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-[color-mix(in_oklab,var(--bg)_88%,transparent)] px-4 py-3 backdrop-blur md:left-[190px]">
           <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2">
             <input
               value={comentario}

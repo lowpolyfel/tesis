@@ -29,8 +29,15 @@ const TITULOS = [
   [/^\/evaluacion/, "Evaluación"],
 ];
 
-/* En las herramientas la esfera se queda a la izquierda, viva, junto al contenido */
-const POSE_HERRAMIENTA = { d: { x: -0.37, y: -0.06, s: 0.46 }, m: { x: 0.34, y: -0.43, s: 0.16 } };
+/*
+ * En las herramientas la esfera es un emblema vivo arriba a la izquierda,
+ * junto al título; el contenido usa todo el ancho que queda.
+ */
+const POSE_HERRAMIENTA = { d: { x: -0.5 + 100 / 1440, y: -0.5 + 150 / 900, s: 0.24 }, m: { x: 0.36, y: -0.42, s: 0.14 } };
+const poseHerramienta = () => ({
+  d: { x: -0.5 + 100 / innerWidth, y: -0.5 + 150 / innerHeight, s: 0.24 },
+  m: POSE_HERRAMIENTA.m,
+});
 
 /*
  * Marco de la aplicación.
@@ -109,15 +116,22 @@ function Herramienta() {
   const { pathname } = useLocation();
   const orb = useOrb();
   const titulo = TITULOS.find(([re]) => re.test(pathname))?.[1] ?? "";
-  usePoseEsfera(POSE_HERRAMIENTA, []);
+  const [pose, setPose] = useState(poseHerramienta);
+  useEffect(() => {
+    const f = () => setPose(poseHerramienta());
+    addEventListener("resize", f);
+    return () => removeEventListener("resize", f);
+  }, []);
+  usePoseEsfera(pose, [pose]);
 
   useEffect(() => {
-    orb.update("core", { label: titulo, sub: null });
+    orb.update("core", { label: null, sub: null });
+    orb.poke(0.5);
   }, [orb, titulo]);
   useEffect(() => () => orb.update("core", { label: null, sub: null }), [orb]);
 
   return (
-    <div className="tema-oscuro relative z-10 min-h-screen px-4 pt-28 pb-16 md:pr-10 md:pl-[30vw]">
+    <div className="tema-oscuro relative z-10 min-h-screen px-4 pt-28 pb-16 md:pr-10 md:pl-[190px]">
       <div key={pathname} className="sube mx-auto max-w-5xl">
         <Outlet />
       </div>

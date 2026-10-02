@@ -1,10 +1,10 @@
 /* ---- ambiente: la niebla sigue al orbe por la pantalla ---- */
 .orb-ambient{position:fixed;inset:-10%;z-index:0;pointer-events:none;overflow:hidden}
-.orb-fog{position:absolute;border-radius:50%;filter:blur(130px);mix-blend-mode:screen;will-change:transform}
-.orb-fog.a{width:58vw;height:58vw;left:-10%;top:-18%;background:var(--c1);opacity:calc(.08*var(--fog))}
-.orb-fog.b{width:54vw;height:54vw;right:-12%;bottom:-18%;background:var(--c2);opacity:calc(.065*var(--fog))}
-.orb-fog.c{width:40vw;height:40vw;left:calc(var(--orbx) + 10vw - 20vw);top:calc(var(--orby) + 10vh - 20vw);
-  background:var(--c1);opacity:calc(.07*var(--fog));transition:left 1.4s ease,top 1.4s ease}
+.orb-fog{position:absolute;border-radius:50%;mix-blend-mode:screen;will-change:transform;contain:strict;
+  -webkit-mask:radial-gradient(closest-side,#000 0%,rgba(0,0,0,.55) 45%,transparent 100%);mask:radial-gradient(closest-side,#000 0%,rgba(0,0,0,.55) 45%,transparent 100%)}
+.orb-fog.a{width:80vw;height:80vw;left:-22%;top:-32%;background:var(--c1);opacity:calc(.09*var(--fog))}
+.orb-fog.b{width:76vw;height:76vw;right:-24%;bottom:-32%;background:var(--c2);opacity:calc(.075*var(--fog))}
+.orb-fog.c{width:56vw;height:56vw;left:0;top:0;background:var(--c1);opacity:calc(.08*var(--fog))}
 .orb-vignette{position:fixed;inset:0;z-index:1;pointer-events:none;
   background:radial-gradient(ellipse at 50% 48%,transparent 42%,rgba(0,0,0,.55) 100%)}
 
@@ -20,18 +20,18 @@
 .orb-label.is-empty{opacity:0}
 .orb-label-name{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10.5px;letter-spacing:.2em;
   text-transform:uppercase;color:rgba(239,233,222,.85)}
-.orb-label-sub{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:12px;color:rgba(239,233,222,.5);
+.orb-label-sub{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:12px;color:rgba(239,233,222,.5);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
   max-width:220px;white-space:normal;line-height:1.35}
 .orb-scene>*{grid-area:1/1}
 
 .orb-waves{width:400px;height:400px;z-index:1;overflow:visible;
-  filter:drop-shadow(0 0 10px var(--glow)) drop-shadow(0 0 28px var(--glowSoft))}
-.orb-backglow{width:330px;height:330px;border-radius:50%;z-index:2;
-  background:radial-gradient(circle,var(--glow) 0%,var(--glowSoft) 40%,transparent 72%);
-  filter:blur(30px);opacity:var(--glowOp)}
+  filter:drop-shadow(0 0 9px var(--glow))}
+.orb-backglow{width:380px;height:380px;border-radius:50%;z-index:2;
+  background:radial-gradient(closest-side,var(--glow) 0%,var(--glowSoft) 45%,transparent 100%);
+  opacity:var(--glowOp)}
 .orb-shadow{z-index:0;align-self:end;margin-bottom:12px;width:200px;height:28px;border-radius:50%;
-  background:radial-gradient(ellipse,var(--glow) 0%,var(--glowSoft) 40%,transparent 72%);
-  filter:blur(12px);opacity:.55}
+  background:radial-gradient(closest-side,var(--glow) 0%,var(--glowSoft) 45%,transparent 100%);
+  opacity:.55}
 
 /* ---- orbe blanco hueso ---- */
 .orb-orbwrap{position:relative;z-index:3;width:218px;height:218px;will-change:transform;--hx:36%;--hy:28%}
@@ -54,12 +54,14 @@
   background:conic-gradient(from 0deg,transparent 0 10%,var(--c1) 18%,transparent 30%,
     rgba(255,248,235,.9) 42%,transparent 54%,var(--c2) 66%,transparent 80%,rgba(255,255,255,.6) 90%,transparent 100%);
   filter:blur(22px);mix-blend-mode:soft-light;opacity:.55;animation:orbSpin 14s linear infinite}
-.orb-orb::after{content:"";position:absolute;inset:20%;border-radius:50%;z-index:1;background:#fffaf0;
-  opacity:.18;filter:blur(20px);animation:orbCore 4.2s ease-in-out infinite}
-.orb-il{position:absolute;border-radius:50%;filter:blur(26px);pointer-events:none;z-index:1}
-.orb-il.il1{width:120px;height:120px;background:#fffaf0;left:-24px;top:18px;opacity:.45;
+.orb-orb::after{content:"";position:absolute;inset:8%;border-radius:50%;z-index:1;
+  background:radial-gradient(closest-side,#fffaf0,transparent);
+  opacity:.2;animation:orbCore 4.2s ease-in-out infinite}
+/* Brillos internos con gradientes radiales (el mismo halo suave, sin filtro de desenfoque) */
+.orb-il{position:absolute;border-radius:50%;pointer-events:none;z-index:1}
+.orb-il.il1{width:170px;height:170px;background:radial-gradient(closest-side,#fffaf0,transparent);left:-50px;top:-8px;opacity:.5;
   mix-blend-mode:screen;animation:orbDrift 6s ease-in-out infinite}
-.orb-il.il2{width:150px;height:150px;background:var(--c1);right:-56px;bottom:-40px;opacity:.28;
+.orb-il.il2{width:210px;height:210px;background:radial-gradient(closest-side,var(--c1),transparent);right:-86px;bottom:-70px;opacity:.32;
   mix-blend-mode:color-burn;animation:orbDrift 7.4s ease-in-out infinite reverse}
 .orb-spec{position:absolute;inset:0;z-index:2;pointer-events:none;
   background:
@@ -77,3 +79,10 @@
 @media (prefers-reduced-motion:reduce){
   .orb-orb,.orb-orb::before,.orb-orb::after,.orb-il{animation:none}
 }
+
+/* Esferas pequeñas (agentes): una sola sombra y menos desenfoque, para que la mitosis vaya fluida */
+.es-chica .orb-orb::before{filter:blur(14px)}
+
+/* Cada capa costosa en su propia capa del compositor: se dibuja una vez y solo se mueve */
+.orb-backglow,.orb-shadow,.orb-il,.orb-orb::before,.orb-orb::after{will-change:transform}
+.es-chica .orb-waves{filter:none}

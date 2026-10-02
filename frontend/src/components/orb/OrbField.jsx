@@ -20,9 +20,12 @@ function nuevaFisica(body, desde) {
   return {
     px: desde ? desde.px : body.target.x * innerWidth,
     py: desde ? desde.py : body.target.y * innerHeight,
-    vx: desde ? (Math.random() - 0.5) * 300 : 0,
-    vy: desde ? (Math.random() - 0.5) * 300 : 0,
-    sc: desde ? desde.sc * 0.55 : body.target.s,
+    // Al nacer de otra esfera sale disparada hacia su lugar: la mitosis se siente decidida
+    vx: desde ? (body.target.x * innerWidth - desde.px) * 2.6 : 0,
+    vy: desde ? (body.target.y * innerHeight - desde.py) * 2.6 : 0,
+    sc: desde ? Math.max(0.15, desde.sc * 0.7) : body.target.s,
+    edad: 0,
+    cuadro: 0,
     vs: 0,
     cur: Object.fromEntries(NUM_KEYS.map((k) => [k, MOODS[mood][k]])),
     lab: Object.fromEntries(COLOR_KEYS.map((c) => [c, [...MOODS_LAB[mood][c]]])),
@@ -40,6 +43,8 @@ export default function OrbField({ controller, rootRef }) {
   const [ids, setIds] = useState(() => [...controller.state.bodies.keys()]);
   const nodes = useRef(new Map()); // id -> refs DOM
   const gooRefs = useRef(new Map());
+  const membranaRef = useRef(null);
+  const nieblaRef = useRef(null);
 
   useEffect(() => controller.subscribe(() => setIds([...controller.state.bodies.keys()])), [controller]);
 
@@ -70,6 +75,12 @@ export default function OrbField({ controller, rootRef }) {
 
     const tick = (now) => {
       const dt = Math.max(Math.min((now - last) / 1000, 0.05), 1e-4);
+      // La membrana (filtro a pantalla completa) solo existe mientras hay mitosis o fusión
+      const membrana = membranaRef.current;
+      if (membrana) {
+        const visible = now < (controller.state.membranaHasta ?? 0);
+        if (membrana.style.display !== (visible ? "" : "none")) membrana.style.display = visible ? "" : "none";
+      }
       last = now;
       time += dt;
       const vw = innerWidth, vh = innerHeight;
@@ -125,12 +136,15 @@ export default function OrbField({ controller, rootRef }) {
         }
 
         // Resortes algo subamortiguados para que rebase y se asiente
-        const rigidez = body.fuseInto ? 1.6 : 1;
-        f.vx += (40 * rigidez * (tx - f.px) - 10.5 * f.vx) * dt;
-        f.vy += (30 * rigidez * (ty - f.py) - 9.5 * f.vy) * dt;
+        f.edad += dt;
+        const joven = f.edad < 0.9;
+        const k = body.fuseInto ? 120 : joven ? 95 : 40;
+        const c = body.fuseInto ? 20 : joven ? 15 : 10.5;
+        f.vx += (k * (tx - f.px) - c * f.vx) * dt;
+        f.vy += (k * 0.8 * (ty - f.py) - c * 0.95 * f.vy) * dt;
         f.px += f.vx * dt;
         f.py += f.vy * dt;
-        f.vs += (55 * (ts - f.sc) - 9 * f.vs) * dt;
+        f.vs += ((joven || body.fuseInto ? 110 : 55) * (ts - f.sc) - (joven || body.fuseInto ? 14 : 9) * f.vs) * dt;
         f.sc = Math.max(0, f.sc + f.vs * dt);
 
         if (!el) continue;
@@ -178,11 +192,13 @@ export default function OrbField({ controller, rootRef }) {
         const escala = f.sc * cur.scale;
 
         // Atenuada cuando no es su turno
-        const opT = body.dim ? 0.55 : 1;
+        const opT = body.dim ? 0.72 : 1;
         f.op += (opT - f.op) * lerpK(dt, 4);
 
         el.wrap.style.transform = `translate3d(${sx.toFixed(2)}px, ${sy.toFixed(2)}px, 0)`;
         el.wrap.style.opacity = f.op.toFixed(3);
+        const chica = escala < 0.5;
+        if (f.cache.chica !== chica) { el.wrap.classList.toggle("es-chica", chica); f.cache.chica = chica; }
         el.scene.style.transform =
           `scale(${escala.toFixed(4)}) rotateX(${(-f.gy * 3.5).toFixed(2)}deg) rotateY(${(f.gx * 4).toFixed(2)}deg) rotate(${(f.vx * 0.004).toFixed(2)}deg)`;
         if (el.label) el.label.style.transform = `translate(-50%, ${(escala * 128 + 14).toFixed(1)}px)`;
@@ -224,8 +240,15 @@ export default function OrbField({ controller, rootRef }) {
         }
 
         if (id === "core") {
-          setVar(root, amb.cache, "--orbx", `${(vw / 2 + sx).toFixed(0)}px`);
-          setVar(root, amb.cache, "--orby", `${(vh / 2 + sy).toFixed(0)}px`);
+          // La niebla sigue a la esfera moviéndose como capa (sin repintar el desenfoque
+          // ni recalcular estilos de toda la página)
+          if (nieblaRef.current) {
+            f.niebla = f.niebla ?? { x: vw / 2 + sx, y: vh / 2 + sy };
+            const kf = lerpK(dt, 1.2);
+            f.niebla.x += (vw / 2 + sx - f.niebla.x) * kf;
+            f.niebla.y += (vh / 2 + sy - f.niebla.y) * kf;
+            nieblaRef.current.style.transform = `translate3d(${(f.niebla.x + vw * 0.1).toFixed(0)}px, ${(f.niebla.y + vh * 0.1).toFixed(0)}px, 0) translate(-50%, -50%)`;
+          }
         }
 
         // Ondas: concéntricas a la esfera; se agitan mientras viaja o trabaja
@@ -235,7 +258,9 @@ export default function OrbField({ controller, rootRef }) {
         const ampMul = 1 + travelN * 1.1 + activo;
         const speedMul = 1 + travelN * 1.6 + activo * 1.6;
         const cx = 200 + f.gx * 12, cy = 200 + f.gy * 10;
-        for (let si = 0; si < SHAPES.length; si++) {
+        f.cuadro++;
+        const saltar = body.dim && f.cuadro % 2;
+        for (let si = 0; si < SHAPES.length && !saltar; si++) {
           const shape = SHAPES[si], ph = f.phases[si];
           for (let h = 0; h < HARMONICS.length; h++) ph[h] += dt * HARMONICS[h].rate * cur.speed * speedMul * shape.speedK;
           const ampPx = AMP_PX * shape.ampK * cur.amp * pulseMul * ampMul;
@@ -271,12 +296,12 @@ export default function OrbField({ controller, rootRef }) {
       <div className="orb-ambient" aria-hidden="true">
         <div className="orb-fog a" />
         <div className="orb-fog b" />
-        <div className="orb-fog c" />
+        <div ref={nieblaRef} className="orb-fog c" />
       </div>
       <div className="orb-vignette" aria-hidden="true" />
 
       <div className="orb-stage" aria-hidden="true">
-        <svg className="orb-membrane" width="100%" height="100%">
+        <svg ref={membranaRef} className="orb-membrane" width="100%" height="100%" style={{ display: "none" }}>
           <defs>
             <filter id="orbMembrane" x="-20%" y="-20%" width="140%" height="140%">
               <feGaussianBlur in="SourceGraphic" stdDeviation="14" result="b" />
