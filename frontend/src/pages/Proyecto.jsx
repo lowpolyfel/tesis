@@ -57,7 +57,9 @@ export default function Proyecto() {
         </p>
         <div className="flex flex-wrap gap-2 pt-1">
           <Link className="pill" to={`/inicio?proyecto=${p.id}`}>Analizar requisitos aquí</Link>
-          <Link className="pill ghost" to={`/flujo?proyecto=${p.id}`}>Flujo de conocimiento</Link>
+          <button className="pill ghost" onClick={() => { setParams({ vista: "bigpicture" }, { replace: true }); orb.poke(0.4); }}>Big Picture</button>
+          <button className="pill ghost" onClick={() => { setParams({ vista: "modelo" }, { replace: true }); orb.poke(0.4); }}>Modelo UML</button>
+          <Link className="pill ghost" to={`/flujo?proyecto=${p.id}`}>Flujo</Link>
           <Link className="pill ghost" to={`/ambiguedades?proyecto=${p.id}`}>Ambigüedades</Link>
         </div>
       </header>

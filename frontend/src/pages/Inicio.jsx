@@ -179,7 +179,7 @@ export default function Inicio() {
           <p className="sube text-sm text-[var(--bone-dim)]" style={{ "--i": 2 }}>Corrige el texto, une los que se partieron mal o quita los que sobran.</p>
           <ol className="space-y-1">
             {piezas.map((p, i) => (
-              <li key={p.clave} className="sube group flex items-start gap-4 border-b border-[var(--line)] py-2" style={{ "--i": 3 + i }}>
+              <li key={p.clave} className="sube group flex items-start gap-4 border-b border-[var(--line)] py-2" style={{ "--i": 3 + Math.min(i, 8) }}>
                 <span className="mono pt-2.5 text-[10px] text-[var(--bone-faint)]">{String(i + 1).padStart(2, "0")}</span>
                 <textarea
                   value={p.texto}
@@ -205,7 +205,8 @@ export default function Inicio() {
           >
             + agregar requisito
           </button>
-          <div className="sube flex flex-wrap gap-3 pt-2" style={{ "--i": 5 + piezas.length }}>
+          {/* Fija abajo: con muchos requisitos el botón no se pierde */}
+          <div className="sube sticky bottom-4 z-10 -mx-3 flex flex-wrap gap-3 rounded-full px-3 py-2 backdrop-blur-xl" style={{ "--i": 5 + Math.min(piezas.length, 8) }}>
             <button className="pill" disabled={!validas.length || saliendo || !proyectoId} onClick={analizar} onPointerEnter={() => orb.poke(0.3)}>
               Analizar {validas.length} {validas.length === 1 ? "requisito" : "requisitos"}
             </button>

@@ -127,7 +127,7 @@ export default function Analisis() {
         }))
       );
       setFase("trabajo");
-    }, 1300);
+    }, 650);
     return () => clearTimeout(t);
   }, [cargado, fase, orb, ids.length]);
 
@@ -230,12 +230,17 @@ export default function Analisis() {
 /* ---------------------------------------------------------------- */
 
 function Foco({ r, i, total }) {
+  // Requisitos largos bajan de tamaño para no invadir a los agentes
+  const largo = r.texto.length > 110;
   return (
-    <section key={r.id} className="pointer-events-none fixed inset-x-0 top-[13vh] z-10 px-6 text-center">
+    <section key={r.id} className="pointer-events-none fixed inset-x-0 top-[12vh] z-10 px-6 text-center">
       <p className="mono sube text-[10px] text-[var(--bone-faint)]">
         Requisito {i + 1} de {total} · {r.id} · <span className="text-[var(--bone-dim)]">{INFO_ESTADO[r.estado].etiqueta}</span>
       </p>
-      <p className="serif sube mx-auto mt-3 max-w-4xl text-[clamp(22px,2.4vw,34px)] leading-tight" style={{ "--i": 1 }}>
+      <p
+        className={`serif sube mx-auto mt-3 line-clamp-3 max-w-4xl leading-tight ${largo ? "text-[clamp(18px,1.8vw,24px)]" : "text-[clamp(22px,2.4vw,34px)]"}`}
+        style={{ "--i": 1 }}
+      >
         «<TextoMarcado texto={r.texto} marcados={r.traza.extraccion?.marcados ?? []} />»
       </p>
     </section>
@@ -268,27 +273,55 @@ function Lectura({ r }) {
   );
 }
 
+/*
+ * Progreso del lote: una marca por requisito, siempre en una sola línea por
+ * muchos que sean. La lista completa se abre a demanda.
+ */
 function Lote({ lista, foco }) {
+  const [abierta, setAbierta] = useState(false);
+  const listos = lista.filter((r) => !estaEnProceso(r.estado)).length;
   return (
-    <ol className="fixed inset-x-0 bottom-[3vh] z-10 mx-auto hidden max-w-3xl space-y-0.5 px-6 md:block">
-      {lista.map((r) => {
-        const actual = r.id === foco?.id;
-        const listo = !estaEnProceso(r.estado);
-        const via = VIA[r.via];
-        return (
-          <li key={r.id} className={`flex items-center gap-4 py-1 text-[12.5px] transition-opacity ${actual ? "opacity-100" : listo ? "opacity-60" : "opacity-30"}`}>
-            <span className="mono w-16 text-[9.5px] text-[var(--bone-faint)]">{r.id}</span>
-            <span className="min-w-0 flex-1 truncate">{r.texto}</span>
-            <span className="mono flex w-32 items-center justify-end gap-2 text-[9.5px]">
-              {actual && <span className="gira" />}
-              {listo && via && <><span className="punto" style={{ background: via.tono }} />{via.texto}</>}
-              {!listo && !actual && "en cola"}
-              {actual && INFO_ESTADO[r.estado].etiqueta}
-            </span>
-          </li>
-        );
-      })}
-    </ol>
+    <div className="fixed inset-x-0 bottom-[3vh] z-10 mx-auto flex max-w-3xl flex-col items-center gap-3 px-6">
+      {abierta && (
+        <ol className="sube max-h-[30vh] w-full overflow-y-auto rounded-2xl border border-[var(--line)] bg-[color-mix(in_oklab,var(--bg)_86%,transparent)] p-3 backdrop-blur-xl">
+          {lista.map((r) => {
+            const actual = r.id === foco?.id;
+            const listo = !estaEnProceso(r.estado);
+            const via = VIA[r.via];
+            return (
+              <li key={r.id} className={`flex items-center gap-4 py-1 text-[12.5px] ${actual ? "" : listo ? "opacity-60" : "opacity-35"}`}>
+                <span className="mono w-16 shrink-0 text-[9.5px] text-[var(--bone-faint)]">{r.id}</span>
+                <span className="min-w-0 flex-1 truncate">{r.texto}</span>
+                <span className="mono flex w-32 shrink-0 items-center justify-end gap-2 text-[9.5px]">
+                  {actual && <><span className="gira" />{INFO_ESTADO[r.estado].etiqueta}</>}
+                  {listo && via && <><span className="punto" style={{ background: via.tono }} />{via.texto}</>}
+                  {!listo && !actual && "en cola"}
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      <button onClick={() => setAbierta((x) => !x)} className="flex max-w-full flex-col items-center gap-2" title="Ver la lista de requisitos">
+        <span className="flex max-w-full flex-wrap justify-center gap-1.5">
+          {lista.map((r) => {
+            const actual = r.id === foco?.id;
+            const via = VIA[r.via];
+            return (
+              <span
+                key={r.id}
+                title={`${r.id} · ${r.texto}`}
+                className={`h-1.5 rounded-full transition-all duration-500 ${actual ? "w-6" : "w-1.5"}`}
+                style={{ background: actual ? "var(--c1)" : via ? via.tono : "rgba(239,233,222,.18)" }}
+              />
+            );
+          })}
+        </span>
+        <span className="mono text-[9.5px] text-[var(--bone-faint)] hover:text-[var(--bone)]">
+          {listos} de {lista.length} listos · {abierta ? "ocultar lista" : "ver lista"}
+        </span>
+      </button>
+    </div>
   );
 }
 
@@ -297,44 +330,47 @@ function Resultados({ lista, ids }) {
   const cuenta = (v) => lista.filter((r) => r.via === v).length;
   const q = ids.join(",");
   return (
-    <section className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center gap-5 px-6 pt-[36vh] pb-14 md:mr-[7vw] md:pt-28">
+    <section className="mx-auto flex min-h-screen max-w-2xl flex-col gap-5 px-6 pt-[36vh] pb-14 md:mr-[7vw] md:pt-28">
       <p className="mono sube text-[10px] text-[var(--bone-faint)]">Análisis completo</p>
       <h1 className="serif sube text-[clamp(44px,4.6vw,72px)] leading-[.95]" style={{ "--i": 1 }}>
         Listo. <em>{lista.length}</em> {lista.length === 1 ? "requisito" : "requisitos"}.
       </h1>
       <p className="sube text-sm text-[var(--bone-dim)]" style={{ "--i": 2 }}>
         {cuenta(V.DIRECTO)} sin debate · {cuenta(V.CONSENSO)} por consenso · {cuenta(V.ARBITRAJE)} por arbitraje del Crítico.
-        Toca uno para ver cómo lo decidieron los agentes.
       </p>
+
+      {/* Lo siguiente, siempre a la vista aunque la lista sea larga */}
+      <div className="sube sticky top-20 z-10 -mx-3 flex flex-wrap items-center gap-3 rounded-full px-3 py-2 backdrop-blur-xl" style={{ "--i": 3 }}>
+        <button className="pill" onClick={() => navigate(`/lel/generar?ids=${q}`)}>Generar LEL</button>
+        <button className="pill ghost" onClick={() => navigate(`/big-picture?ids=${q}`)}>Big Picture</button>
+        <button className="pill ghost" onClick={() => navigate(`/big-picture?ids=${q}&vista=modelo`)}>Modelo UML</button>
+        {lista[0]?.proyectoId && (
+          <Link to={`/proyectos/${lista[0].proyectoId}`} className="mono px-2 text-[10px] text-[var(--bone-faint)] hover:text-[var(--bone)]">Ver el proyecto</Link>
+        )}
+      </div>
+
+      <p className="mono text-[9.5px] text-[var(--bone-faint)]">Toca un requisito para ver cómo lo decidieron los agentes</p>
       <ol className="border-t border-[var(--line)]">
         {lista.map((r, i) => {
           const via = VIA[r.via];
           return (
-            <li key={r.id} className="sube" style={{ "--i": 3 + i }}>
-              <Link to={`/requisitos/${r.id}`} className="group flex items-baseline gap-4 border-b border-[var(--line)] py-3.5 transition-colors hover:bg-white/[0.025]">
+            <li key={r.id} className="sube" style={{ "--i": 4 + Math.min(i, 8) }}>
+              <Link to={`/requisitos/${r.id}`} className="group flex items-baseline gap-4 border-b border-[var(--line)] py-3 transition-colors hover:bg-white/[0.025]">
                 <span className="mono w-16 shrink-0 text-[9.5px] text-[var(--bone-faint)]">{r.id}</span>
                 <span className="min-w-0 flex-1 text-[15px] leading-relaxed">
                   <TextoMarcado texto={r.texto} marcados={r.traza.extraccion?.marcados ?? []} />
                 </span>
-                <span className="mono flex shrink-0 items-center gap-2 text-[9.5px] text-[var(--bone-dim)]">
+                <span className="mono flex w-28 shrink-0 items-center justify-end gap-2 text-[9.5px] text-[var(--bone-dim)]">
                   {via && <span className="punto" style={{ background: via.tono }} />}
                   {via?.texto ?? INFO_ESTADO[r.estado].etiqueta}
                   {r.similitud != null && <span className="text-[var(--bone-faint)]">{r.similitud.toFixed(2)}</span>}
-                  <span className="opacity-0 transition-opacity group-hover:opacity-100">→</span>
                 </span>
               </Link>
             </li>
           );
         })}
       </ol>
-      <div className="sube flex flex-wrap gap-3 pt-3" style={{ "--i": 4 + lista.length }}>
-        <button className="pill" onClick={() => navigate(`/lel/generar?ids=${q}`)}>Generar LEL</button>
-        <button className="pill ghost" onClick={() => navigate(`/big-picture?ids=${q}`)}>Generar Big Picture</button>
-        {lista[0]?.proyectoId && (
-          <Link to={`/proyectos/${lista[0].proyectoId}`} className="mono self-center px-2 text-[10px] text-[var(--bone-faint)] hover:text-[var(--bone)]">Ver el proyecto</Link>
-        )}
-        <Link to="/inicio" className="mono self-center px-2 text-[10px] text-[var(--bone-faint)] hover:text-[var(--bone)]">Analizar otro documento</Link>
-      </div>
+      <Link to="/inicio" className="mono self-start text-[10px] text-[var(--bone-faint)] hover:text-[var(--bone)]">Analizar otro documento</Link>
     </section>
   );
 }
