@@ -13,7 +13,6 @@ const POSES = {
   register1: { d: { x: 0.24, y: -0.07, s: 0.82 },m: { x: 0.16, y: -0.29, s: 0.58 } },
   register2: { d: { x: -0.24, y: 0.08, s: 0.82 },m: { x: -0.16, y: -0.29, s: 0.58 } },
   register3: { d: { x: 0.25, y: 0.1, s: 0.86 },  m: { x: 0.16, y: -0.29, s: 0.58 } },
-  home:      { d: { x: 0, y: -0.16, s: 0.82 },   m: { x: 0, y: -0.26, s: 0.64 } },
 };
 
 export const isMobile = () => window.innerWidth < 760;

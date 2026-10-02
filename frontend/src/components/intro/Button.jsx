@@ -1,4 +1,4 @@
-import { useApp } from "../../hooks/useApp";
+import { useApp } from "./useApp";
 
 /* Botón que hace reaccionar al orbe al pasar por encima */
 export default function Button({ variant = "primary", className = "", children, ...props }) {

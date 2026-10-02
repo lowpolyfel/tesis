@@ -1,5 +1,5 @@
-import { useApp } from "../hooks/useApp";
-import Button from "../components/ui/Button";
+import { useApp } from "../../components/intro/useApp";
+import Button from "../../components/intro/Button";
 
 export default function Landing() {
   const { go } = useApp();

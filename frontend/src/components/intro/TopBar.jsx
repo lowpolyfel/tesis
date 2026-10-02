@@ -1,18 +1,17 @@
-import { useApp } from "../../hooks/useApp";
+import { useApp } from "./useApp";
 
 const STATUS = {
   welcome: "En espera",
   landing: "Bienvenida",
   login: "Acceso",
   register: "Nueva cuenta",
-  home: "Sesión activa",
 };
 
 export default function TopBar({ screen }) {
-  const { go, orb, session } = useApp();
+  const { go, orb } = useApp();
   const home = () => {
     orb.poke(0.8);
-    go(session ? "home" : "landing");
+    go("landing");
   };
 
   return (
