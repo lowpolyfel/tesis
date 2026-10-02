@@ -1,0 +1,9 @@
+# docker-compose.yml: todavía vacío.
+#
+# Servicios previstos:
+#   backend   - FastAPI + LangGraph (lee variables de .env)
+#   mongo     - MongoDB, con volumen persistente
+#   ollama    - Ollama con los modelos locales y nomic-embed-text, con volumen para modelos
+#   frontend  - React (build estático servido aparte)
+#
+# El Crítico no necesita servicio: usa un modelo externo por API.
