@@ -1,0 +1,69 @@
+/* ---- ambiente: la niebla sigue al orbe por la pantalla ---- */
+.orb-ambient{position:fixed;inset:-10%;z-index:0;pointer-events:none;overflow:hidden}
+.orb-fog{position:absolute;border-radius:50%;filter:blur(130px);mix-blend-mode:screen;will-change:transform}
+.orb-fog.a{width:58vw;height:58vw;left:-10%;top:-18%;background:var(--c1);opacity:calc(.08*var(--fog))}
+.orb-fog.b{width:54vw;height:54vw;right:-12%;bottom:-18%;background:var(--c2);opacity:calc(.065*var(--fog))}
+.orb-fog.c{width:40vw;height:40vw;left:calc(var(--orbx) + 10vw - 20vw);top:calc(var(--orby) + 10vh - 20vw);
+  background:var(--c1);opacity:calc(.07*var(--fog));transition:left 1.4s ease,top 1.4s ease}
+.orb-vignette{position:fixed;inset:0;z-index:1;pointer-events:none;
+  background:radial-gradient(ellipse at 50% 48%,transparent 42%,rgba(0,0,0,.55) 100%)}
+
+/* ---- escena ---- */
+.orb-stage{position:fixed;inset:0;z-index:2;pointer-events:none;perspective:1200px;overflow:hidden}
+.orb-scene{position:absolute;left:50%;top:50%;width:400px;height:400px;margin:-200px 0 0 -200px;
+  display:grid;place-items:center;will-change:transform}
+.orb-scene>*{grid-area:1/1}
+
+.orb-waves{width:400px;height:400px;z-index:1;overflow:visible;
+  filter:drop-shadow(0 0 10px var(--glow)) drop-shadow(0 0 28px var(--glowSoft))}
+.orb-backglow{width:330px;height:330px;border-radius:50%;z-index:2;
+  background:radial-gradient(circle,var(--glow) 0%,var(--glowSoft) 40%,transparent 72%);
+  filter:blur(30px);opacity:var(--glowOp)}
+.orb-shadow{z-index:0;align-self:end;margin-bottom:12px;width:200px;height:28px;border-radius:50%;
+  background:radial-gradient(ellipse,var(--glow) 0%,var(--glowSoft) 40%,transparent 72%);
+  filter:blur(12px);opacity:.55}
+
+/* ---- orbe blanco hueso ---- */
+.orb-orbwrap{position:relative;z-index:3;width:218px;height:218px;will-change:transform;--hx:36%;--hy:28%}
+.orb-orb{position:relative;width:100%;height:100%;overflow:hidden;isolation:isolate;
+  /* fuerza el recorte redondo bajo transformaciones 3D (si no, asoman esquinas) */
+  -webkit-mask-image:linear-gradient(#000,#000);mask-image:linear-gradient(#000,#000);
+  border-radius:49% 51% 53% 47% / 47% 52% 48% 53%;
+  background:
+    radial-gradient(circle at calc(var(--hx) + 6%) calc(var(--hy) + 8%),rgba(255,253,248,.7),transparent 38%),
+    radial-gradient(circle at 74% 80%,rgba(150,128,102,.45),transparent 52%),
+    radial-gradient(circle at 46% 44%,#f6f1e8 0%,#ece4d6 38%,#dcd0bc 70%,#c2b39b 100%);
+  box-shadow:
+    inset -16px -20px 36px var(--rim),
+    inset 12px 14px 26px rgba(255,255,255,.5),
+    inset 0 0 0 1px rgba(255,250,240,.25),
+    0 0 26px rgba(239,228,206,.16),
+    0 0 90px var(--glowSoft);
+  animation:orbOrganic 10s ease-in-out infinite}
+.orb-orb::before{content:"";position:absolute;inset:-35%;z-index:1;
+  background:conic-gradient(from 0deg,transparent 0 10%,var(--c1) 18%,transparent 30%,
+    rgba(255,248,235,.9) 42%,transparent 54%,var(--c2) 66%,transparent 80%,rgba(255,255,255,.6) 90%,transparent 100%);
+  filter:blur(22px);mix-blend-mode:soft-light;opacity:.55;animation:orbSpin 14s linear infinite}
+.orb-orb::after{content:"";position:absolute;inset:20%;border-radius:50%;z-index:1;background:#fffaf0;
+  opacity:.18;filter:blur(20px);animation:orbCore 4.2s ease-in-out infinite}
+.orb-il{position:absolute;border-radius:50%;filter:blur(26px);pointer-events:none;z-index:1}
+.orb-il.il1{width:120px;height:120px;background:#fffaf0;left:-24px;top:18px;opacity:.45;
+  mix-blend-mode:screen;animation:orbDrift 6s ease-in-out infinite}
+.orb-il.il2{width:150px;height:150px;background:var(--c1);right:-56px;bottom:-40px;opacity:.28;
+  mix-blend-mode:color-burn;animation:orbDrift 7.4s ease-in-out infinite reverse}
+.orb-spec{position:absolute;inset:0;z-index:2;pointer-events:none;
+  background:
+    radial-gradient(circle at var(--hx) var(--hy),rgba(255,255,255,.95) 0,rgba(255,255,255,.6) 3.5%,transparent 10%),
+    radial-gradient(ellipse 30% 18% at var(--hx) var(--hy),rgba(255,255,255,.35),transparent 70%)}
+
+@keyframes orbOrganic{
+  0%,100%{border-radius:49% 51% 53% 47% / 47% 52% 48% 53%}
+  33%{border-radius:54% 46% 48% 52% / 52% 54% 46% 48%}
+  66%{border-radius:47% 53% 54% 46% / 49% 46% 54% 51%}}
+@keyframes orbSpin{to{transform:rotate(360deg)}}
+@keyframes orbCore{0%,100%{transform:scale(.75);opacity:.12}50%{transform:scale(1.15);opacity:.26}}
+@keyframes orbDrift{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(22px,14px) scale(1.15)}}
+
+@media (prefers-reduced-motion:reduce){
+  .orb-orb,.orb-orb::before,.orb-orb::after,.orb-il{animation:none}
+}
