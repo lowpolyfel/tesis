@@ -16,7 +16,7 @@ export default function Etapa({ numero, titulo, agente, meta, estado = "hecho", 
   return (
     <section id={id} className={`scroll-mt-4 rounded-lg border ${ESTILO[estado]}`}>
       <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-inherit px-4 py-2.5">
-        <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${estado === "hecho" ? "bg-slate-900 text-white" : "bg-slate-200 text-slate-600"}`}>
+        <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${estado === "hecho" ? "bg-slate-900 text-sobre" : "bg-slate-200 text-slate-600"}`}>
           {numero}
         </span>
         <h2 className="text-sm font-semibold uppercase tracking-wide">{titulo}</h2>

@@ -12,6 +12,8 @@
 import { ESTADOS as E, VIAS_RESOLUCION as V } from "../constants/estados";
 
 const DUR = { divergencia: 1500, ronda: 5000, consenso: 1500, arbitraje: 3500, modelador: 3000 };
+// Ritmo de la simulación: < 1 acelera la demo sin cambiar el orden de los pasos
+const RITMO = 0.7;
 
 /* ---------- utilidades de texto ---------- */
 const sinAcento = (c) => c.normalize("NFD")[0].toLowerCase();
@@ -174,11 +176,11 @@ export function construirProceso(material, config) {
   const paso = (estado, extra = {}) => pasos.push({ estado, ms: t, ...extra });
 
   paso(E.CARGADO);
-  t += material.extraccion.duracionMs;
+  t += Math.round((material.extraccion.duracionMs) * RITMO);
   paso(E.EXTRAIDO);
-  t += material.clasificacion.duracionMs;
+  t += Math.round((material.clasificacion.duracionMs) * RITMO);
   paso(E.INTERPRETADO);
-  t += DUR.divergencia;
+  t += Math.round((DUR.divergencia) * RITMO);
 
   const similitud = material.similitudInicial;
   const directo = similitud >= umbral;
@@ -222,7 +224,7 @@ export function construirProceso(material, config) {
         similitudCierre: base.similitudCierre,
         similitudApertura: previa,
       });
-      t += DUR.ronda;
+      t += Math.round((DUR.ronda) * RITMO);
       paso(E.EN_DEBATE, { rondas: i + 1 });
       if (base.similitudCierre >= umbral) { consensoEn = i + 1; break; }
     }
@@ -236,7 +238,7 @@ export function construirProceso(material, config) {
     };
     const ultima = rondas[rondas.length - 1];
     if (consenso) {
-      t += DUR.consenso;
+      t += Math.round((DUR.consenso) * RITMO);
       paso(E.CONSENSO, { rondas: rondas.length });
       traza.resolucion = {
         via: V.CONSENSO,
@@ -245,7 +247,7 @@ export function construirProceso(material, config) {
         explicacion: `Al cerrar la ronda ${consensoEn} la similitud llegó a ${ultima.similitudCierre.toFixed(2)}, mayor o igual que el umbral (${umbral.toFixed(2)}): los agentes alcanzaron consenso.`,
       };
     } else {
-      t += DUR.arbitraje;
+      t += Math.round((DUR.arbitraje) * RITMO);
       paso(E.ARBITRADO, { rondas: rondas.length });
       traza.debate.arbitraje = { ...material.arbitraje, modelo: config.modelos.critico };
       traza.resolucion = {
@@ -257,7 +259,7 @@ export function construirProceso(material, config) {
     }
   }
 
-  t += DUR.modelador;
+  t += Math.round((DUR.modelador) * RITMO);
   paso(E.PENDIENTE_VALIDACION);
   traza.artefactos = { modelo: config.modelos.modelador };
 

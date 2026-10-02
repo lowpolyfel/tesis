@@ -15,7 +15,7 @@ export default function MedidorSimilitud({ similitud, umbral, modelo }) {
         <span className="absolute -top-5 -translate-x-1/2 text-xs font-medium text-slate-700" style={{ left: `${umbral * 100}%` }}>
           umbral {umbral.toFixed(2)}
         </span>
-        <span className="absolute inset-y-0 left-2 flex items-center font-mono text-sm font-semibold text-white">
+        <span className="absolute inset-y-0 left-2 flex items-center font-mono text-sm font-semibold text-sobre">
           {similitud.toFixed(2)}
         </span>
       </div>

@@ -10,8 +10,18 @@
 
 /* ---- escena ---- */
 .orb-stage{position:fixed;inset:0;z-index:2;pointer-events:none;perspective:1200px;overflow:hidden}
-.orb-scene{position:absolute;left:50%;top:50%;width:400px;height:400px;margin:-200px 0 0 -200px;
+.orb-membrane{position:absolute;inset:0;overflow:visible;
+  filter:drop-shadow(0 0 18px rgba(239,228,206,.12))}
+.orb-body{position:absolute;left:50%;top:50%;width:0;height:0;will-change:transform,opacity}
+.orb-scene{position:absolute;left:-200px;top:-200px;width:400px;height:400px;
   display:grid;place-items:center;will-change:transform}
+.orb-label{position:absolute;left:0;top:0;width:max-content;max-width:260px;white-space:nowrap;text-align:center;
+  display:flex;flex-direction:column;align-items:center;gap:4px;transition:opacity .5s ease}
+.orb-label.is-empty{opacity:0}
+.orb-label-name{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:10.5px;letter-spacing:.2em;
+  text-transform:uppercase;color:rgba(239,233,222,.85)}
+.orb-label-sub{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:12px;color:rgba(239,233,222,.5);
+  max-width:220px;white-space:normal;line-height:1.35}
 .orb-scene>*{grid-area:1/1}
 
 .orb-waves{width:400px;height:400px;z-index:1;overflow:visible;

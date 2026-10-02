@@ -42,7 +42,7 @@ export default function Lel() {
             <button
               key={t || "todos"}
               onClick={() => actualizar({ tipo: t })}
-              className={`rounded-full px-2.5 py-0.5 text-xs ring-1 ring-inset ${tipo === t ? "bg-slate-900 text-white ring-slate-900" : "bg-white ring-slate-300"}`}
+              className={`rounded-full px-2.5 py-0.5 text-xs ring-1 ring-inset ${tipo === t ? "bg-slate-900 text-sobre ring-slate-900" : "bg-white ring-slate-300"}`}
             >
               {t || "todos"} ({t ? entradas.filter((e) => e.tipo === t).length : entradas.length})
             </button>

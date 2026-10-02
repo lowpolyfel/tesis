@@ -51,7 +51,7 @@ export default function Evaluacion() {
       </header>
 
       <section className="flex flex-wrap items-center gap-4 rounded-lg border border-slate-200 bg-white p-4">
-        <button onClick={lanzar} disabled={Boolean(enCurso)} className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40">
+        <button onClick={lanzar} disabled={Boolean(enCurso)} className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-sobre disabled:opacity-40">
           Ejecutar corpus completo
         </button>
         <span className="text-sm text-slate-600">

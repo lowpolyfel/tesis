@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { obtenerConfiguracion, guardarConfiguracion } from "../services/api";
+import { obtenerConfiguracion, guardarConfiguracion, reiniciarDatosDePrueba } from "../services/api";
 import { AGENTES, ORDEN_AGENTES } from "../constants/agentes";
 
 /*
@@ -83,7 +83,7 @@ export default function Calibracion() {
 
       <div className="flex flex-wrap items-center gap-3">
         <input value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Nota del experimento (opcional)" className="w-72 rounded border border-slate-300 px-2 py-1.5 text-sm" />
-        <button onClick={guardar} disabled={!sucio} className="rounded bg-slate-900 px-4 py-1.5 text-sm font-medium text-white disabled:opacity-40">Aplicar</button>
+        <button onClick={guardar} disabled={!sucio} className="rounded bg-slate-900 px-4 py-1.5 text-sm font-medium text-sobre disabled:opacity-40">Aplicar</button>
         <button onClick={() => setCfg(vigente)} disabled={!sucio} className="rounded border border-slate-300 px-4 py-1.5 text-sm disabled:opacity-40">Descartar</button>
         {aviso && <span className="text-sm text-green-700">{aviso}</span>}
       </div>
@@ -106,6 +106,20 @@ export default function Calibracion() {
             ))}
           </tbody>
         </table>
+      </section>
+
+      <section className="flex flex-wrap items-center gap-3 text-sm text-slate-500">
+        Datos de prueba: el backend aún no está conectado.
+        <button
+          onClick={async () => {
+            if (!confirm("¿Restaurar todos los datos de prueba? Se pierden los cambios de esta sesión.")) return;
+            await reiniciarDatosDePrueba();
+            window.location.reload();
+          }}
+          className="underline hover:text-slate-800"
+        >
+          Restaurar datos de prueba
+        </button>
       </section>
     </div>
   );

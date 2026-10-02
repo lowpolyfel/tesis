@@ -67,7 +67,7 @@ export default function Validacion() {
     <div className="space-y-5 pb-24">
       <header className="space-y-2">
         <nav className="text-sm text-slate-500">
-          <Link to="/cola" className="hover:underline">Cola</Link> /{" "}
+          <Link to="/historial" className="hover:underline">Historial</Link> /{" "}
           <Link to={`/requisitos/${id}`} className="hover:underline">{id}</Link> / validación
         </nav>
         <div className="flex flex-wrap items-center gap-3">
@@ -128,7 +128,7 @@ export default function Validacion() {
       {aviso && <p className="text-sm text-slate-700">{aviso}</p>}
 
       {editable && (
-        <footer className="fixed inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur md:left-60">
+        <footer className="fixed inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-[color-mix(in_oklab,var(--bg)_88%,transparent)] px-4 py-3 backdrop-blur md:left-[30vw]">
           <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2">
             <input
               value={comentario}
@@ -158,7 +158,7 @@ export default function Validacion() {
               disabled={ocupado || Boolean(errorJson)}
               title={errorJson ? "Corrige el JSON del Big Picture" : ""}
               onClick={() => accion(() => validarArtefactos(id, trabajo, { comentario, editado: cambios.length > 0 }), "Validado.")}
-              className="rounded bg-green-700 px-4 py-1.5 text-sm font-medium text-white disabled:opacity-40"
+              className="rounded bg-green-700 px-4 py-1.5 text-sm font-medium text-sobre disabled:opacity-40"
             >
               Aprobar {cambios.length ? "con mis cambios" : "tal cual"}
             </button>
@@ -172,7 +172,7 @@ export default function Validacion() {
           <button
             disabled={ocupado}
             onClick={() => accion(() => formalizarRequisito(id), "Formalizado.", "/lel")}
-            className="ml-auto rounded bg-slate-900 px-3 py-1.5 font-medium text-white"
+            className="ml-auto rounded bg-slate-900 px-3 py-1.5 font-medium text-sobre"
           >
             Formalizar
           </button>
