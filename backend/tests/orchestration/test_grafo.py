@@ -7,49 +7,21 @@ error tras el reintento y reanudación con el checkpointer en SQLite.
 import json
 
 import pytest
-from langgraph.checkpoint.memory import InMemorySaver
 
-from app.config import Settings
-from app.db import RepositorioJson
 from app.models import Estado, Interpretacion, Validacion
-from app.orchestration import ConflictoDeEstado, Servicio, armar, checkpointer_sqlite
-from tests.fakes import EmbeddingsFalsos, LLMFalso, interp, r3_todas
-
-SESION = "El sistema debe registrar la sesión del usuario."
-P1 = "El sistema debe registrar el periodo de uso del usuario."
-P2 = "El sistema debe registrar la conexión del usuario."
-P1_CERCANA = "El sistema debe registrar el periodo de uso que tiene el usuario."
-
-# vectores: P1 y P2 ortogonales (similitud 0); P1 y P1_CERCANA casi iguales
-VECTORES = {P1: [1.0, 0.0], P2: [0.0, 1.0], P1_CERCANA: [0.99, 0.05]}
-
-EXTRACCION_SESION = {"terminos": [{"termino": "sistema", "categoria_tentativa": "sujeto"},
-                                  {"termino": "registrar", "categoria_tentativa": "verbo"},
-                                  {"termino": "sesión", "categoria_tentativa": "objeto"}]}
-
-
-def clasificacion(*interpretaciones):
-    return {"resultados": [{"termino": "sistema", "univoco": True},
-                           {"termino": "registrar", "univoco": True},
-                           {"termino": "sesión", "interpretaciones": list(interpretaciones)}]}
-
-
-I1 = interp("I1", "periodo de uso", P1)
-I2 = interp("I2", "evento de conexión", P2)
-MODELADO = {"entrada_lel": {"simbolo": "sesión", "tipo": "objeto", "nocion": ["Periodo de uso del sistema."],
-                            "impacto": ["Se registra al iniciar y cerrar."]}}
-
-
-def montar(tmp_path, analizador, guiones, checkpointer=None, **ajustes):
-    settings = Settings(_env_file=None, similarity_threshold=0.75, max_debate_rounds=2,
-                        resultados_dir=str(tmp_path / "resultados"), checkpoint_path=str(tmp_path / "cp.sqlite"),
-                        **ajustes)
-    llm = LLMFalso(guiones)
-    repo = RepositorioJson(settings.ruta(settings.resultados_dir))
-    deps = armar(settings, repo, analizador, extractor=llm, clasificador=llm, critico=llm, modelador=llm,
-                 embeddings=EmbeddingsFalsos(VECTORES))
-    return Servicio(deps, checkpointer or InMemorySaver()), llm, repo
-
+from app.orchestration import ConflictoDeEstado, checkpointer_sqlite
+from tests.escenarios import (
+    EXTRACCION_SESION,
+    I1,
+    I2,
+    MODELADO,
+    P1_CERCANA,
+    SESION,
+    clasificacion,
+    guiones_sesion_cercana,
+    montar,
+)
+from tests.fakes import interp, r3_todas
 
 def tipos(traza):
     return [m.tipo.value for m in traza.mensajes]
@@ -189,14 +161,6 @@ def test_rechazo_termina_sin_formalizar(tmp_path, analizador):
     assert t.estado == Estado.RECHAZADO and ruta(t)[-1] == "rechazado"
     assert tipos(t)[-1] == "validacion" and t.mensajes[-1].payload["comentario"] == "no es lo que pedí"
     assert "modelador_v1" not in llm.llamadas and repo.listar_lel() == []
-
-
-def guiones_sesion_cercana():
-    return {
-        "extractor_v1": [EXTRACCION_SESION],
-        "clasificador_v1": [clasificacion(I1, interp("I2", "periodo de uso", P1_CERCANA))],
-        "modelador_v1": [MODELADO],
-    }
 
 
 def test_el_humano_elige_otra_interpretacion(tmp_path, analizador):

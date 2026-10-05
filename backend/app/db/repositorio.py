@@ -36,6 +36,7 @@ class Repositorio(Protocol):
     def agregar_mensaje(self, req_id: str, **campos: Any) -> Mensaje: ...
     def cambiar_estado(self, req_id: str, estado: Estado) -> None: ...
     def obtener_traza(self, req_id: str) -> Traza | None: ...
+    def listar_trazas(self) -> list[dict]: ...
     def guardar_lel(self, entradas: list[EntradaLELFormalizada]) -> None: ...
     def listar_lel(self) -> list[EntradaLELFormalizada]: ...
 
@@ -111,6 +112,16 @@ class RepositorioJson:
             except (KeyError, ValueError):
                 return None
 
+    def listar_trazas(self) -> list[dict]:
+        """Resumen (req_id, texto, estado, actualizado) de todas las trazas, por req_id."""
+        with self._candado:
+            salida = []
+            for ruta in self.dir_trazas.glob("R*.json"):
+                if _PATRON_REQ.match(ruta.stem):
+                    d = json.loads(ruta.read_text(encoding="utf-8"))
+                    salida.append({k: d[k] for k in ("req_id", "texto", "estado", "actualizado")})
+            return sorted(salida, key=lambda d: int(d["req_id"][1:]))
+
     def guardar_lel(self, entradas: list[EntradaLELFormalizada]) -> None:
         with self._candado:
             actuales = [e.model_dump(mode="json") for e in self.listar_lel()]
@@ -181,6 +192,12 @@ class RepositorioMongo:
     def obtener_traza(self, req_id: str) -> Traza | None:
         doc = self.trazas.find_one({"_id": req_id})
         return self._a_traza(doc) if doc else None
+
+    def listar_trazas(self) -> list[dict]:
+        docs = self.trazas.find({}, {"req_id": 1, "texto": 1, "estado": 1, "actualizado": 1})
+        salida = [{"req_id": d["req_id"], "texto": d["texto"], "estado": d["estado"],
+                   "actualizado": d["actualizado"].isoformat()} for d in docs]
+        return sorted(salida, key=lambda d: int(d["req_id"][1:]))
 
     def guardar_lel(self, entradas: list[EntradaLELFormalizada]) -> None:
         if entradas:

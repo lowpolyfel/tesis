@@ -49,6 +49,16 @@ def test_mensajes_con_secuencia_y_transiciones(repo):
     assert t.mensajes[0].timestamp.tzinfo is not None
 
 
+def test_listar_trazas(repo):
+    assert repo.listar_trazas() == []
+    for texto in ("uno", "dos"):
+        repo.crear_traza(texto, {})
+    repo.cambiar_estado("R02", Estado.EXTRAIDO)
+    resumen = repo.listar_trazas()
+    assert [(d["req_id"], d["texto"], d["estado"]) for d in resumen] == [("R01", "uno", "cargado"), ("R02", "dos", "extraido")]
+    assert isinstance(resumen[0]["actualizado"], str)
+
+
 def test_lel(repo):
     assert repo.listar_lel() == []
     repo.guardar_lel([_entrada("R01")])

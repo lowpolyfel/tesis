@@ -5,17 +5,21 @@ por su identificador.
 """
 from __future__ import annotations
 
+import logging
 import sqlite3
 import threading
 from pathlib import Path
 
 from langgraph.types import Command
 
-from app.models import ESTADOS_TERMINALES, Estado, Traza, Validacion
+from app.models import ESTADOS_TERMINALES, Estado, Nodo, TipoMensaje, Traza, Validacion
 
 from .dependencias import Dependencias
 from .estado import con_interpretaciones
 from .grafo import construir_grafo
+
+
+log = logging.getLogger(__name__)
 
 
 class ConflictoDeEstado(Exception):
@@ -62,13 +66,24 @@ class Servicio:
         self._reservar(traza.req_id)
         return traza.req_id
 
-    def ejecutar(self, req_id: str) -> None:
-        """Corre el grafo hasta la pausa de validación (o hasta el final)."""
+    def _correr(self, req_id: str, entrada) -> None:
+        """Invoca el grafo. Los nodos ya registran sus fallas; esto cubre lo que
+        falle fuera de ellos (p. ej. el checkpointer), para que el caso no quede
+        a medias sin explicación en la traza."""
         try:
-            traza = self.repo.obtener_traza(req_id)
-            self.grafo.invoke({"req_id": req_id, "texto": traza.texto}, self._config(req_id))
+            self.grafo.invoke(entrada, self._config(req_id))
+        except Exception as e:
+            log.exception("Falla fuera de los nodos en %s", req_id)
+            self.repo.agregar_mensaje(req_id, ronda=0, emisor=Nodo.SISTEMA, receptor=Nodo.SISTEMA, tipo=TipoMensaje.ERROR,
+                                      payload={"nodo": None, "excepcion": type(e).__name__, "mensaje": str(e)})
+            self.repo.cambiar_estado(req_id, Estado.ERROR)
         finally:
             self._liberar(req_id)
+
+    def ejecutar(self, req_id: str) -> None:
+        """Corre el grafo hasta la pausa de validación (o hasta el final)."""
+        traza = self.repo.obtener_traza(req_id)
+        self._correr(req_id, {"req_id": req_id, "texto": traza.texto})
 
     def procesar(self, texto: str) -> str:
         """Registrar y ejecutar en el mismo hilo (scripts y pruebas)."""
@@ -93,10 +108,7 @@ class Servicio:
         self._reservar(req_id)
 
     def reanudar(self, req_id: str, validacion: Validacion) -> None:
-        try:
-            self.grafo.invoke(Command(resume=validacion.model_dump(mode="json")), self._config(req_id))
-        finally:
-            self._liberar(req_id)
+        self._correr(req_id, Command(resume=validacion.model_dump(mode="json")))
 
     def validar(self, req_id: str, validacion: Validacion) -> None:
         """Preparar y reanudar en el mismo hilo (scripts y pruebas)."""
@@ -105,6 +117,9 @@ class Servicio:
 
     def traza(self, req_id: str) -> Traza | None:
         return self.repo.obtener_traza(req_id)
+
+    def trazas(self) -> list[dict]:
+        return self.repo.listar_trazas()
 
     @staticmethod
     def terminado(traza: Traza) -> bool:
