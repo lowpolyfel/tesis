@@ -76,3 +76,6 @@ tesis/
 
 Copia `.env.example` como `.env` y completa los valores. Parámetros calibrables
 principales: `SIMILARITY_THRESHOLD` (0.75 inicial) y `MAX_DEBATE_ROUNDS` (2 inicial).
+
+Instalación, arranque del backend, sandbox (`/sandbox`) y pruebas: ver
+[`backend/README.md`](backend/README.md). Decisiones de diseño: [`docs/adr/`](docs/adr/).

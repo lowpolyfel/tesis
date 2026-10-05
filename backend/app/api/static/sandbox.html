@@ -1,1 +1,449 @@
-<!doctype html><title>sandbox</title>
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sandbox · núcleo de agentes</title>
+<link rel="icon" href="data:,">
+<!--
+  Página desechable para observar el núcleo de punta a punta, un requisito a la vez.
+  Solo muestra lo que devuelve el backend (POST /procesar, GET /eventos SSE,
+  GET /traza, POST /validar, GET /lel). No decide nada: no duplica lógica.
+-->
+<style>
+  :root {
+    --fondo: #f6f6f4; --panel: #ffffff; --texto: #1d1d1b; --tenue: #6b6b66; --borde: #deddd8;
+    --acento: #3b5bdb; --ok: #2b8a3e; --alerta: #c92a2a; --aviso: #e67700; --codigo: #f1f0ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fondo: #161615; --panel: #1f1f1d; --texto: #e9e8e3; --tenue: #9b9a93; --borde: #34332f;
+      --acento: #7c95f5; --ok: #69db7c; --alerta: #ff8787; --aviso: #ffc078; --codigo: #2a2a27;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fondo); color: var(--texto);
+         font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { padding: 12px 16px; border-bottom: 1px solid var(--borde); display: flex; gap: 12px;
+           align-items: baseline; flex-wrap: wrap; }
+  header h1 { font-size: 16px; margin: 0; }
+  header .meta { color: var(--tenue); font-size: 12px; }
+  main { display: grid; grid-template-columns: minmax(300px, 420px) 1fr; gap: 16px; padding: 16px; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  section { background: var(--panel); border: 1px solid var(--borde); border-radius: 8px; padding: 12px;
+            margin-bottom: 16px; min-width: 0; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--tenue); margin: 0 0 8px; }
+  textarea, input[type=text] { width: 100%; font: inherit; color: inherit; background: var(--fondo);
+            border: 1px solid var(--borde); border-radius: 6px; padding: 8px; }
+  textarea { min-height: 72px; resize: vertical; }
+  button { font: inherit; border: 1px solid var(--borde); background: var(--panel); color: inherit;
+           border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+  button.primario { background: var(--acento); border-color: var(--acento); color: #fff; }
+  button.peligro { border-color: var(--alerta); color: var(--alerta); }
+  button:disabled { opacity: .5; cursor: default; }
+  .fila { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+  .ejemplos button { font-size: 12px; padding: 3px 8px; color: var(--tenue); }
+  .tenue { color: var(--tenue); }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--borde); color: var(--tenue); }
+  .chip.visitado { color: var(--texto); border-color: var(--tenue); }
+  .chip.actual { background: var(--acento); border-color: var(--acento); color: #fff; }
+  .chip.error.actual { background: var(--alerta); border-color: var(--alerta); }
+  .estado-grande { font-size: 20px; font-weight: 600; margin: 4px 0 8px; }
+  ol.ruta { margin: 6px 0 0; padding-left: 20px; color: var(--tenue); font-size: 12px; }
+  #timeline { list-style: none; margin: 0; padding: 0; }
+  #timeline > li { border-top: 1px solid var(--borde); padding: 8px 0; }
+  #timeline > li:first-child { border-top: 0; }
+  .cab { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .sec { color: var(--tenue); font-variant-numeric: tabular-nums; min-width: 2.5em; }
+  .ronda { font-size: 11px; color: var(--tenue); border: 1px solid var(--borde); border-radius: 4px; padding: 0 4px; }
+  .tipo { font-size: 12px; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: var(--codigo); }
+  .tipo.error { color: var(--alerta); } .tipo.consenso, .tipo.formalizacion { color: var(--ok); }
+  .tipo.objecion { color: var(--aviso); } .tipo.arbitraje, .tipo.solicitud_validacion { color: var(--acento); }
+  .ruta-msg { font-weight: 500; }
+  .modelo { font-size: 11px; color: var(--tenue); margin-left: auto; }
+  .resumen { margin: 4px 0 0 3.2em; }
+  .resumen ul { margin: 2px 0; padding-left: 18px; }
+  .sim { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .sim.bajo { color: var(--aviso); } .sim.alto { color: var(--ok); }
+  details { margin: 4px 0 0 3.2em; }
+  summary { cursor: pointer; color: var(--tenue); font-size: 12px; }
+  pre { background: var(--codigo); border-radius: 6px; padding: 8px; overflow: auto; font-size: 12px; max-height: 360px; margin: 4px 0 0; }
+  .termino { border: 1px solid var(--borde); border-radius: 6px; padding: 8px; margin-bottom: 8px; }
+  .termino h3 { margin: 0 0 4px; font-size: 14px; }
+  .opcion { display: block; padding: 4px 0; }
+  .opcion .parafrasis { color: var(--tenue); font-size: 13px; }
+  .retirada { text-decoration: line-through; }
+  .editor { margin-top: 6px; display: none; }
+  .editor.abierto { display: block; }
+  .editor label { display: block; font-size: 12px; color: var(--tenue); margin-top: 4px; }
+  .lel dt { font-weight: 600; margin-top: 6px; }
+  .lel dd { margin: 0 0 0 12px; font-size: 13px; }
+  .vacio { color: var(--tenue); font-style: italic; }
+  #recientes button { display: block; width: 100%; text-align: left; border: 0; border-top: 1px solid var(--borde);
+                      border-radius: 0; padding: 6px 0; background: none; }
+  #recientes button:first-child { border-top: 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Sandbox · núcleo de agentes</h1>
+  <span class="meta" id="salud">conectando…</span>
+</header>
+
+<main>
+  <div>
+    <section>
+      <h2>Requisito</h2>
+      <textarea id="texto" placeholder="El sistema debe…"></textarea>
+      <div class="fila ejemplos">
+        <span class="tenue">Casos:</span>
+        <button data-ejemplo="El sistema debe permitir al administrador eliminar usuarios inactivos.">eliminar usuarios</button>
+        <button data-ejemplo="El sistema debe registrar la sesión del usuario.">sesión</button>
+        <button data-ejemplo="El sistema debe jalar los datos del servidor ahorita.">jalar ahorita</button>
+      </div>
+      <div class="fila">
+        <button class="primario" id="procesar">Procesar</button>
+        <span class="tenue" id="req"></span>
+      </div>
+    </section>
+
+    <section>
+      <h2>Estado</h2>
+      <div class="estado-grande" id="estado">—</div>
+      <div class="chips" id="maquina"></div>
+      <ol class="ruta" id="ruta"></ol>
+    </section>
+
+    <section id="validacion" hidden>
+      <h2>Validación humana</h2>
+      <div id="val-terminos"></div>
+      <div id="val-otros" class="tenue"></div>
+      <label class="tenue" for="comentario">Comentario (opcional)</label>
+      <input type="text" id="comentario">
+      <div class="fila">
+        <button class="primario" id="aprobar">Aprobar</button>
+        <button class="peligro" id="rechazar">Rechazar</button>
+        <span class="tenue" id="val-msg"></span>
+      </div>
+    </section>
+
+    <section>
+      <h2>LEL</h2>
+      <dl class="lel" id="lel"><span class="vacio">sin entradas</span></dl>
+    </section>
+
+    <section>
+      <h2>Requisitos procesados</h2>
+      <div id="recientes"><span class="vacio">ninguno</span></div>
+    </section>
+  </div>
+
+  <section>
+    <h2>Mensajes <span class="tenue" id="conteo"></span></h2>
+    <ol id="timeline"><li class="vacio">Procesa un requisito para ver los mensajes en vivo.</li></ol>
+  </section>
+</main>
+
+<script>
+"use strict";
+// Solo presentación: el orden de los estados se muestra como referencia; quién
+// pasa a qué estado lo decide el backend y llega por SSE.
+const ESTADOS = ["cargado", "extraido", "interpretado", "aceptado_directo", "en_debate", "consenso",
+  "arbitrado", "pendiente_validacion", "validado", "rechazado", "formalizado", "error"];
+
+const $ = (id) => document.getElementById(id);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+const num = (x) => (x === null || x === undefined) ? "—" : Number(x).toFixed(4);
+
+let fuente = null;       // EventSource activo
+let reqActual = null;
+let mensajes = [];       // mensajes recibidos del requisito actual
+let solicitud = null;    // payload de la última solicitud_validacion
+
+async function api(ruta, opciones = {}) {
+  const r = await fetch(ruta, {headers: {"Content-Type": "application/json"}, ...opciones});
+  const cuerpo = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(cuerpo.detail ? JSON.stringify(cuerpo.detail) : `HTTP ${r.status}`);
+  return cuerpo;
+}
+
+// ------------------------------------------------------------------ estado
+
+function pintarEstado(estado, transiciones) {
+  $("estado").textContent = estado || "—";
+  const visitados = new Set((transiciones || []).map((t) => t.estado));
+  $("maquina").innerHTML = ESTADOS.map((e) =>
+    `<span class="chip ${e === "error" ? "error" : ""} ${visitados.has(e) ? "visitado" : ""} ${e === estado ? "actual" : ""}">${e}</span>`).join("");
+  $("ruta").innerHTML = (transiciones || []).map((t) =>
+    `<li>${esc(t.estado)} <span class="tenue">tras el mensaje ${t.secuencia}</span></li>`).join("");
+}
+
+async function refrescarEstado() {
+  if (!reqActual) return;
+  const t = await api(`/traza/${reqActual}`);
+  pintarEstado(t.estado, t.transiciones);
+  if (t.estado === "pendiente_validacion") {
+    const s = [...t.mensajes].reverse().find((m) => m.tipo === "solicitud_validacion");
+    if (s) mostrarValidacion(s.payload);
+  } else {
+    $("validacion").hidden = true;
+  }
+}
+
+// ------------------------------------------------------------------ línea de tiempo
+
+function lista(items) {
+  return items.length ? `<ul>${items.map((i) => `<li>${i}</li>`).join("")}</ul>` : "";
+}
+
+function similitud(p) {
+  if (p.similitud === null || p.similitud === undefined) {
+    return `similitud <span class="sim">—</span> (${esc(p.motivo || "sin valor")}) → ${esc(p.decision)}`;
+  }
+  const clase = p.similitud >= p.umbral ? "alto" : "bajo";
+  const pares = p.pares ? Object.entries(p.pares).map(([k, v]) => `${esc(k)}: ${num(v)}`).join(", ") : "";
+  return `«${esc(p.termino)}»: similitud mínima <span class="sim ${clase}">${num(p.similitud)}</span>
+          ${p.similitud >= p.umbral ? "≥" : "<"} umbral ${num(p.umbral)} → <b>${esc(p.decision)}</b>
+          <div class="tenue">pares: ${pares} · par mínimo ${esc((p.par_minimo || []).join("-"))}</div>`;
+}
+
+function resumen(m) {
+  const p = m.payload || {};
+  switch (m.tipo) {
+    case "extraccion":
+      return lista((p.terminos || []).map((t) => `${esc(t.termino)} <span class="tenue">(${esc(t.categoria_tentativa)}, ${t.posicion.inicio}–${t.posicion.fin})</span>`))
+        + ((p.descartados || []).length ? `<div class="tenue">descartados (no están en el texto): ${p.descartados.map(esc).join(", ")}</div>` : "");
+    case "filtrado":
+      return lista((p.terminos || []).map((t) => `${esc(t.termino)} → <b>${esc(t.decision_filtro)}</b>${t.detalle ? ` <span class="tenue">${esc(t.detalle)}</span>` : ""}`));
+    case "interpretaciones":
+      if (!(p.resultados || []).length) return `<span class="tenue">${esc(p.nota || "sin resultados")}</span>`;
+      return lista(p.resultados.map((r) => r.univoco ? `${esc(r.termino)}: <b>unívoco</b>`
+        : `${esc(r.termino)}: ${lista(r.interpretaciones.map((i) => `<b>${esc(i.id)}</b> ${esc(i.significado)} <div class="tenue">${esc(i.parafrasis_del_requisito)}</div>`))}`));
+    case "similitud":
+      return similitud(p);
+    case "objecion": {
+      const ev = (p.evaluaciones || []).map((e) => `${esc(e.interpretacion_id)}: ` + e.reglas.map((r) => `${r.regla} ${r.cumple ? "✓" : "✗"}`).join(" · ")
+        + ` <span class="tenue">(estricta R1 ${e.r1_estricta.cumple ? "✓" : "✗"}, R2 ${e.r2_estricta.cumple ? "✓" : "✗"})</span>`);
+      const ob = (p.objeciones || []).map((o) => `${esc(o.interpretacion_id)} · ${esc(o.regla)}: ${esc(o.texto)}`);
+      return `«${esc(p.termino)}»${lista(ev)}${ob.length ? `<b>Objeciones</b>${lista(ob)}` : `<span class="tenue">sin objeciones</span>`}`;
+    }
+    case "refinamiento":
+      return `«${esc(p.termino)}»: vigentes ${(p.interpretaciones || []).map((i) => esc(i.id)).join(", ")}`
+        + ((p.retiradas || []).length ? `; retiradas ${p.retiradas.map((r) => `${esc(r.interpretacion_id)} (${esc(r.motivo)})`).join(", ")}` : "")
+        + (p.nota ? `<div class="tenue">${esc(p.nota)}</div>` : "");
+    case "consenso":
+      return `«${esc(p.termino)}»: consenso por <b>${esc(p.motivo)}</b>, propuesta ${esc(p.propuesta)} (similitud ${num(p.similitud)})`;
+    case "arbitraje":
+      return `«${esc(p.termino)}»: el Crítico elige <b>${esc(p.interpretacion_elegida)}</b>`
+        + lista((p.justificacion_por_regla || []).map((j) => `${esc(j.regla)}: ${esc(j.argumento)}`));
+    case "solicitud_validacion":
+      return `${(p.terminos || []).length} término(s) por validar`
+        + ((p.vaguedad || []).length ? ` · vaguedad: ${p.vaguedad.map(esc).join(", ")}` : "")
+        + ((p.univocos || []).length ? ` · unívocos: ${p.univocos.map(esc).join(", ")}` : "");
+    case "validacion":
+      return `<b>${esc(p.decision)}</b>` + lista((p.terminos || []).map((t) => `${esc(t.termino)}: ${esc(t.final?.id)} (${esc(t.cambio)})`))
+        + (p.comentario ? `<div class="tenue">«${esc(p.comentario)}»</div>` : "");
+    case "formalizacion":
+      if (p.entrada_lel) return `LEL: <b>${esc(p.entrada_lel.simbolo)}</b> (${esc(p.entrada_lel.tipo)}) <div class="tenue">${esc(p.entrada_lel.nocion.join(" "))}</div>`;
+      return `<span class="tenue">${esc(p.nota || "")}</span>`;
+    case "error":
+      return `<b>${esc(p.excepcion)}</b> en ${esc(p.nodo)}: ${esc(p.mensaje)}`;
+    default:
+      return "";
+  }
+}
+
+function agregarMensaje(m) {
+  if (!mensajes.length) $("timeline").innerHTML = "";
+  mensajes.push(m);
+  $("conteo").textContent = `(${mensajes.length})`;
+  const li = document.createElement("li");
+  li.innerHTML = `
+    <div class="cab">
+      <span class="sec">#${m.secuencia}</span>
+      <span class="ronda">ronda ${m.ronda}</span>
+      <span class="ruta-msg">${esc(m.emisor)} → ${esc(m.receptor)}</span>
+      <span class="tipo ${esc(m.tipo)}">${esc(m.tipo)}</span>
+      <span class="modelo">${esc([m.modelo, m.prompt_version].filter(Boolean).join(" · "))}</span>
+    </div>
+    <div class="resumen">${resumen(m)}</div>
+    <details><summary>payload</summary><pre></pre></details>`;
+  li.querySelector("pre").textContent = JSON.stringify(m.payload, null, 2);
+  $("timeline").appendChild(li);
+}
+
+// ------------------------------------------------------------------ seguimiento
+
+function seguir(reqId) {
+  if (fuente) fuente.close();
+  reqActual = reqId;
+  mensajes = [];
+  solicitud = null;
+  $("req").textContent = reqId;
+  $("timeline").innerHTML = `<li class="vacio">esperando mensajes…</li>`;
+  $("conteo").textContent = "";
+  $("validacion").hidden = true;
+  pintarEstado(null, []);
+
+  fuente = new EventSource(`/eventos/${reqId}`);
+  fuente.addEventListener("mensaje", (e) => {
+    const m = JSON.parse(e.data);
+    if (!mensajes.some((x) => x.secuencia === m.secuencia)) agregarMensaje(m);
+  });
+  fuente.addEventListener("estado", () => {
+    refrescarEstado().catch(console.error);
+    cargarRecientes();
+  });
+  fuente.addEventListener("fin", () => {
+    fuente.close();
+    refrescarEstado().catch(console.error);
+    cargarLEL();
+    cargarRecientes();
+  });
+}
+
+$("procesar").addEventListener("click", async () => {
+  const texto = $("texto").value.trim();
+  if (!texto) return;
+  $("procesar").disabled = true;
+  try {
+    const r = await api("/procesar", {method: "POST", body: JSON.stringify({texto})});
+    seguir(r.req_id);
+    cargarRecientes();
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    $("procesar").disabled = false;
+  }
+});
+
+document.querySelectorAll("[data-ejemplo]").forEach((b) =>
+  b.addEventListener("click", () => { $("texto").value = b.dataset.ejemplo; }));
+
+// ------------------------------------------------------------------ validación
+
+function mostrarValidacion(p) {
+  if (solicitud === p) return;
+  solicitud = p;
+  $("val-msg").textContent = "";
+  $("comentario").value = "";
+  const cont = $("val-terminos");
+  cont.innerHTML = (p.terminos || []).length ? "" : `<p class="vacio">Sin términos ambiguos: al aprobar, el requisito se formaliza sin entradas nuevas en el LEL.</p>`;
+
+  for (const t of p.terminos || []) {
+    const retiradas = new Set((t.retiradas || []).map((r) => r.interpretacion_id));
+    const div = document.createElement("div");
+    div.className = "termino";
+    div.dataset.termino = t.termino;
+    const opciones = Object.values(t.todas || {}).map((i) => `
+      <label class="opcion ${retiradas.has(i.id) ? "retirada" : ""}">
+        <input type="radio" name="op-${esc(t.termino)}" value="${esc(i.id)}" ${t.propuesta && i.id === t.propuesta.id ? "checked" : ""}>
+        <b>${esc(i.id)}</b> ${esc(i.significado)}${t.propuesta && i.id === t.propuesta.id ? " <span class='tenue'>(propuesta)</span>" : ""}
+        <div class="parafrasis">${esc(i.parafrasis_del_requisito)}</div>
+      </label>`).join("");
+    div.innerHTML = `
+      <h3>«${esc(t.termino)}» <span class="tenue">· ${esc(t.via)} · similitud ${num(t.similitud)} · ${t.rondas} ronda(s)</span></h3>
+      ${opciones}
+      <label class="opcion"><input type="radio" name="op-${esc(t.termino)}" value="__editar"> Editar la interpretación elegida</label>
+      <div class="editor">
+        <label>significado</label><input type="text" class="ed-significado">
+        <label>paráfrasis del requisito</label><textarea class="ed-parafrasis"></textarea>
+      </div>`;
+    const editor = div.querySelector(".editor");
+    div.querySelectorAll("input[type=radio]").forEach((radio) => radio.addEventListener("change", () => {
+      const editar = radio.value === "__editar" && radio.checked;
+      editor.classList.toggle("abierto", editar);
+      if (editar) {
+        const base = t.propuesta || Object.values(t.todas)[0];
+        div.querySelector(".ed-significado").value = base.significado;
+        div.querySelector(".ed-parafrasis").value = base.parafrasis_del_requisito;
+        div.dataset.base = base.id;
+      }
+    }));
+    cont.appendChild(div);
+  }
+  const otros = [];
+  if ((p.vaguedad || []).length) otros.push(`Vaguedad (no se debate): ${p.vaguedad.map(esc).join(", ")}`);
+  if ((p.regionales || []).length) otros.push(`Regionales: ${p.regionales.map(esc).join(", ")}`);
+  if ((p.univocos || []).length) otros.push(`Unívocos (no entran al LEL): ${p.univocos.map(esc).join(", ")}`);
+  if ((p.resueltos_por_lel || []).length) otros.push(`Resueltos por el LEL: ${p.resueltos_por_lel.map(esc).join(", ")}`);
+  $("val-otros").innerHTML = otros.map((o) => `<p>${o}</p>`).join("");
+  $("validacion").hidden = false;
+}
+
+function interpretacionesEditadas() {
+  const editadas = {};
+  for (const t of solicitud.terminos || []) {
+    const div = [...document.querySelectorAll(".termino")].find((d) => d.dataset.termino === t.termino);
+    const elegido = div.querySelector("input[type=radio]:checked")?.value;
+    if (!elegido) continue;
+    if (elegido === "__editar") {
+      editadas[t.termino] = {
+        id: div.dataset.base,
+        significado: div.querySelector(".ed-significado").value.trim(),
+        parafrasis_del_requisito: div.querySelector(".ed-parafrasis").value.trim(),
+      };
+    } else if (!t.propuesta || elegido !== t.propuesta.id) {
+      editadas[t.termino] = t.todas[elegido];
+    }
+  }
+  return editadas;
+}
+
+async function validar(decision) {
+  const cuerpo = {decision, comentario: $("comentario").value.trim() || null};
+  if (decision === "aprobar") cuerpo.interpretaciones_editadas = interpretacionesEditadas();
+  $("aprobar").disabled = $("rechazar").disabled = true;
+  try {
+    await api(`/validar/${reqActual}`, {method: "POST", body: JSON.stringify(cuerpo)});
+    $("val-msg").textContent = "enviada; el grafo se reanuda…";
+  } catch (err) {
+    $("val-msg").textContent = err.message;
+  } finally {
+    $("aprobar").disabled = $("rechazar").disabled = false;
+  }
+}
+$("aprobar").addEventListener("click", () => validar("aprobar"));
+$("rechazar").addEventListener("click", () => validar("rechazar"));
+
+// ------------------------------------------------------------------ LEL, recientes, salud
+
+async function cargarLEL() {
+  const lel = await api("/lel").catch(() => []);
+  $("lel").innerHTML = lel.length ? lel.map((e) => `
+    <dt>${esc(e.simbolo)} <span class="tenue">(${esc(e.tipo)} · ${esc(e.req_id)} · ${esc(e.via)}${e.editada_por_humano ? " · editada" : ""})</span></dt>
+    <dd><b>Noción:</b> ${esc(e.nocion.join(" "))}</dd>
+    <dd><b>Impacto:</b> ${esc(e.impacto.join(" "))}</dd>`).join("") : `<span class="vacio">sin entradas</span>`;
+}
+
+async function cargarRecientes() {
+  const trazas = await api("/trazas").catch(() => []);
+  const cont = $("recientes");
+  cont.innerHTML = trazas.length ? "" : `<span class="vacio">ninguno</span>`;
+  for (const t of [...trazas].reverse()) {
+    const b = document.createElement("button");
+    b.innerHTML = `<b>${esc(t.req_id)}</b> <span class="tenue">${esc(t.estado)}</span><br>${esc(t.texto)}`;
+    b.addEventListener("click", () => seguir(t.req_id));
+    cont.appendChild(b);
+  }
+}
+
+async function cargarSalud() {
+  try {
+    const s = await api("/salud");
+    const c = s.config;
+    $("salud").textContent = `persistencia ${s.persistencia} · umbral ${c.similarity_threshold} · rondas ${c.max_debate_rounds}`
+      + ` · ${Object.entries(c.modelos).map(([k, v]) => `${k}: ${v}`).join(", ")}`;
+  } catch (err) {
+    $("salud").textContent = `sin conexión con el backend (${err.message})`;
+  }
+}
+
+pintarEstado(null, []);
+cargarSalud();
+cargarLEL();
+cargarRecientes();
+</script>
+</body>
+</html>

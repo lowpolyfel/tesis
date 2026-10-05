@@ -2,5 +2,8 @@
 
 Utilidades de línea de comandos:
 
-- Carga: importar el corpus y los catálogos a MongoDB.
-- Evaluación: correr el sistema sobre el corpus y comparar contra el ground truth.
+- `casos_aceptacion.py`: corre con Ollama real los tres requisitos de aceptación
+  de la fase (eliminar usuarios, sesión, jalar ahorita) y reporta filtros,
+  interpretaciones, similitudes y estado. Guarda el reporte en
+  `data/resultados/aceptacion/`.
+- Pendiente: carga del corpus y evaluación contra el ground truth.
