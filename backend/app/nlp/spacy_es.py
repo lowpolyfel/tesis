@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import unicodedata
+from dataclasses import dataclass
 from functools import lru_cache
 
 import spacy
@@ -31,6 +32,19 @@ def cargar_modelo(nombre: str) -> Language:
         ) from e
 
 
+@dataclass(frozen=True)
+class Unidad:
+    """Un término observado en un texto: cómo aparece y con qué claves se compara.
+
+    Las claves son el lema y la forma superficial, ambos normalizados. Se usan las
+    dos porque el lema de es_core_news_sm depende del contexto: «bitácora» sale
+    como «bitácoro» (ADJ) sola, «bitácorar» (VERB) en una frase sin verbo y
+    «bitácora» (NOUN) dentro de una oración (ADR 0004).
+    """
+    texto: str
+    claves: frozenset[str]
+
+
 class Analizador:
     """Envoltura delgada sobre spaCy con lo que necesitan filtros y reglas."""
 
@@ -41,18 +55,37 @@ class Analizador:
     def doc(self, texto: str) -> Doc:
         return self.nlp(texto)
 
-    def lemas_contenido(self, texto: str) -> dict[str, str]:
-        """{lema normalizado: forma en el texto} de los términos de contenido."""
+    def vocabulario(self, texto: str) -> set[str]:
+        """Todas las claves (lema y forma, normalizados) de las palabras de un texto,
+        sin filtrar por categoría: sirve para preguntar «¿esto ya aparece aquí?»."""
+        d = self.doc(texto)
+        claves = set()
+        for t in d:
+            if t.is_alpha:
+                claves |= {normalizar(t.lemma_), normalizar(t.text)}
+        claves |= {normalizar(e.text) for e in d.ents}
+        return claves
+
+    @staticmethod
+    def _unidad(t) -> Unidad:
+        return Unidad(t.text, frozenset({normalizar(t.lemma_), normalizar(t.text)}))
+
+    def lemas_contenido(self, texto: str) -> dict[str, Unidad]:
+        """{lema normalizado: unidad} de los términos de contenido."""
         return {
-            normalizar(t.lemma_): t.text
+            normalizar(t.lemma_): self._unidad(t)
             for t in self.doc(texto)
             if t.pos_ in POS_CONTENIDO and not t.is_stop and t.is_alpha
         }
 
-    def sustantivos_y_entidades(self, texto: str) -> dict[str, str]:
-        """{clave normalizada: forma en el texto} de sustantivos y entidades nombradas."""
+    def sustantivos_y_entidades(self, texto: str) -> dict[str, Unidad]:
+        """{clave normalizada: unidad} de sustantivos y entidades nombradas."""
         d = self.doc(texto)
-        salida = {normalizar(t.lemma_): t.text for t in d if t.pos_ in POS_SUSTANTIVO and t.is_alpha and not t.is_stop}
+        salida = {
+            normalizar(t.lemma_): self._unidad(t)
+            for t in d
+            if t.pos_ in POS_SUSTANTIVO and t.is_alpha and not t.is_stop
+        }
         for e in d.ents:
-            salida[normalizar(e.text)] = e.text
+            salida[normalizar(e.text)] = Unidad(e.text, frozenset({normalizar(e.text)}))
         return salida
