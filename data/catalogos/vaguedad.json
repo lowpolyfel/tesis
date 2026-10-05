@@ -1,0 +1,34 @@
+{
+  "version": "v1-semilla",
+  "descripcion": "Expresiones vagas: marcan un límite impreciso, no dos interpretaciones discretas. Se marcan y no entran a debate (ADR 0003).",
+  "terminos": [
+    {
+      "expresion": "ahorita",
+      "clasificacion": "mexicanismo",
+      "tipo": "temporal",
+      "nota": "rango temporal impreciso",
+      "formas": ["ahorita", "ahoritita"]
+    },
+    {
+      "expresion": "rápido",
+      "clasificacion": "adjetivo de desempeño",
+      "tipo": "desempeño",
+      "nota": "sin métrica de tiempo",
+      "formas": ["rápido", "rápida", "rápidos", "rápidas", "rápidamente"]
+    },
+    {
+      "expresion": "pronto",
+      "clasificacion": "adverbio temporal",
+      "tipo": "temporal",
+      "nota": "sin plazo",
+      "formas": ["pronto", "prontamente", "lo más pronto posible"]
+    },
+    {
+      "expresion": "en un tiempo razonable",
+      "clasificacion": "locución temporal",
+      "tipo": "temporal",
+      "nota": "sin plazo verificable",
+      "formas": ["en un tiempo razonable", "en tiempo razonable"]
+    }
+  ]
+}
