@@ -32,6 +32,17 @@ class Mensaje(BaseModel):
     timestamp: datetime = Field(default_factory=ahora)
 
 
+class Transicion(BaseModel):
+    """Entrada a un estado de la máquina. `secuencia` es el último mensaje emitido
+    antes de la transición (0 si aún no hay mensajes)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    estado: Estado
+    secuencia: int = Field(ge=0)
+    timestamp: datetime = Field(default_factory=ahora)
+
+
 class Traza(BaseModel):
     """Documento por requisito: con esto se reconstruye todo el proceso."""
 
@@ -43,6 +54,7 @@ class Traza(BaseModel):
     config: dict[str, Any]
     creado: datetime = Field(default_factory=ahora)
     actualizado: datetime = Field(default_factory=ahora)
+    transiciones: list[Transicion] = []
     mensajes: list[Mensaje] = []
 
 

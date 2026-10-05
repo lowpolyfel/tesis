@@ -1,9 +1,22 @@
 # orchestration
 
-Flujo de LangGraph que conecta a los agentes:
+El grafo de LangGraph es la máquina de estados del requisito (ADR 0005).
 
-- Grafo: Extractor → Clasificador → evaluación de divergencia → (Crítico, si hay
-  divergencia) → Modelador.
-- Estado compartido: lo que viaja entre nodos (requisito, extracción, interpretaciones,
-  debate, artefactos).
-- Nodos: envoltorios que llaman a cada agente y al módulo de divergencia.
+- `estado.py`: estado tipado del grafo (JSON plano).
+- `grafo.py`: un nodo por estado + el nodo `humano` (pausa con `interrupt`).
+  Aristas condicionales: umbral de similitud, rondas de debate, decisión humana
+  y desvío a `error`.
+- `dependencias.py`: arma agentes, filtros, embeddings y repositorio desde la
+  configuración (las pruebas los sustituyen por dobles).
+- `servicio.py`: registrar, ejecutar, validar y reanudar; checkpointer SQLite en
+  `data/checkpoints.sqlite` con `thread_id = req_id`.
+
+```
+cargado → extraido → interpretado → aceptado_directo ──────────────┐
+                                  └→ en_debate ⟲ → consenso ───────┤
+                                               └→ arbitrado ───────┤
+                                             pendiente_validacion ←┘
+                                                      ↓ humano (interrupt)
+                                      validado → formalizado | rechazado
+(cualquier nodo con fallo → error)
+```

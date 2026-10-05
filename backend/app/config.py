@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     resultados_dir: str = "data/resultados"
     catalogos_dir: str = "data/catalogos"
 
+    # API: cada cuánto la sandbox recibe mensajes nuevos por SSE (no afecta resultados)
+    sse_intervalo_s: float = Field(0.3, gt=0)
+
     def ruta(self, relativa: str) -> Path:
         """Rutas relativas se resuelven contra la raíz del repositorio."""
         p = Path(relativa)
