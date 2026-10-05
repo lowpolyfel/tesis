@@ -39,3 +39,11 @@ ollama/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Checkpoints de LangGraph (estado de grafos pausados)
+data/checkpoints.sqlite
+data/checkpoints.sqlite-*
+
+# Salidas locales del respaldo JSON del repositorio
+data/resultados/trazas/
+data/resultados/lel.json

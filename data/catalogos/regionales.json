@@ -1,0 +1,24 @@
+{
+  "version": "v1-semilla",
+  "descripcion": "Términos regionales que siempre pasan al Clasificador como candidatos (ADR 0003). Semilla de la fase del núcleo; el catálogo definitivo se construye filtrando Gómez de Silva y la AML.",
+  "terminos": [
+    {
+      "expresion": "jalar",
+      "clasificacion": "mexicanismo",
+      "significados_posibles": ["consultar", "descargar", "procesar"],
+      "formas": ["jalar", "jala", "jalas", "jale", "jalen", "jalan", "jaló", "jalaron", "jalando", "jalado", "jalará", "jalarán", "jalaría"]
+    },
+    {
+      "expresion": "checar",
+      "clasificacion": "mexicanismo",
+      "significados_posibles": ["validar", "revisar", "mostrar"],
+      "formas": ["checar", "checa", "checas", "cheque", "chequen", "checan", "checó", "checaron", "checando", "checado", "checará", "checarán", "checaría"]
+    },
+    {
+      "expresion": "dar de alta",
+      "clasificacion": "administrativo panhispánico",
+      "significados_posibles": ["registrar", "activar", "autorizar"],
+      "formas": ["dar de alta", "da de alta", "dé de alta", "den de alta", "dan de alta", "dio de alta", "dieron de alta", "dando de alta", "dado de alta", "dará de alta", "darán de alta", "daría de alta"]
+    }
+  ]
+}

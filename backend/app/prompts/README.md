@@ -1,8 +1,17 @@
 # prompts
 
-Plantillas de prompt de los agentes, en archivos de texto **versionados**.
-No se incrustan prompts en el código.
+Plantillas versionadas `<agente>_v<N>.txt`. Son parte del método: el Capítulo 4 debe
+poder decir qué prompt produjo qué resultado, y cada mensaje de la traza registra
+la `prompt_version` usada.
 
-Convención: `<agente>_v<N>.txt` (ej. `critico_v1.txt`, `critico_v2.txt`).
-Una versión nueva es un archivo nuevo; las anteriores no se editan, para poder
-reproducir cualquier corrida registrada en `data/resultados/`.
+Formato: secciones `### SISTEMA` y `### USUARIO`; variables como `${nombre}`.
+Una modificación de fondo crea una versión nueva (`_v2`) en lugar de editar la vigente.
+
+| Archivo | Agente | Uso |
+|---|---|---|
+| `extractor_v1` | Extractor | Separar el vocabulario del dominio |
+| `clasificador_v1` | Clasificador | Generar interpretaciones candidatas o marcar unívoco |
+| `clasificador_refinamiento_v1` | Clasificador | Refinar o retirar interpretaciones ante objeciones |
+| `critico_v1` | Crítico | Evaluar R3 (R1 y R2 se evalúan en código) |
+| `critico_arbitraje_v1` | Crítico | Elegir una interpretación al agotar las rondas |
+| `modelador_v1` | Modelador | Entrada del LEL desde la interpretación validada |
