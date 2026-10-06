@@ -118,13 +118,13 @@ export default function Validacion() {
               onCambio={(e) => setElecciones((x) => ({ ...x, [t.termino]: { ...x[t.termino], ...e } }))} />
           ))}
           <Contexto solicitud={solicitud} />
-          <section className="sticky bottom-3 z-10 space-y-3 rounded-xl border border-slate-200 bg-white/95 p-4 shadow-lg backdrop-blur">
+          <section className="sticky bottom-3 z-10 space-y-3 rounded-xl border border-slate-300 bg-[color-mix(in_oklab,var(--bg)_94%,transparent)] p-4 shadow-2xl backdrop-blur-xl">
             <textarea value={comentario} onChange={(e) => setComentario(e.target.value)} rows={2}
               placeholder="Comentario (opcional): por qué apruebas, eliges o rechazas"
               className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
             <div className="flex flex-wrap items-center gap-3">
               <button disabled={enviando} onClick={() => enviar("aprobar")}
-                className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50">
+                className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-sobre hover:bg-slate-700 disabled:opacity-50">
                 Aprobar y formalizar
               </button>
               <button disabled={enviando} onClick={() => enviar("rechazar")}
@@ -141,7 +141,7 @@ export default function Validacion() {
 
       <footer className="flex flex-wrap gap-3 text-sm">
         {siguiente && (
-          <button className="rounded-md bg-violet-600 px-3 py-1.5 text-white hover:bg-violet-500"
+          <button className="rounded-md bg-violet-600 px-3 py-1.5 text-sobre hover:bg-violet-500"
             onClick={() => navigate(`/requisitos/${siguiente.req_id}/validacion${volver ? `?volver=${encodeURIComponent(volver)}` : ""}`)}>
             Validar el siguiente ({siguiente.req_id})
           </button>
@@ -196,7 +196,7 @@ function TerminoAValidar({ t, eleccion, onCambio }) {
               <span className="min-w-0 flex-1">
                 <span className="flex flex-wrap items-center gap-2 text-sm">
                   <b>{i.id}</b> {i.significado}
-                  {t.propuesta?.id === i.id && <span className="rounded bg-slate-900 px-1.5 py-0.5 text-[10px] text-white">propuesta</span>}
+                  {t.propuesta?.id === i.id && <span className="rounded bg-slate-900 px-1.5 py-0.5 text-[10px] text-sobre">propuesta</span>}
                   {ret && <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[10px] text-rose-800" title={ret.motivo}>retirada en la ronda {ret.ronda}</span>}
                 </span>
                 <span className="mt-1 block text-sm text-slate-700">{i.parafrasis_del_requisito}</span>

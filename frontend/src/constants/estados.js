@@ -117,7 +117,7 @@ export const INFO_ESTADO = Object.freeze({
   [E.FORMALIZADO]: {
     etiqueta: "Formalizado",
     descripcion: "El Modelador formalizó: entradas del LEL (términos léxicos), requisito reescrito y metas.",
-    clase: "bg-slate-800 text-white ring-slate-800",
+    clase: "bg-slate-800 text-sobre ring-slate-800",
     punto: "bg-slate-800",
   },
   [E.ERROR]: {
