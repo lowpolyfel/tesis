@@ -28,6 +28,7 @@ from app.divergence import evaluar_divergencia
 from app.llm import FalloEstructurado, Respuesta
 from app.models import (
     PROYECTO_GENERAL,
+    TIPOS_QUE_VAN_AL_LEL,
     DecisionFiltro,
     EntradaLEL,
     EntradaLELFormalizada,
@@ -35,6 +36,7 @@ from app.models import (
     Interpretacion,
     Nodo,
     Objecion,
+    TipoAmbiguedad,
     RondaDebate,
     TerminoCandidato,
     TerminoFiltrado,
@@ -49,7 +51,10 @@ from .estado import EstadoGrafo, TerminoEnProceso, con_interpretaciones, interpr
 
 log = logging.getLogger(__name__)
 
-PASA_AL_CLASIFICADOR = {DecisionFiltro.REGIONAL, DecisionFiltro.CANDIDATO}
+# Qué decisiones de los filtros pasan al Clasificador y con qué origen
+ORIGEN_POR_DECISION = {DecisionFiltro.CANDIDATO: "extractor", DecisionFiltro.REGIONAL: "regional",
+                       DecisionFiltro.ALCANCE: "alcance", DecisionFiltro.ANAFORA: "anafora"}
+COLECCION_FORMALIZADOS = "formalizados"
 _EMISOR_POR_PROMPT = {"extractor": Nodo.EXTRACTOR, "clasificador": Nodo.CLASIFICADOR,
                       "critico": Nodo.CRITICO, "modelador": Nodo.MODELADOR}
 
@@ -65,6 +70,13 @@ def meta_llm(r: Respuesta) -> dict:
 
 def _dump(modelos) -> list[dict]:
     return [m.model_dump(mode="json") for m in modelos]
+
+
+def va_al_lel(c: TerminoEnProceso) -> bool:
+    """Solo la ambigüedad léxica produce una entrada del LEL; los términos de
+    trazas anteriores al tipo de ambigüedad se tratan como léxicos."""
+    tipo = c.get("tipo_ambiguedad")
+    return tipo is None or TipoAmbiguedad(tipo) in TIPOS_QUE_VAN_AL_LEL
 
 
 def _interps(dicts: list[dict]) -> list[Interpretacion]:
@@ -144,11 +156,11 @@ def construir_grafo(deps: Dependencias, checkpointer):
         candidatos: dict[str, TerminoEnProceso] = {}
         vistos: set[str] = set()
         for f in filtrados:
-            if f.decision_filtro in PASA_AL_CLASIFICADOR and normalizar(f.termino) not in vistos:
+            if f.decision_filtro in ORIGEN_POR_DECISION and normalizar(f.termino) not in vistos:
                 vistos.add(normalizar(f.termino))
                 candidatos[f.termino] = TerminoEnProceso(
                     termino=f.termino, categoria_tentativa=f.categoria_tentativa.value,
-                    origen="regional" if f.decision_filtro == DecisionFiltro.REGIONAL else "extractor",
+                    origen=ORIGEN_POR_DECISION[f.decision_filtro], detalle=f.detalle, tipo_ambiguedad=None,
                     univoco=False, interpretaciones=[], todas={}, retiradas=[], historial=[],
                     similitud=None, decision=None, via=None, propuesta=None, justificacion=None,
                     final=None, cambio=None,
@@ -160,7 +172,7 @@ def construir_grafo(deps: Dependencias, checkpointer):
         texto, candidatos = st["texto"], {k: dict(c) for k, c in st["candidatos"].items()}
         if candidatos:
             entrada = [TerminoCandidato(termino=c["termino"], categoria_tentativa=c["categoria_tentativa"],
-                                        origen=c["origen"]) for c in candidatos.values()]
+                                        origen=c["origen"], detalle=c.get("detalle")) for c in candidatos.values()]
             r = deps.clasificador.clasificar(texto, entrada, lel_de(st))
             emitir(st, emisor=Nodo.CLASIFICADOR, receptor=Nodo.DIVERGENCIA, tipo=TipoMensaje.INTERPRETACIONES,
                    payload={"resultados": _dump(r.valor.resultados)}, respuesta=r)
@@ -168,6 +180,7 @@ def construir_grafo(deps: Dependencias, checkpointer):
             for c in candidatos.values():
                 res = por_termino[normalizar(c["termino"])]
                 c["univoco"] = res.univoco
+                c["tipo_ambiguedad"] = res.tipo_ambiguedad.value if res.tipo_ambiguedad else None
                 c["interpretaciones"] = _dump(res.interpretaciones)
                 c["todas"] = {i["id"]: i for i in c["interpretaciones"]}
         else:
@@ -315,28 +328,56 @@ def construir_grafo(deps: Dependencias, checkpointer):
 
     @nodo
     def formalizado(st: EstadoGrafo) -> dict:
-        # Solo los términos resueltos entran al LEL; los unívocos no (ADR 0007).
+        """Solo lo validado se formaliza (ADR 0007, 0010):
+        - términos con ambigüedad léxica → una entrada del LEL cada uno;
+        - alcance, anafórica, sintáctica → se resuelven en el requisito reescrito;
+        - el requisito completo → reescrito y sus metas (modelo de metas).
+        Los unívocos no entran al LEL."""
         texto, req_id = st["texto"], st["req_id"]
+        proyecto_id = st.get("proyecto_id") or PROYECTO_GENERAL
         resueltos = con_interpretaciones(st["candidatos"])
         univocos = [c["termino"] for c in st["candidatos"].values() if c.get("univoco")]
+        vaguedad = [t["termino"] for t in st.get("terminos", []) if t["decision_filtro"] == DecisionFiltro.VAGUEDAD.value]
+
         hechas = []
         for termino, c in resueltos.items():
+            if not va_al_lel(c):
+                continue
             interp = Interpretacion.model_validate(c["final"])
             m = deps.modelador.modelar(texto, termino, interp)
             entrada = EntradaLELFormalizada(
-                **m.valor.entrada_lel.model_dump(), proyecto_id=st.get("proyecto_id") or PROYECTO_GENERAL,
+                **m.valor.entrada_lel.model_dump(), proyecto_id=proyecto_id,
                 req_id=req_id, termino=termino, via=c["via"],
                 interpretacion=interp, editada_por_humano=c.get("cambio") == "edicion", fecha=date.today().isoformat())
             hechas.append((entrada, m))
-        repo.guardar_lel([e for e, _ in hechas])  # todas o ninguna: se guarda después de modelar todas
+
+        resoluciones = [{"termino": k, "tipo_ambiguedad": c.get("tipo_ambiguedad") or TipoAmbiguedad.LEXICA.value,
+                         "interpretacion": c["final"], "via": c["via"], "cambio": c.get("cambio")}
+                        for k, c in resueltos.items()]
+        simbolos = sorted({e["simbolo"] for e in st.get("lel", [])} | {e.simbolo for e, _ in hechas})
+        mr = deps.modelador.modelar_requisito(
+            texto, [{k: r[k] for k in ("termino", "tipo_ambiguedad", "interpretacion")} for r in resoluciones],
+            vaguedad, simbolos)
+
+        # todo o nada: se guarda después de que el Modelador terminó con todo
+        repo.guardar_lel([e for e, _ in hechas])
+        formalizado_doc = {
+            "req_id": req_id, "proyecto_id": proyecto_id, "requisito_original": texto,
+            "requisito_reescrito": mr.valor.requisito_reescrito, "resoluciones": resoluciones,
+            "metas": [m.model_dump(mode="json") for m in mr.valor.metas],
+            "entradas_lel": [e.simbolo for e, _ in hechas], "univocos": univocos, "vaguedad": vaguedad,
+            "fecha": date.today().isoformat(), "modelo": mr.modelo, "prompt_version": mr.prompt_version,
+        }
+        repo.guardar_doc(COLECCION_FORMALIZADOS, req_id, formalizado_doc)
+
         for entrada, m in hechas:
             emitir(st, emisor=Nodo.MODELADOR, receptor=Nodo.SISTEMA, tipo=TipoMensaje.FORMALIZACION, respuesta=m,
-                   payload={"termino": entrada.termino, "entrada_lel": entrada.model_dump(mode="json"),
-                            "metas": m.valor.metas, "big_picture": m.valor.big_picture})
-        if not hechas:
-            emitir(st, emisor=Nodo.SISTEMA, receptor=Nodo.SISTEMA, tipo=TipoMensaje.FORMALIZACION,
-                   payload={"entradas": [], "univocos": univocos,
-                            "nota": "sin términos resueltos: el requisito se formaliza sin entradas nuevas en el LEL"})
+                   payload={"alcance": "termino", "termino": entrada.termino,
+                            "tipo_ambiguedad": TipoAmbiguedad.LEXICA.value, "entrada_lel": entrada.model_dump(mode="json")})
+        emitir(st, emisor=Nodo.MODELADOR, receptor=Nodo.SISTEMA, tipo=TipoMensaje.FORMALIZACION, respuesta=mr,
+               payload={"alcance": "requisito", **{k: v for k, v in formalizado_doc.items()
+                                                   if k not in ("modelo", "prompt_version", "fecha")},
+                        "nota": None if hechas else "sin términos léxicos resueltos: no hay entradas nuevas en el LEL"})
         return entrar(st, Estado.FORMALIZADO)
 
     def error(st: EstadoGrafo) -> dict:
@@ -350,7 +391,8 @@ def construir_grafo(deps: Dependencias, checkpointer):
         return {
             "estado_previo": st.get("estado"),
             "terminos": [
-                {"termino": k, "decision": c["decision"], "via": c["via"], "similitud": c["similitud"],
+                {"termino": k, "tipo_ambiguedad": c.get("tipo_ambiguedad"), "origen": c.get("origen"),
+                 "detalle": c.get("detalle"), "decision": c["decision"], "via": c["via"], "similitud": c["similitud"],
                  "umbral": s.similarity_threshold, "propuesta": interpretacion_por_id(c, c["propuesta"]),
                  "interpretaciones": c["interpretaciones"], "retiradas": c["retiradas"],
                  "todas": c["todas"], "justificacion": c.get("justificacion"), "rondas": len(c["historial"])}
@@ -360,6 +402,9 @@ def construir_grafo(deps: Dependencias, checkpointer):
             "vaguedad": por_decision(DecisionFiltro.VAGUEDAD.value),
             "resueltos_por_lel": por_decision(DecisionFiltro.RESUELTO_POR_LEL.value),
             "regionales": por_decision(DecisionFiltro.REGIONAL.value),
+            "estructuras": [{"termino": t["termino"], "decision_filtro": t["decision_filtro"], "detalle": t.get("detalle")}
+                            for t in st.get("terminos", [])
+                            if t["decision_filtro"] in (DecisionFiltro.ALCANCE.value, DecisionFiltro.ANAFORA.value)],
         }
 
     # ------------------------------------------------------------ aristas

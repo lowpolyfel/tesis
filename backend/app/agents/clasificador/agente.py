@@ -17,7 +17,7 @@ from ..base import a_json
 
 class Clasificador:
     def __init__(self, cliente: ClienteLLM, significado_max_palabras: int,
-                 prompt: str = "clasificador_v1", prompt_refinamiento: str = "clasificador_refinamiento_v1"):
+                 prompt: str = "clasificador_v2", prompt_refinamiento: str = "clasificador_refinamiento_v1"):
         self.cliente = cliente
         self.max_palabras = significado_max_palabras
         self.prompt = cargar_prompt(prompt)

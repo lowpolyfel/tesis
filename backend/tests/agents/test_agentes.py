@@ -28,18 +28,18 @@ CANDIDATOS = [TerminoCandidato(termino="sesión", categoria_tentativa="objeto", 
 
 
 def test_clasificador_exige_un_resultado_por_candidato():
-    incompleto = {"resultados": [{"termino": "sesión", "interpretaciones": [interp("I1", "a", "p1"), interp("I2", "b", "p2")]}]}
+    incompleto = {"resultados": [{"termino": "sesión", "tipo_ambiguedad": "lexica", "interpretaciones": [interp("I1", "a", "p1"), interp("I2", "b", "p2")]}]}
     completo = {"resultados": [*incompleto["resultados"], {"termino": "sistema", "univoco": True}]}
-    r = Clasificador(LLMFalso({"clasificador_v1": [incompleto, completo]}), 12).clasificar(TEXTO, CANDIDATOS, [])
+    r = Clasificador(LLMFalso({"clasificador_v2": [incompleto, completo]}), 12).clasificar(TEXTO, CANDIDATOS, [])
     assert r.hubo_reintento and len(r.valor.resultados) == 2
 
 
 def test_clasificador_aplica_limite_de_palabras_del_significado():
     largo = " ".join(["palabra"] * 13)
-    salida = {"resultados": [{"termino": "sesión", "interpretaciones": [interp("I1", largo, "p1"), interp("I2", "b", "p2")]},
+    salida = {"resultados": [{"termino": "sesión", "tipo_ambiguedad": "lexica", "interpretaciones": [interp("I1", largo, "p1"), interp("I2", "b", "p2")]},
                              {"termino": "sistema", "univoco": True}]}
     with pytest.raises(FalloEstructurado, match="máximo es 12"):
-        Clasificador(LLMFalso({"clasificador_v1": [salida, salida]}), 12).clasificar(TEXTO, CANDIDATOS, [])
+        Clasificador(LLMFalso({"clasificador_v2": [salida, salida]}), 12).clasificar(TEXTO, CANDIDATOS, [])
 
 
 def test_refinamiento_no_puede_inventar_interpretaciones():
@@ -73,11 +73,24 @@ def test_arbitraje_debe_elegir_una_existente(analizador):
     assert r.hubo_reintento and r.valor.interpretacion_elegida == "I2"
 
 
-def test_modelador_entrada_lel_y_stubs():
+def test_modelador_entrada_lel():
     llm = LLMFalso({"modelador_v1": [{"entrada_lel": {"simbolo": "sesión", "tipo": "objeto", "nocion": ["periodo de uso"], "impacto": ["se registra"]}}]})
     r = Modelador(llm).modelar(TEXTO, "sesión", Interpretacion(**interp("I1", "periodo de uso", "p1")))
     assert r.valor.entrada_lel.simbolo == "sesión"
-    assert r.valor.metas["estado"] == "stub" and r.valor.big_picture["estado"] == "stub"
+
+
+def test_modelador_requisito_reescrito_y_metas_con_reintento():
+    mala = {"requisito_reescrito": "x", "metas": [{"id": "M1", "enunciado": "a", "tipo": "tarea", "contribuye_a": "M9"}]}
+    buena = {"requisito_reescrito": "El sistema debe registrar el periodo de uso del usuario.", "metas": [
+        {"id": "M1", "enunciado": "Registrar el periodo de uso", "tipo": "meta", "actor": "sistema", "simbolos": ["sesión"]},
+        {"id": "M2", "enunciado": "Responder rápido", "tipo": "meta_blanda", "contribuye_a": "M1"}]}
+    llm = LLMFalso({"modelador_requisito_v1": [mala, buena]})
+    resol = [{"termino": "sesión", "tipo_ambiguedad": "lexica", "interpretacion": interp("I1", "periodo de uso", "p1")}]
+    r = Modelador(llm).modelar_requisito(TEXTO, resol, ["rápido"], ["sesión"])
+    assert r.hubo_reintento and "contribuye_a" in r.intentos[0].error
+    assert [m.tipo for m in r.valor.metas] == ["meta", "meta_blanda"]
+    usuario = llm.llamadas["modelador_requisito_v1"][0].usuario
+    assert "periodo de uso" in usuario and "rápido" in usuario and "sesión" in usuario
 
 
 def test_objecion_contrato():

@@ -23,7 +23,7 @@ EXTRACCION_SESION = {"terminos": [{"termino": "sistema", "categoria_tentativa": 
 def clasificacion(*interpretaciones):
     return {"resultados": [{"termino": "sistema", "univoco": True},
                            {"termino": "registrar", "univoco": True},
-                           {"termino": "sesión", "interpretaciones": list(interpretaciones)}]}
+                           {"termino": "sesión", "tipo_ambiguedad": "lexica", "interpretaciones": list(interpretaciones)}]}
 
 
 I1 = interp("I1", "periodo de uso", P1)
@@ -32,10 +32,19 @@ MODELADO = {"entrada_lel": {"simbolo": "sesión", "tipo": "objeto", "nocion": ["
                             "impacto": ["Se registra al iniciar y cerrar."]}}
 
 
+def modelado_requisito(prompt):
+    """Guion por omisión del Modelador por requisito: repite el requisito original y una meta."""
+    texto = prompt.usuario.split("«", 1)[1].split("»", 1)[0]
+    return {"requisito_reescrito": texto, "metas": [
+        {"id": "M1", "enunciado": "Cumplir el requisito", "tipo": "meta", "actor": None, "simbolos": [],
+         "contribuye_a": None}]}
+
+
 def montar(tmp_path, analizador, guiones, checkpointer=None, **ajustes):
     settings = Settings(_env_file=None, similarity_threshold=0.75, max_debate_rounds=2,
                         resultados_dir=str(tmp_path / "resultados"), checkpoint_path=str(tmp_path / "cp.sqlite"),
                         **ajustes)
+    guiones = {"modelador_requisito_v1": modelado_requisito, **guiones}
     llm = LLMFalso(guiones)
     repo = RepositorioJson(settings.ruta(settings.resultados_dir))
     deps = armar(settings, repo, analizador, extractor=llm, clasificador=llm, critico=llm, modelador=llm,
@@ -46,6 +55,6 @@ def montar(tmp_path, analizador, guiones, checkpointer=None, **ajustes):
 def guiones_sesion_cercana():
     return {
         "extractor_v1": [EXTRACCION_SESION],
-        "clasificador_v1": [clasificacion(I1, interp("I2", "periodo de uso", P1_CERCANA))],
+        "clasificador_v2": [clasificacion(I1, interp("I2", "periodo de uso", P1_CERCANA))],
         "modelador_v1": [MODELADO],
     }

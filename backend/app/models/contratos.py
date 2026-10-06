@@ -10,7 +10,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
-from .comunes import Categoria, DecisionFiltro, Regla, Via
+from .comunes import Categoria, DecisionFiltro, Regla, TipoAmbiguedad, Via
 
 
 class Contrato(BaseModel):
@@ -78,7 +78,8 @@ class TerminoFiltrado(TerminoExtraido):
 class TerminoCandidato(Contrato):
     termino: str = Field(min_length=1)
     categoria_tentativa: Categoria
-    origen: Literal["extractor", "regional"]
+    origen: Literal["extractor", "regional", "alcance", "anafora"]
+    detalle: str | None = None  # por qué es candidato (catálogo, antecedentes posibles, patrón de alcance)
 
 
 class EntradaClasificador(Contrato):
@@ -117,14 +118,18 @@ def _ids_unicos(interpretaciones: list[Interpretacion]) -> None:
 class ResultadoTermino(Contrato):
     termino: str = Field(min_length=1)
     univoco: bool = False
+    tipo_ambiguedad: TipoAmbiguedad | None = None
     interpretaciones: list[Interpretacion] = []
 
     @model_validator(mode="after")
     def _coherencia(self) -> "ResultadoTermino":
-        if self.univoco and self.interpretaciones:
-            raise ValueError(f"'{self.termino}': un término unívoco no lleva interpretaciones")
+        if self.univoco and (self.interpretaciones or self.tipo_ambiguedad):
+            raise ValueError(f"'{self.termino}': un término unívoco no lleva interpretaciones ni tipo_ambiguedad")
         if not self.univoco and len(self.interpretaciones) < 2:
             raise ValueError(f"'{self.termino}': si no es unívoco necesita 2 o más interpretaciones")
+        if not self.univoco and self.tipo_ambiguedad is None:
+            raise ValueError(f"'{self.termino}': si no es unívoco necesita tipo_ambiguedad "
+                             f"({', '.join(t.value for t in TipoAmbiguedad)})")
         _ids_unicos(self.interpretaciones)
         return self
 
@@ -260,9 +265,41 @@ class SalidaModeladorLLM(Contrato):
 
 
 class SalidaModelador(Contrato):
+    """Entrada del LEL de un término con ambigüedad léxica (ADR 0010)."""
+
     entrada_lel: EntradaLEL
-    metas: dict  # stub en esta fase
-    big_picture: dict  # stub en esta fase
+
+
+class Meta(Contrato):
+    """Elemento del modelo de metas estratégicas (KMoS-SSA), con tipos al estilo i*.
+
+    `meta_blanda` es una cualidad sin criterio exacto: es el destino natural de
+    las expresiones vagas del catálogo («rápido», «ahorita»), que no se debaten.
+    """
+
+    id: str = Field(pattern=r"^M\d+$")
+    enunciado: str = Field(min_length=1)
+    tipo: Literal["meta", "meta_blanda", "tarea", "recurso"]
+    actor: str | None = None
+    simbolos: list[str] = []
+    contribuye_a: str | None = None
+
+
+class SalidaModeladorRequisito(Contrato):
+    """Formalización de un requisito validado: reescrito sin ambigüedad y sus metas."""
+
+    requisito_reescrito: str = Field(min_length=1)
+    metas: list[Meta] = Field(min_length=1, max_length=6)
+
+    @model_validator(mode="after")
+    def _referencias(self) -> "SalidaModeladorRequisito":
+        ids = [m.id for m in self.metas]
+        if len(ids) != len(set(ids)):
+            raise ValueError(f"ids de meta repetidos: {ids}")
+        for m in self.metas:
+            if m.contribuye_a is not None and (m.contribuye_a not in ids or m.contribuye_a == m.id):
+                raise ValueError(f"{m.id}.contribuye_a debe ser otra meta de la lista {ids}")
+        return self
 
 
 class EntradaLELFormalizada(EntradaLEL):

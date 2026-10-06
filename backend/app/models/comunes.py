@@ -66,12 +66,34 @@ class Categoria(StrEnum):
 
 
 class DecisionFiltro(StrEnum):
-    """Qué hicieron los filtros deterministas con cada término (ADR 0003)."""
+    """Qué hicieron los filtros deterministas con cada término (ADR 0003, 0010).
+
+    `regional`, `alcance` y `anafora` siempre pasan al Clasificador, igual que
+    `candidato`; se distinguen para saber de dónde salió el candidato.
+    """
 
     RESUELTO_POR_LEL = "resuelto_por_lel"
     VAGUEDAD = "vaguedad"
     REGIONAL = "regional"
+    ALCANCE = "alcance"
+    ANAFORA = "anafora"
     CANDIDATO = "candidato"
+
+
+class TipoAmbiguedad(StrEnum):
+    """Tipo de ambigüedad que el Clasificador asigna a un término con
+    interpretaciones (CONTEXTO §6). La vaguedad no está aquí: no produce
+    interpretaciones discretas y la marca el catálogo, sin debate."""
+
+    LEXICA = "lexica"
+    ALCANCE = "alcance"
+    ANAFORICA = "anaforica"
+    SINTACTICA = "sintactica"
+
+
+# Solo la ambigüedad léxica produce una entrada del LEL: las demás se resuelven
+# reescribiendo el requisito (ADR 0010).
+TIPOS_QUE_VAN_AL_LEL = {TipoAmbiguedad.LEXICA}
 
 
 class Regla(StrEnum):
