@@ -57,8 +57,9 @@ export function createOrbController() {
     /* ---- varias esferas ---- */
     has: (id) => bodies.has(id) && !bodies.get(id).fuseInto,
 
-    /* Una esfera se divide: las hijas nacen dentro de ella y se separan */
-    divide(parentId, children) {
+    /* Una esfera se divide: las hijas nacen dentro de ella y se separan.
+       `membrana: false` evita el velo de pantalla completa (partículas de mensaje). */
+    divide(parentId, children, { membrana: conMembrana = true } = {}) {
       const parent = bodies.get(parentId);
       for (const ch of children) {
         const prev = bodies.get(ch.id);
@@ -71,18 +72,24 @@ export function createOrbController() {
           target: { x: ch.x, y: ch.y, s: ch.s },
         });
       }
-      if (parent) parent.kick += 0.9;
-      membrana();
+      if (parent) parent.kick += conMembrana ? 0.9 : 0.25;
+      if (conMembrana) membrana();
       emit();
     },
 
     /* Las esferas vuelven a entrar en `intoId` y desaparecen */
-    fuse(ids, intoId) {
+    fuse(ids, intoId, { membrana: conMembrana = true } = {}) {
       for (const id of ids) {
         const b = bodies.get(id);
         if (b && id !== intoId) b.fuseInto = intoId;
       }
-      membrana(1200);
+      if (conMembrana) membrana(1200);
+    },
+
+    /* Quita esferas al instante, sin animación (al cambiar de escena) */
+    clear(ids) {
+      for (const id of ids) if (id !== "core") bodies.delete(id);
+      emit();
     },
 
     update(id, patch) {

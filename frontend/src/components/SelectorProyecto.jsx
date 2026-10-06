@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { crearProyecto, listarProyectos } from "../services/api";
+import { crearProyecto, listarProyectos } from "../services/backend";
 
 /* Elegir el proyecto donde caerán los requisitos (o crear uno) */
 const CLAVE = "dudamel.proyecto";
@@ -17,22 +17,37 @@ export default function SelectorProyecto({ valor, onCambio }) {
     onCambio(id);
   };
 
+  const [error, setError] = useState(null);
+  const normales = proyectos.filter((p) => p.tipo !== "evaluacion");
+
   useEffect(() => {
-    listarProyectos().then((l) => {
-      setProyectos(l);
-      if (!valor || !l.some((p) => p.id === valor)) elegir(l[0]?.id);
-    });
+    listarProyectos()
+      .then((l) => {
+        setProyectos(l);
+        const opciones = l.filter((p) => p.tipo !== "evaluacion");
+        if (!valor || !opciones.some((p) => p.proyecto_id === valor)) {
+          // el más reciente que no sea el General; si no hay, el General
+          elegir((opciones.filter((p) => p.proyecto_id !== "P00").at(-1) ?? opciones[0])?.proyecto_id);
+        }
+      })
+      .catch((e) => setError(e.message));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const crear = async () => {
     if (!nombre.trim()) return;
-    const { id } = await crearProyecto({ nombre });
-    setProyectos(await listarProyectos());
-    setNombre("");
-    setCreando(false);
-    elegir(id);
+    try {
+      const p = await crearProyecto({ nombre });
+      setProyectos(await listarProyectos());
+      setNombre("");
+      setCreando(false);
+      elegir(p.proyecto_id);
+    } catch (e) {
+      setError(e.message);
+    }
   };
+
+  if (error) return <p className="mono text-[10px] text-[var(--danger)]">{error}</p>;
 
   return (
     <div className="mono flex flex-wrap items-center justify-center gap-3 text-[10px] text-[var(--bone-faint)]">
@@ -57,7 +72,7 @@ export default function SelectorProyecto({ valor, onCambio }) {
             onChange={(e) => elegir(e.target.value)}
             className="cursor-pointer rounded-full border border-[var(--line)] bg-transparent px-3 py-1.5 text-[11px] normal-case tracking-normal text-[var(--bone)] outline-none hover:border-[var(--c1)]"
           >
-            {proyectos.map((p) => <option key={p.id} value={p.id} className="bg-[#16130f]">{p.nombre}</option>)}
+            {normales.map((p) => <option key={p.proyecto_id} value={p.proyecto_id} className="bg-[#16130f]">{p.proyecto_id} · {p.nombre}</option>)}
           </select>
           <button onClick={() => setCreando(true)} className="hover:text-[var(--bone)]">+ nuevo</button>
         </>
