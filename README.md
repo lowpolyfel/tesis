@@ -47,7 +47,12 @@ tesis/
 │   │   │   └── modelador/
 │   │   ├── orchestration/      # grafo LangGraph, estado compartido, nodos
 │   │   ├── divergence/         # embeddings, similitud coseno, umbral
-│   │   ├── artifacts/          # LEL, metas estratégicas, Big Picture
+│   │   ├── documentos/         # carga de PDF/.txt y separación en requisitos
+│   │   ├── analisis/           # vista por término y análisis del proyecto
+│   │   ├── artefactos/         # modelo de metas y Big Picture del proyecto
+│   │   ├── comparacion/        # comparación entre requisitos (exploratorio)
+│   │   ├── calibracion/        # sensibilidad del umbral
+│   │   ├── evaluacion/         # corpus y evaluación contra un solo agente
 │   │   ├── nlp/                # spaCy, etiquetado, PhraseMatcher
 │   │   ├── models/             # esquemas Pydantic
 │   │   ├── db/                 # cliente Mongo y repositorios
@@ -55,11 +60,12 @@ tesis/
 │   │   │   └── routes/         # endpoints FastAPI
 │   │   └── prompts/            # plantillas versionadas <agente>_v<N>.txt
 │   └── tests/                  # replica la estructura de app/
-├── frontend/
+├── frontend/                   # Dudamel (React + Vite), conectado al backend
 │   └── src/
 │       ├── components/
+│       ├── escena/             # la escena en vivo dirigida por los mensajes
 │       ├── pages/
-│       ├── services/
+│       ├── services/           # http.js, backend.js, eventos.js (SSE)
 │       └── hooks/
 ├── data/
 │   ├── corpus/                 # requisitos de prueba + ground truth (separado)
@@ -78,4 +84,6 @@ Copia `.env.example` como `.env` y completa los valores. Parámetros calibrables
 principales: `SIMILARITY_THRESHOLD` (0.75 inicial) y `MAX_DEBATE_ROUNDS` (2 inicial).
 
 Instalación, arranque del backend, sandbox (`/sandbox`) y pruebas: ver
-[`backend/README.md`](backend/README.md). Decisiones de diseño: [`docs/adr/`](docs/adr/).
+[`backend/README.md`](backend/README.md). La interfaz: [`frontend/README.md`](frontend/README.md)
+(`npm install && npm run dev` con el backend corriendo). Decisiones de diseño:
+[`docs/adr/`](docs/adr/).
