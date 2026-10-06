@@ -165,27 +165,3 @@ export const INFO_VIA = Object.freeze({
   consenso: { etiqueta: "consenso", tono: "#a99bff" },
   arbitraje: { etiqueta: "arbitraje", tono: "#ffc457" },
 });
-
-export const ESTADO_DE_VIA = Object.freeze({
-  [VIAS_RESOLUCION.DIRECTO]: E.ACEPTADO_DIRECTO,
-  [VIAS_RESOLUCION.CONSENSO]: E.CONSENSO,
-  [VIAS_RESOLUCION.ARBITRAJE]: E.ARBITRADO,
-});
-
-/* ¿El requisito ya pasó por `estado`? Se responde con su historial. */
-export const alcanzo = (historial, estado) => historial?.some((h) => h.estado === estado) ?? false;
-
-/*
- * Disposición del diagrama de la máquina de estados (LineaEstados):
- * columnas de izquierda a derecha; las ramas alternativas comparten columna.
- */
-export const DIAGRAMA = [
-  [E.CARGADO],
-  [E.EXTRAIDO],
-  [E.INTERPRETADO],
-  [E.ACEPTADO_DIRECTO, E.EN_DEBATE],
-  [E.CONSENSO, E.ARBITRADO],
-  [E.PENDIENTE_VALIDACION],
-  [E.VALIDADO, E.RECHAZADO],
-  [E.FORMALIZADO],
-];

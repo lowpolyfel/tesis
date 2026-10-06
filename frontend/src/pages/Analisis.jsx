@@ -343,11 +343,3 @@ function Resultados({ lista, proyecto, onRepetir }) {
     </section>
   );
 }
-
-/* Compatibilidad mientras se migran Proyecto y Ambigüedades: tono por vía */
-export const VIA = {
-  aceptado_directo: { texto: "directo", tono: "#57f7a7" },
-  directo: { texto: "directo", tono: "#57f7a7" },
-  consenso: { texto: "consenso", tono: "#a99bff" },
-  arbitraje: { texto: "arbitraje", tono: "#ffc457" },
-};
