@@ -1,0 +1,7 @@
+{"id": "EJ01", "texto": "El sistema debe permitir al administrador exportar el reporte mensual de ventas en formato PDF."}
+{"id": "EJ02", "texto": "El sistema debe registrar la sesión del usuario."}
+{"id": "EJ03", "texto": "El sistema debe jalar ahorita los datos del inventario."}
+{"id": "EJ04", "texto": "El administrador debe poder bloquear al usuario y consultar su historial."}
+{"id": "EJ05", "texto": "Todos los usuarios no deben tener acceso al módulo de nómina."}
+{"id": "EJ06", "texto": "El sistema debe mostrar rápido el saldo del cliente."}
+{"id": "EJ07", "texto": "El cajero debe imprimir el comprobante de pago al cerrar la venta."}
