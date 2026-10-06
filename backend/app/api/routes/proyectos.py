@@ -75,6 +75,6 @@ def requisitos(p: ProyectoDep, srv: ServicioDep) -> list[dict]:
 
 @router.post("/proyectos/{proyecto_id}/requisitos", status_code=202)
 def cargar(p: ProyectoDep, entrada: EntradaRequisitos, srv: ServicioDep) -> dict:
-    """Registra los requisitos confirmados por el humano y los encola en orden."""
-    ids = [srv.solicitar(r.texto, p.proyecto_id, r.origen) for r in entrada.requisitos]
-    return {"proyecto_id": p.proyecto_id, "req_ids": ids}
+    """Registra los requisitos confirmados por el humano en un ciclo nuevo y los encola en orden."""
+    ciclo, ids = srv.solicitar_lote([(r.texto, r.origen) for r in entrada.requisitos], p.proyecto_id)
+    return {"proyecto_id": p.proyecto_id, "ciclo": ciclo, "req_ids": ids}

@@ -69,7 +69,9 @@ class Origen(BaseModel):
     archivo: str | None = None
     pagina: int | None = None
     indice: int | None = None  # posición del requisito dentro del documento
+    marca: str | None = None  # numeración original del documento (RF-01, 3.2…)
     texto_original: str | None = None  # como venía en el documento, antes de que el humano lo editara
+    reproceso_de: str | None = None  # req_id del requisito que este vuelve a procesar
 
 
 class Traza(BaseModel):
@@ -79,6 +81,7 @@ class Traza(BaseModel):
 
     req_id: str
     proyecto_id: str = PROYECTO_GENERAL
+    ciclo: int = Field(1, ge=1)  # ciclo KMoS-SSA: cada carga de requisitos a un proyecto abre uno nuevo
     texto: str
     origen: Origen | None = None
     estado: Estado

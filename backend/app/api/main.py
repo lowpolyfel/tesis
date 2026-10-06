@@ -5,10 +5,23 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
+from app.config import get_settings
 from app.orchestration import Servicio, crear_dependencias
 
-from .routes import lel, proyectos, requisitos, sandbox
+from .routes import (
+    analisis,
+    artefactos,
+    calibracion,
+    comparaciones,
+    documentos,
+    evaluaciones,
+    lel,
+    proyectos,
+    requisitos,
+    sandbox,
+)
 
 
 def create_app(servicio: Servicio | None = None) -> FastAPI:
@@ -24,9 +37,14 @@ def create_app(servicio: Servicio | None = None) -> FastAPI:
         yield
         app.state.servicio.detener()
 
-    app = FastAPI(title="Tesis: núcleo de agentes", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Tesis: núcleo de agentes", version="0.2.0", lifespan=lifespan)
     app.state.servicio = servicio
-    for r in (requisitos.router, proyectos.router, lel.router, sandbox.router):
+    settings = servicio.deps.settings if servicio else get_settings()
+    # El frontend (Vite, otro puerto) llama a la API y abre EventSource
+    app.add_middleware(CORSMiddleware, allow_origins=settings.origenes_cors(), allow_methods=["*"],
+                       allow_headers=["*"], allow_credentials=False)
+    for r in (requisitos.router, proyectos.router, documentos.router, analisis.router, comparaciones.router,
+              calibracion.router, evaluaciones.router, artefactos.router, lel.router, sandbox.router):
         app.include_router(r)
     return app
 

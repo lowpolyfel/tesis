@@ -48,7 +48,7 @@ def montar(tmp_path, analizador, guiones, checkpointer=None, **ajustes):
     llm = LLMFalso(guiones)
     repo = RepositorioJson(settings.ruta(settings.resultados_dir))
     deps = armar(settings, repo, analizador, extractor=llm, clasificador=llm, critico=llm, modelador=llm,
-                 embeddings=EmbeddingsFalsos(VECTORES))
+                 embeddings=EmbeddingsFalsos(VECTORES), comparador=llm, agente_unico=llm)
     return Servicio(deps, checkpointer or InMemorySaver()), llm, repo
 
 

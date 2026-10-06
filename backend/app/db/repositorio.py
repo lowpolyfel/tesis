@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 
 _PATRON_REQ = re.compile(r"^R(\d+)$")
 _PATRON_COLECCION = re.compile(r"^[a-z_]+$")
-CAMPOS_RESUMEN = ("req_id", "proyecto_id", "texto", "estado", "creado", "actualizado")
+CAMPOS_RESUMEN = ("req_id", "proyecto_id", "ciclo", "texto", "origen", "estado", "creado", "actualizado")
 
 
 def formato_req_id(n: int) -> str:
@@ -43,8 +43,8 @@ def _numero(doc_id: str, prefijo: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
-def _nueva_traza(req_id: str, texto: str, config: dict, proyecto_id: str, origen: Origen | None) -> Traza:
-    return Traza(req_id=req_id, proyecto_id=proyecto_id, texto=texto, origen=origen, estado=Estado.CARGADO,
+def _nueva_traza(req_id: str, texto: str, config: dict, proyecto_id: str, origen: Origen | None, ciclo: int) -> Traza:
+    return Traza(req_id=req_id, proyecto_id=proyecto_id, ciclo=ciclo, texto=texto, origen=origen, estado=Estado.CARGADO,
                  config=config, transiciones=[Transicion(estado=Estado.CARGADO, secuencia=0)])
 
 
@@ -57,7 +57,7 @@ class Repositorio(Protocol):
 
     # trazas
     def crear_traza(self, texto: str, config: dict[str, Any], proyecto_id: str = PROYECTO_GENERAL,
-                    origen: Origen | None = None) -> Traza: ...
+                    origen: Origen | None = None, ciclo: int = 1) -> Traza: ...
     def agregar_mensaje(self, req_id: str, **campos: Any) -> Mensaje: ...
     def cambiar_estado(self, req_id: str, estado: Estado) -> None: ...
     def obtener_traza(self, req_id: str) -> Traza | None: ...
@@ -114,10 +114,10 @@ class RepositorioJson:
 
     # interfaz
     def crear_traza(self, texto: str, config: dict[str, Any], proyecto_id: str = PROYECTO_GENERAL,
-                    origen: Origen | None = None) -> Traza:
+                    origen: Origen | None = None, ciclo: int = 1) -> Traza:
         with self._candado:
             usados = [int(m.group(1)) for p in self.dir_trazas.glob("R*.json") if (m := _PATRON_REQ.match(p.stem))]
-            traza = _nueva_traza(formato_req_id(max(usados, default=0) + 1), texto, config, proyecto_id, origen)
+            traza = _nueva_traza(formato_req_id(max(usados, default=0) + 1), texto, config, proyecto_id, origen, ciclo)
             self._guardar(traza)
             return traza
 
@@ -156,7 +156,7 @@ class RepositorioJson:
     def listar_trazas(self, proyecto_id: str | None = None) -> list[dict]:
         """Resumen de cada traza (sin mensajes), ordenado por req_id."""
         with self._candado:
-            return [{k: d.get(k) for k in CAMPOS_RESUMEN} for d in self._todas(proyecto_id)]
+            return [{**{k: d.get(k) for k in CAMPOS_RESUMEN}, "ciclo": d.get("ciclo") or 1} for d in self._todas(proyecto_id)]
 
     def trazas_completas(self, proyecto_id: str | None = None) -> list[Traza]:
         with self._candado:
@@ -232,14 +232,14 @@ class RepositorioMongo:
         return Traza.model_validate({k: v for k, v in doc.items() if k in Traza.model_fields})
 
     def crear_traza(self, texto: str, config: dict[str, Any], proyecto_id: str = PROYECTO_GENERAL,
-                    origen: Origen | None = None) -> Traza:
+                    origen: Origen | None = None, ciclo: int = 1) -> Traza:
         from pymongo.errors import DuplicateKeyError
 
         ultimo = max((int(m.group(1)) for d in self.trazas.find({}, {"_id": 1})
                       if (m := _PATRON_REQ.match(str(d["_id"])))), default=0)
         while True:
             req_id = formato_req_id(ultimo + 1)
-            traza = _nueva_traza(req_id, texto, config, proyecto_id, origen)
+            traza = _nueva_traza(req_id, texto, config, proyecto_id, origen, ciclo)
             doc = traza.model_dump(mode="json")
             doc.update(_id=req_id, ultima_secuencia=0, creado=traza.creado, actualizado=traza.actualizado)
             try:
@@ -289,6 +289,7 @@ class RepositorioMongo:
         for d in docs:
             r = {k: d.get(k) for k in CAMPOS_RESUMEN}
             r["proyecto_id"] = r["proyecto_id"] or PROYECTO_GENERAL
+            r["ciclo"] = r["ciclo"] or 1
             for k in ("creado", "actualizado"):
                 if hasattr(r[k], "isoformat"):
                     r[k] = r[k].isoformat()

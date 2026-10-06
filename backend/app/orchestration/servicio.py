@@ -97,19 +97,32 @@ class Servicio:
 
     # ------------------------------------------------------------ operaciones
 
-    def registrar(self, texto: str, proyecto_id: str = PROYECTO_GENERAL, origen: Origen | None = None) -> str:
-        """Crea la traza en `cargado` y reserva el requisito para ejecutarlo."""
+    def siguiente_ciclo(self, proyecto_id: str) -> int:
+        return max((t.get("ciclo") or 1 for t in self.repo.listar_trazas(proyecto_id)), default=0) + 1
+
+    def registrar(self, texto: str, proyecto_id: str = PROYECTO_GENERAL, origen: Origen | None = None,
+                  ciclo: int | None = None) -> str:
+        """Crea la traza en `cargado` y reserva el requisito para ejecutarlo. Sin `ciclo`, abre uno nuevo."""
         if self.proyectos.obtener(proyecto_id) is None:
             raise KeyError(proyecto_id)
-        traza = self.repo.crear_traza(texto, self.deps.config_traza(), proyecto_id=proyecto_id, origen=origen)
+        ciclo = ciclo or self.siguiente_ciclo(proyecto_id)
+        traza = self.repo.crear_traza(texto, self.deps.config_traza(), proyecto_id=proyecto_id, origen=origen, ciclo=ciclo)
         self._reservar(traza.req_id)
         return traza.req_id
 
-    def solicitar(self, texto: str, proyecto_id: str = PROYECTO_GENERAL, origen: Origen | None = None) -> str:
+    def solicitar(self, texto: str, proyecto_id: str = PROYECTO_GENERAL, origen: Origen | None = None,
+                  ciclo: int | None = None) -> str:
         """Registrar y encolar (API)."""
-        req_id = self.registrar(texto, proyecto_id, origen)
+        req_id = self.registrar(texto, proyecto_id, origen, ciclo)
         self.cola.encolar("ejecutar", req_id, lambda: self.ejecutar(req_id))
         return req_id
+
+    def solicitar_lote(self, requisitos: list[tuple[str, Origen | None]], proyecto_id: str) -> tuple[int, list[str]]:
+        """Una carga de varios requisitos abre un solo ciclo nuevo; se encolan en orden."""
+        if self.proyectos.obtener(proyecto_id) is None:
+            raise KeyError(proyecto_id)
+        ciclo = self.siguiente_ciclo(proyecto_id)
+        return ciclo, [self.solicitar(texto, proyecto_id, origen, ciclo) for texto, origen in requisitos]
 
     def _correr(self, req_id: str, entrada) -> None:
         """Invoca el grafo. Los nodos ya registran sus fallas; esto cubre lo que
@@ -130,9 +143,10 @@ class Servicio:
         traza = self.repo.obtener_traza(req_id)
         self._correr(req_id, {"req_id": req_id, "proyecto_id": traza.proyecto_id, "texto": traza.texto})
 
-    def procesar(self, texto: str, proyecto_id: str = PROYECTO_GENERAL, origen: Origen | None = None) -> str:
+    def procesar(self, texto: str, proyecto_id: str = PROYECTO_GENERAL, origen: Origen | None = None,
+                 ciclo: int | None = None) -> str:
         """Registrar y ejecutar en el mismo hilo (scripts y pruebas)."""
-        req_id = self.registrar(texto, proyecto_id, origen)
+        req_id = self.registrar(texto, proyecto_id, origen, ciclo)
         self.ejecutar(req_id)
         return req_id
 

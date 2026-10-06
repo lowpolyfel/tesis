@@ -28,6 +28,10 @@ class Dependencias:
     critico: Critico
     modelador: Modelador
     embeddings: ProveedorEmbeddings
+    analizador: Analizador | None = None
+    # Clientes de los módulos fuera del grafo (comparación entre requisitos, línea base de un agente)
+    llm_comparador: ClienteLLM | None = None
+    llm_agente_unico: ClienteLLM | None = None
     extra_config: dict = field(default_factory=dict)  # se copia en la traza
 
     def config_traza(self) -> dict:
@@ -41,7 +45,8 @@ class Dependencias:
 
 def armar(settings: Settings, repo: Repositorio, analizador: Analizador, *, extractor: ClienteLLM,
           clasificador: ClienteLLM, critico: ClienteLLM, modelador: ClienteLLM,
-          embeddings: ProveedorEmbeddings) -> Dependencias:
+          embeddings: ProveedorEmbeddings, comparador: ClienteLLM | None = None,
+          agente_unico: ClienteLLM | None = None) -> Dependencias:
     """Une clientes, spaCy y catálogos en las piezas del grafo."""
     catalogos = Catalogos.cargar(settings.ruta(settings.catalogos_dir), analizador)
     return Dependencias(
@@ -53,6 +58,9 @@ def armar(settings: Settings, repo: Repositorio, analizador: Analizador, *, extr
         critico=Critico(critico, ReglasCritico(analizador)),
         modelador=Modelador(modelador),
         embeddings=embeddings,
+        analizador=analizador,
+        llm_comparador=comparador,
+        llm_agente_unico=agente_unico,
     )
 
 
@@ -67,4 +75,6 @@ def crear_dependencias(settings: Settings | None = None) -> Dependencias:
         critico=crear_cliente(s.critico_provider, s.critico_model, s),
         modelador=crear_cliente("ollama", s.modelador_model, s),
         embeddings=EmbeddingsOllama(s.embedding_model, s.ollama_base_url),
+        comparador=crear_cliente("ollama", s.comparador_model, s),
+        agente_unico=crear_cliente("ollama", s.agente_unico_model, s),
     )
