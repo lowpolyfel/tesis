@@ -1,80 +1,79 @@
-import { useEffect, useState } from "react";
 import { NavLink, Navigate, useParams } from "react-router";
-import { obtenerCatalogo, guardarCatalogo } from "../services/api";
-import TablaEditable from "../components/TablaEditable";
+import { useApi } from "../hooks/useApi";
+import { obtenerCatalogos } from "../services/backend";
+import { tipo as infoTipo } from "../constants/agentes";
 
-const TIPOS = { mexicanismos: "Mexicanismos", vaguedad: "Vaguedad" };
-const COLUMNAS = [
-  { clave: "expresion", titulo: "Expresión", ancho: "w-36" },
-  { clave: "clasificacion", titulo: "Clasificación", ancho: "w-44" },
-  { clave: "lecturas", titulo: "Lecturas posibles (una por renglón)", tipo: "lista" },
-  { clave: "tratamiento", titulo: "Tratamiento" },
-];
+/*
+ * Catálogos que usan los filtros deterministas (ADR 0003): regionales (siempre
+ * pasan al Clasificador) y vaguedad (se marcan y no se debaten). Son de solo
+ * lectura: se editan en data/catalogos/*.json (CATALOGOS_DIR), versionados con git, y
+ * cada traza guarda la versión con la que corrió.
+ */
+const TIPOS = {
+  regionales: { titulo: "Regionales", tono: "regional" },
+  vaguedad: { titulo: "Vaguedad", tono: "vaguedad" },
+};
 
-/* Pantalla 7: catálogos regionales, editables */
 export default function Catalogos() {
   const { tipo } = useParams();
-  const [original, setOriginal] = useState(null);
-  const [filas, setFilas] = useState(null);
-  const [aviso, setAviso] = useState(null);
+  const { datos, error } = useApi(obtenerCatalogos);
 
-  useEffect(() => {
-    if (!TIPOS[tipo]) return;
-    setFilas(null);
-    setAviso(null);
-    obtenerCatalogo(tipo).then((f) => { setOriginal(f); setFilas(f); });
-  }, [tipo]);
+  if (!TIPOS[tipo]) return <Navigate to="/catalogos/regionales" replace />;
+  if (error) return <p className="text-sm text-[var(--danger)]">{error.message}</p>;
+  if (!datos) return <p className="text-sm text-[var(--bone-dim)]">Cargando catálogos…</p>;
 
-  if (!TIPOS[tipo]) return <Navigate to="/catalogos/mexicanismos" replace />;
-
-  const sucio = filas && JSON.stringify(filas) !== JSON.stringify(original);
-  const guardar = async () => {
-    const limpias = filas
-      .filter((f) => f.expresion.trim())
-      .map((f) => ({ ...f, expresion: f.expresion.trim(), lecturas: f.lecturas.map((l) => l.trim()).filter(Boolean) }));
-    await guardarCatalogo(tipo, limpias);
-    setOriginal(limpias);
-    setFilas(limpias);
-    setAviso("Guardado. Se usará al procesar los próximos requisitos.");
-  };
+  const cat = datos[tipo];
 
   return (
-    <div className="space-y-4">
-      <header>
-        <h1 className="text-2xl font-semibold">Catálogo de términos regionales</h1>
-        <p className="text-sm text-slate-500">El Extractor marca como ambiguas las expresiones de estos catálogos. Los cambios aplican a los requisitos que se procesen después.</p>
+    <div className="space-y-5">
+      <header className="space-y-2">
+        <p className="mono text-[10px] text-[var(--bone-faint)]">Filtros deterministas · {datos.nota}</p>
+        <h1>Catálogos.</h1>
       </header>
 
-      <div className="flex gap-1 border-b border-slate-200">
+      <div className="mono flex gap-5 border-b border-[var(--line)] pb-3 text-[10px]">
         {Object.entries(TIPOS).map(([k, v]) => (
           <NavLink
             key={k}
             to={`/catalogos/${k}`}
-            className={({ isActive }) => `-mb-px border-b-2 px-3 py-1.5 text-sm ${isActive ? "border-slate-900 font-medium" : "border-transparent text-slate-500"}`}
+            className={({ isActive }) => (isActive ? "text-[var(--bone)] underline decoration-[var(--c1)] underline-offset-[8px]" : "text-[var(--bone-faint)] hover:text-[var(--bone)]")}
           >
-            {v}
+            {v.titulo} ({datos[k]?.terminos?.length ?? 0})
           </NavLink>
         ))}
       </div>
 
-      {!filas ? (
-        <p className="text-sm text-slate-500">Cargando…</p>
+      {!cat ? (
+        <p className="text-sm text-[var(--bone-dim)]">El backend no cargó este catálogo.</p>
       ) : (
         <>
-          <TablaEditable
-            columnas={COLUMNAS}
-            filas={filas}
-            onChange={(f) => { setFilas(f); setAviso(null); }}
-            nuevaFila={() => ({ id: `${tipo}-${Date.now()}`, expresion: "", clasificacion: "", lecturas: [""], tratamiento: "" })}
-          />
-          <div className="flex items-center gap-3">
-            <button onClick={guardar} disabled={!sucio} className="rounded bg-slate-900 px-4 py-1.5 text-sm font-medium text-sobre disabled:opacity-40">
-              Guardar cambios
-            </button>
-            <button onClick={() => setFilas(original)} disabled={!sucio} className="rounded border border-slate-300 px-4 py-1.5 text-sm disabled:opacity-40">
-              Descartar
-            </button>
-            <span className="text-sm text-slate-500">{aviso ?? (sucio ? "Hay cambios sin guardar." : `${filas.length} expresiones`)}</span>
+          <p className="max-w-3xl text-sm text-[var(--bone-dim)]">{cat.descripcion}</p>
+          <p className="mono text-[9.5px] text-[var(--bone-faint)]">versión {cat.version} · archivo data/catalogos/{tipo}.json</p>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[560px] text-left text-sm">
+              <thead className="mono text-[9px] text-[var(--bone-faint)]">
+                <tr>
+                  <th className="py-1.5 font-normal">Expresión</th>
+                  <th className="py-1.5 font-normal">Clasificación</th>
+                  <th className="py-1.5 font-normal">{tipo === "regionales" ? "Significados posibles" : "Tipo y nota"}</th>
+                  <th className="py-1.5 font-normal">Formas que reconoce</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cat.terminos.map((t) => (
+                  <tr key={t.expresion} className="border-t border-[var(--line)] align-top">
+                    <td className="py-2 pr-3"><span className={`rounded px-1.5 ${infoTipo(TIPOS[tipo].tono).clase}`}>{t.expresion}</span></td>
+                    <td className="py-2 pr-3 text-[var(--bone-dim)]">{t.clasificacion ?? "—"}</td>
+                    <td className="py-2 pr-3">
+                      {tipo === "regionales"
+                        ? (t.significados_posibles ?? []).join(" · ")
+                        : [t.tipo, t.nota].filter(Boolean).join(" — ")}
+                    </td>
+                    <td className="mono py-2 text-[10px] text-[var(--bone-faint)]">{(t.formas ?? []).join(", ")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </>
       )}
