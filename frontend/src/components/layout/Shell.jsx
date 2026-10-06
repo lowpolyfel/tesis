@@ -5,11 +5,17 @@ import { useOrb, usePoseEsfera } from "../orb/useOrb";
 const ENLACES = [
   { a: "/inicio", texto: "Analizar" },
   { a: "/proyectos", texto: "Proyectos" },
-  { a: "/ambiguedades", texto: "Ambigüedades" },
-  { a: "/flujo", texto: "Flujo" },
   { a: "/historial", texto: "Historial" },
   { a: "/lel", texto: "Léxico" },
 ];
+/* Vistas de un proyecto completo */
+const ANALISIS = [
+  { a: "/ambiguedades", texto: "Ambigüedades" },
+  { a: "/comparaciones", texto: "Comparaciones" },
+  { a: "/big-picture", texto: "Metas y Big Picture" },
+  { a: "/flujo", texto: "Flujo KMoS-SSA" },
+];
+/* Herramientas de experimentación */
 const AJUSTES = [
   { a: "/catalogos", texto: "Catálogos" },
   { a: "/calibracion", texto: "Calibración" },
@@ -20,6 +26,8 @@ const TITULOS = [
   [/^\/proyectos\/[^/]+/, "Proyecto"],
   [/^\/proyectos/, "Proyectos"],
   [/^\/ambiguedades/, "Ambigüedades"],
+  [/^\/comparaciones/, "Comparaciones"],
+  [/^\/big-picture/, "Metas y Big Picture"],
   [/^\/historial/, "Historial"],
   [/^\/requisitos\/[^/]+\/validacion/, "Validación"],
   [/^\/requisitos\//, "Traza"],
@@ -78,7 +86,8 @@ function BarraSuperior() {
             {e.texto}
           </NavLink>
         ))}
-        <Ajustes />
+        <Menu titulo="Análisis" enlaces={ANALISIS} />
+        <Menu titulo="Ajustes" enlaces={AJUSTES} />
       </nav>
     </header>
   );
@@ -87,12 +96,12 @@ function BarraSuperior() {
 const claseEnlace = ({ isActive }) =>
   `mono text-[10px] transition-colors ${isActive ? "text-[var(--bone)] underline decoration-[var(--c1)] underline-offset-[6px]" : "text-[var(--bone-faint)] hover:text-[var(--bone)]"}`;
 
-/* Catálogos, calibración y evaluación: herramientas de experimentación, agrupadas */
-function Ajustes() {
+/* Grupo de enlaces en un desplegable */
+function Menu({ titulo, enlaces }) {
   const [abierto, setAbierto] = useState(false);
   const ref = useRef(null);
   const { pathname } = useLocation();
-  const activo = AJUSTES.some((e) => pathname.startsWith(e.a));
+  const activo = enlaces.some((e) => pathname.startsWith(e.a));
   useEffect(() => setAbierto(false), [pathname]);
   useEffect(() => {
     if (!abierto) return;
@@ -102,10 +111,10 @@ function Ajustes() {
   }, [abierto]);
   return (
     <div ref={ref} className="relative">
-      <button onClick={() => setAbierto((x) => !x)} className={claseEnlace({ isActive: activo })}>Ajustes ▾</button>
+      <button onClick={() => setAbierto((x) => !x)} className={claseEnlace({ isActive: activo })}>{titulo} ▾</button>
       {abierto && (
-        <div className="sube absolute top-7 right-0 flex min-w-40 flex-col gap-3 rounded-xl border border-[var(--line)] bg-[color-mix(in_oklab,var(--bg)_92%,transparent)] p-4 backdrop-blur-xl">
-          {AJUSTES.map((e) => <NavLink key={e.a} to={e.a} className={claseEnlace}>{e.texto}</NavLink>)}
+        <div className="sube absolute top-7 right-0 flex min-w-44 flex-col gap-3 rounded-xl border border-[var(--line)] bg-[color-mix(in_oklab,var(--bg)_92%,transparent)] p-4 backdrop-blur-xl">
+          {enlaces.map((e) => <NavLink key={e.a} to={e.a} className={claseEnlace}>{e.texto}</NavLink>)}
         </div>
       )}
     </div>

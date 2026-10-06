@@ -12,7 +12,8 @@ async function leer(r) {
     const d = cuerpo?.detail;
     const texto = typeof d === "string" ? d
       : Array.isArray(d) ? d.map((x) => `${(x.loc ?? []).slice(1).join(".")}: ${x.msg}`).join("; ")
-        : `HTTP ${r.status}`;
+        : d?.mensaje ? [d.mensaje, ...(d.errores ?? [])].join(" · ") // p. ej. corpus inválido
+          : `HTTP ${r.status}`;
     const e = new Error(texto);
     e.status = r.status;
     e.detalle = d;

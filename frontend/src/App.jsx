@@ -40,7 +40,6 @@ export default function App() {
         <Route element={<Shell modo="escena" />}>
           <Route path="/inicio" element={<Inicio />} />
           <Route path="/analisis" element={<Analisis />} />
-          <Route path="/big-picture" element={<BigPicture />} />
           <Route path="/flujo" element={<Flujo />} />
         </Route>
         <Route element={<Shell modo="herramienta" />}>
@@ -48,6 +47,7 @@ export default function App() {
           <Route path="/proyectos/:id" element={<Proyecto />} />
           <Route path="/ambiguedades" element={<Ambiguedades />} />
           <Route path="/comparaciones" element={<Comparaciones />} />
+          <Route path="/big-picture" element={<BigPicture />} />
           <Route path="/historial" element={<Cola />} />
           <Route path="/requisitos/:id" element={<DetalleRequisito />} />
           <Route path="/requisitos/:id/validacion" element={<Validacion />} />
