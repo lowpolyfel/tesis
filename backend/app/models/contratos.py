@@ -268,6 +268,7 @@ class SalidaModelador(Contrato):
 class EntradaLELFormalizada(EntradaLEL):
     """Entrada del LEL ya validada por un humano y guardada como memoria."""
 
+    proyecto_id: str = "P00"
     req_id: str
     termino: str
     via: Via

@@ -5,12 +5,12 @@ import asyncio
 from collections.abc import AsyncIterable
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models import ESTADOS_TERMINALES, Estado, Traza, Validacion
+from app.models import PROYECTO_GENERAL, ESTADOS_TERMINALES, Estado, Traza, Validacion
 from app.orchestration import ConflictoDeEstado, Servicio
 
 from ..dependencias import obtener_servicio, traza_existente
@@ -22,6 +22,7 @@ ServicioDep = Annotated[Servicio, Depends(obtener_servicio)]
 class EntradaProcesar(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     texto: str = Field(min_length=1, max_length=2000)
+    proyecto_id: str = PROYECTO_GENERAL
 
 
 class Aceptado(BaseModel):
@@ -30,18 +31,25 @@ class Aceptado(BaseModel):
 
 
 @router.post("/procesar", status_code=202, response_model=Aceptado)
-def procesar(entrada: EntradaProcesar, tareas: BackgroundTasks, srv: ServicioDep) -> Aceptado:
-    """Registra el requisito y corre el grafo en segundo plano; los mensajes se
-    siguen en `/eventos/{req_id}`."""
-    req_id = srv.registrar(entrada.texto)
-    tareas.add_task(srv.ejecutar, req_id)
+def procesar(entrada: EntradaProcesar, srv: ServicioDep) -> Aceptado:
+    """Registra el requisito y lo encola; los mensajes se siguen en `/eventos/{req_id}`."""
+    try:
+        req_id = srv.solicitar(entrada.texto, entrada.proyecto_id)
+    except KeyError:
+        raise HTTPException(404, f"No existe el proyecto {entrada.proyecto_id}")
     return Aceptado(req_id=req_id, estado=Estado.CARGADO)
 
 
 @router.get("/trazas")
-def trazas(srv: ServicioDep) -> list[dict]:
-    """Resumen de los requisitos procesados (para reabrir uno desde la sandbox)."""
-    return srv.trazas()
+def trazas(srv: ServicioDep, proyecto_id: str | None = None) -> list[dict]:
+    """Resumen de los requisitos procesados, opcionalmente de un proyecto."""
+    return srv.trazas(proyecto_id)
+
+
+@router.get("/cola")
+def cola(srv: ServicioDep) -> dict:
+    """Qué se está procesando y qué espera turno."""
+    return srv.cola.estado()
 
 
 @router.get("/traza/{req_id}", response_model=Traza)
@@ -82,16 +90,15 @@ async def eventos(
 
 
 @router.post("/validar/{req_id}", status_code=202)
-def validar(req_id: str, validacion: Validacion, tareas: BackgroundTasks, srv: ServicioDep) -> dict:
+def validar(req_id: str, validacion: Validacion, srv: ServicioDep) -> dict:
     """Aprobar, rechazar o editar. `interpretaciones_editadas` lleva, por término,
-    la interpretación elegida (otra existente) o reescrita."""
+    la interpretación elegida (otra existente) o reescrita. Se encola con prioridad."""
     try:
-        srv.preparar_validacion(req_id, validacion)
+        srv.solicitar_validacion(req_id, validacion)
     except KeyError:
         raise HTTPException(404, f"No existe el requisito {req_id}")
     except ConflictoDeEstado as e:
         raise HTTPException(409, str(e))
     except ValueError as e:
         raise HTTPException(422, str(e))
-    tareas.add_task(srv.reanudar, req_id, validacion)
     return {"req_id": req_id, "decision": validacion.decision}

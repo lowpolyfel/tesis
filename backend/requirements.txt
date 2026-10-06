@@ -87,3 +87,7 @@ langgraph-checkpoint-sqlite==3.1.1
 aiosqlite==0.22.1
 sqlite-vec==0.1.9
 es_core_news_sm @ https://github.com/explosion/spacy-models/releases/download/es_core_news_sm-3.8.0/es_core_news_sm-3.8.0-py3-none-any.whl
+
+# Agregadas en la fase de proyectos, documentos y análisis
+pypdf==6.19.0
+python-multipart==0.0.32

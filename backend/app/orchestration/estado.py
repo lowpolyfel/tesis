@@ -32,6 +32,7 @@ class TerminoEnProceso(TypedDict, total=False):
 
 class EstadoGrafo(TypedDict, total=False):
     req_id: str
+    proyecto_id: str
     texto: str
     estado: str  # Estado
     ronda: int

@@ -27,6 +27,7 @@ from langgraph.types import interrupt
 from app.divergence import evaluar_divergencia
 from app.llm import FalloEstructurado, Respuesta
 from app.models import (
+    PROYECTO_GENERAL,
     DecisionFiltro,
     EntradaLEL,
     EntradaLELFormalizada,
@@ -121,10 +122,12 @@ def construir_grafo(deps: Dependencias, checkpointer):
 
     @nodo
     def cargado(st: EstadoGrafo) -> dict:
-        # La traza ya existe en `cargado`; aquí se fija el LEL contra el que se procesa.
+        # La traza ya existe en `cargado`; aquí se fija el LEL del proyecto contra el que se procesa.
+        proyecto_id = st.get("proyecto_id") or PROYECTO_GENERAL
         lel = [EntradaLEL.model_validate(e.model_dump(include=set(EntradaLEL.model_fields))).model_dump(mode="json")
-               for e in repo.listar_lel()]
-        return {"estado": Estado.CARGADO.value, "ronda": 0, "lel": lel, "candidatos": {}, "fallo": None}
+               for e in repo.listar_lel(proyecto_id)]
+        return {"estado": Estado.CARGADO.value, "proyecto_id": proyecto_id, "ronda": 0, "lel": lel,
+                "candidatos": {}, "fallo": None}
 
     @nodo
     def extraido(st: EstadoGrafo) -> dict:
@@ -321,7 +324,8 @@ def construir_grafo(deps: Dependencias, checkpointer):
             interp = Interpretacion.model_validate(c["final"])
             m = deps.modelador.modelar(texto, termino, interp)
             entrada = EntradaLELFormalizada(
-                **m.valor.entrada_lel.model_dump(), req_id=req_id, termino=termino, via=c["via"],
+                **m.valor.entrada_lel.model_dump(), proyecto_id=st.get("proyecto_id") or PROYECTO_GENERAL,
+                req_id=req_id, termino=termino, via=c["via"],
                 interpretacion=interp, editada_por_humano=c.get("cambio") == "edicion", fecha=date.today().isoformat())
             hechas.append((entrada, m))
         repo.guardar_lel([e for e, _ in hechas])  # todas o ninguna: se guarda después de modelar todas

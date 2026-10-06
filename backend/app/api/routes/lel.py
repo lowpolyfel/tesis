@@ -12,5 +12,6 @@ router = APIRouter(tags=["lel"])
 
 
 @router.get("/lel", response_model=list[EntradaLELFormalizada])
-def lel(srv: Annotated[Servicio, Depends(obtener_servicio)]) -> list[EntradaLELFormalizada]:
-    return srv.repo.listar_lel()
+def lel(srv: Annotated[Servicio, Depends(obtener_servicio)], proyecto_id: str | None = None) -> list[EntradaLELFormalizada]:
+    """Entradas formalizadas; con `proyecto_id`, solo las de ese proyecto."""
+    return srv.repo.listar_lel(proyecto_id)

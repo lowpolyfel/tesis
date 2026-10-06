@@ -8,7 +8,7 @@ from fastapi import FastAPI
 
 from app.orchestration import Servicio, crear_dependencias
 
-from .routes import lel, requisitos, sandbox
+from .routes import lel, proyectos, requisitos, sandbox
 
 
 def create_app(servicio: Servicio | None = None) -> FastAPI:
@@ -20,11 +20,13 @@ def create_app(servicio: Servicio | None = None) -> FastAPI:
         if app.state.servicio is None:
             logging.basicConfig(level=logging.INFO)
             app.state.servicio = Servicio(crear_dependencias())
+        app.state.servicio.iniciar()  # trabajador de la cola + recuperación tras reinicio
         yield
+        app.state.servicio.detener()
 
     app = FastAPI(title="Tesis: núcleo de agentes", version="0.1.0", lifespan=lifespan)
     app.state.servicio = servicio
-    for r in (requisitos.router, lel.router, sandbox.router):
+    for r in (requisitos.router, proyectos.router, lel.router, sandbox.router):
         app.include_router(r)
     return app
 
