@@ -1,217 +1,254 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useApi } from "../hooks/useApi";
-import { listarProyectos, obtenerAmbiguedades } from "../services/api";
-import TextoMarcado, { TONO_AMBIGUEDAD } from "../components/TextoMarcado";
-import { VIA } from "./Analisis";
+import { ambiguedadesDeProyecto } from "../services/backend";
+import ElegirProyecto, { useProyectoElegido } from "../components/ElegirProyecto";
+import { INFO_VIA, infoEstado } from "../constants/estados";
+import { TIPOS, tipo as infoTipo } from "../constants/agentes";
 
 /*
- * Ambigüedades: cada término ambiguo detectado, dónde aparece y qué lectura
- * se adoptó en cada requisito. Señala cuando el mismo término se resolvió
- * distinto en dos requisitos (posible inconsistencia del léxico) y permite
- * comparar dos requisitos lado a lado.
+ * Ambigüedades de un proyecto (GET /proyectos/{id}/ambiguedades, ADR 0015):
+ *   - cada término con ambigüedad, en qué requisitos aparece, cómo se resolvió
+ *     en cada uno y qué significado validó la persona;
+ *   - un término es inconsistente si quedó validado con significados distintos
+ *     en dos requisitos, o si su símbolo del LEL tiene nociones distintas;
+ *   - las estructuras de alcance y anáfora que detectaron los filtros;
+ *   - la vaguedad y los regionalismos, que se marcan pero no se debaten.
+ * La contradicción ENTRE requisitos es otro módulo (Comparaciones, exploratorio).
  */
-const norm = (s) => (s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+const TIPOS_DEBATIDOS = ["lexica", "alcance", "anaforica", "sintactica"];
+const ETIQUETA_FILTRO = { alcance: "Alcance", anafora: "Anáfora" };
 
 export default function Ambiguedades() {
-  const { datos: grupos, cargando } = useApi(obtenerAmbiguedades);
-  const { datos: proyectos } = useApi(listarProyectos);
+  const { proyectoId, proyecto, proyectos, elegir } = useProyectoElegido();
   const [params, setParams] = useSearchParams();
-  const proyecto = params.get("proyecto") ?? "";
   const tipo = params.get("tipo") ?? "";
-  const [comparar, setComparar] = useState([null, null]);
+  const soloInconsistentes = params.get("inconsistentes") === "1";
+  const { datos: a, error, cargando } = useApi(
+    () => (proyectoId ? ambiguedadesDeProyecto(proyectoId) : Promise.resolve(null)),
+    [proyectoId],
+  );
 
-  const set = (k, v) => {
-    const p = Object.fromEntries(params);
-    if (v) p[k] = v; else delete p[k];
-    setParams(p, { replace: true });
-  };
+  const set = (k, v) => setParams((prev) => {
+    const p = new URLSearchParams(prev);
+    if (v) p.set(k, v); else p.delete(k);
+    return p;
+  }, { replace: true });
 
-  const visibles = useMemo(() => {
-    if (!grupos) return [];
-    return grupos
-      .map((g) => ({ ...g, apariciones: g.apariciones.filter((a) => !proyecto || a.proyectoId === proyecto) }))
-      .filter((g) => g.apariciones.length && (!tipo || g.tipo === tipo))
-      .map((g) => ({ ...g, inconsistente: new Set(g.apariciones.map((a) => norm(a.adoptada)).filter(Boolean)).size > 1 }));
-  }, [grupos, proyecto, tipo]);
+  const visibles = useMemo(() => (a?.terminos ?? [])
+    .filter((g) => !tipo || g.tipos.includes(tipo))
+    .filter((g) => !soloInconsistentes || g.inconsistente), [a, tipo, soloInconsistentes]);
 
-  // requisito → (término → lectura adoptada)
-  const adopciones = useMemo(() => {
-    const m = new Map();
-    for (const g of visibles) for (const a of g.apariciones) {
-      if (!m.has(a.requisitoId)) m.set(a.requisitoId, new Map());
-      m.get(a.requisitoId).set(norm(g.termino), a.adoptada);
-    }
-    return m;
-  }, [visibles]);
-
-  const requisitos = useMemo(() => {
-    const m = new Map();
-    for (const g of visibles) for (const a of g.apariciones) m.set(a.requisitoId, a);
-    return [...m.values()].sort((a, b) => a.requisitoId.localeCompare(b.requisitoId));
-  }, [visibles]);
-
-  if (cargando) return <p className="text-sm text-[var(--bone-dim)]">Buscando ambigüedades…</p>;
-
-  const apariciones = visibles.reduce((a, g) => a + g.apariciones.length, 0);
-  const inconsistentes = visibles.filter((g) => g.inconsistente).length;
+  const apariciones = (a?.terminos ?? []).reduce((n, g) => n + g.apariciones.length, 0);
 
   return (
     <div className="space-y-8">
       <header className="space-y-3">
-        <p className="mono text-[10px] text-[var(--bone-faint)]">{visibles.length} términos · {apariciones} apariciones · {inconsistentes} resueltos de forma distinta</p>
+        <p className="mono text-[10px] text-[var(--bone-faint)]">
+          {a ? `${a.terminos.length} términos · ${apariciones} apariciones · ${a.totales.inconsistentes} inconsistentes` : "Ambigüedades del proyecto"}
+        </p>
         <h1>Ambigüedades.</h1>
         <p className="max-w-2xl text-sm text-[var(--bone-dim)]">
-          Cada término que se marcó como ambiguo, en qué requisitos aparece y qué lectura se adoptó. Si el mismo término se resolvió distinto en dos requisitos, se señala: es una posible contradicción del léxico.
+          Cada término que se trató como ambiguo, en qué requisitos aparece y cómo se resolvió en cada uno. Si el mismo término quedó validado con significados distintos, se señala como inconsistencia del vocabulario.
         </p>
-        <div className="mono flex flex-wrap items-center gap-4 text-[10px]">
-          <select value={proyecto} onChange={(e) => set("proyecto", e.target.value)} className="rounded-full border border-[var(--line)] bg-transparent px-3 py-1.5 text-[11px] normal-case tracking-normal outline-none">
-            <option value="" className="bg-[#16130f]">Todos los proyectos</option>
-            {(proyectos ?? []).map((p) => <option key={p.id} value={p.id} className="bg-[#16130f]">{p.nombre}</option>)}
-          </select>
-          {["", "mexicanismo", "vaguedad", "polisemia"].map((t) => (
-            <button key={t || "todos"} onClick={() => set("tipo", t)} className={`flex items-center gap-1.5 ${tipo === t ? "text-[var(--bone)]" : "text-[var(--bone-faint)] hover:text-[var(--bone)]"}`}>
-              {t && <span className="punto" style={{ background: TONO_AMBIGUEDAD[t] }} />}
-              {t || "todos"}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-3">
+          <ElegirProyecto proyectoId={proyectoId} proyectos={proyectos} onCambio={elegir} />
+          {proyectoId && <Link className="pill ghost" to={`/comparaciones?proyecto=${proyectoId}`}>Contradicciones entre requisitos →</Link>}
         </div>
       </header>
 
-      <Comparador requisitos={requisitos} adopciones={adopciones} seleccion={comparar} onSeleccion={setComparar} />
+      {error && <p className="text-sm text-[var(--danger)]">{error.message}</p>}
+      {cargando && !a && <p className="text-sm text-[var(--bone-dim)]">Buscando ambigüedades…</p>}
 
-      <ol className="space-y-4">
-        {visibles.map((g, gi) => (
-          <li key={g.termino} className="sube rounded-2xl border border-[var(--line)] bg-white/[0.02] p-5" style={{ "--i": gi }}>
-            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <span className="serif text-[30px] italic leading-none" style={{ color: TONO_AMBIGUEDAD[g.tipo] }}>«{g.termino}»</span>
-              <span className="mono text-[9.5px] text-[var(--bone-faint)]">{g.tipo} · {g.fuente}</span>
-              <span className="mono ml-auto text-[9.5px] text-[var(--bone-dim)]">{g.apariciones.length} {g.apariciones.length === 1 ? "requisito" : "requisitos"}</span>
+      {a && (
+        <>
+          <Totales a={a} tipo={tipo} onTipo={(t) => set("tipo", t === tipo ? "" : t)} />
+
+          <section className="space-y-4">
+            <div className="flex flex-wrap items-baseline gap-4">
+              <h2>Términos</h2>
+              <label className="mono flex cursor-pointer items-center gap-2 text-[10px] text-[var(--bone-dim)]">
+                <input type="checkbox" checked={soloInconsistentes} onChange={(e) => set("inconsistentes", e.target.checked ? "1" : "")} />
+                solo inconsistentes ({a.totales.inconsistentes})
+              </label>
+              {tipo && <button className="mono text-[10px] text-[var(--bone-faint)] hover:text-[var(--bone)]" onClick={() => set("tipo", "")}>quitar filtro «{infoTipo(tipo).etiqueta}» ×</button>}
             </div>
-            {g.inconsistente && (
-              <p className="mt-3 rounded-lg bg-[#ff5265]/10 px-3 py-2 text-sm text-[#ffb3bc]">
-                Se resolvió distinto según el requisito. Revisa si el dominio realmente usa dos sentidos o si conviene unificar la entrada del LEL.
-              </p>
-            )}
-            <table className="mt-3 w-full table-fixed text-left text-sm">
-              <thead className="mono text-[9px] text-[var(--bone-faint)]">
-                <tr>
-                  <th className="w-20 py-1.5 font-normal">Requisito</th>
-                  <th className="py-1.5 font-normal">Lectura A</th>
-                  <th className="py-1.5 font-normal">Lectura B</th>
-                  <th className="w-28 py-1.5 font-normal">Se resolvió</th>
-                  <th className="w-10 py-1.5" />
-                </tr>
-              </thead>
-              <tbody>
-                {g.apariciones.map((a) => {
-                  const via = VIA[a.via];
-                  const adoptadaA = a.adoptada && norm(a.adoptada) === norm(a.lecturas.A);
-                  const adoptadaB = a.adoptada && norm(a.adoptada) === norm(a.lecturas.B);
-                  return (
-                    <tr key={a.requisitoId} className="border-t border-[var(--line)] align-top">
-                      <td className="py-2">
-                        <Link to={`/requisitos/${a.requisitoId}`} className="mono text-[10px] hover:text-[var(--c1)]">{a.requisitoId}</Link>
-                        <p className="mt-0.5 truncate text-[10.5px] text-[var(--bone-faint)]" title={a.proyecto}>{a.proyecto}</p>
-                      </td>
-                      <td className={`py-2 pr-3 ${adoptadaA ? "text-[var(--bone)]" : "text-[var(--bone-faint)]"}`}>{adoptadaA && "✓ "}{a.lecturas.A ?? "—"}</td>
-                      <td className={`py-2 pr-3 ${adoptadaB ? "text-[var(--bone)]" : "text-[var(--bone-faint)]"}`}>{adoptadaB && "✓ "}{a.lecturas.B ?? "—"}</td>
-                      <td className="mono py-2 text-[9.5px] text-[var(--bone-dim)]">
-                        {via ? <span className="flex items-center gap-1.5"><span className="punto" style={{ background: via.tono }} />{via.texto}</span> : "en proceso"}
-                        {a.similitud != null && <span className="text-[var(--bone-faint)]">sim. {a.similitud.toFixed(2)}{a.rondas ? ` · ${a.rondas}R` : ""}</span>}
-                      </td>
-                      <td className="py-2 text-right">
-                        <button
-                          title="Comparar este requisito"
-                          className="mono text-[9px] text-[var(--bone-faint)] hover:text-[var(--c1)]"
-                          onClick={() => {
-                            setComparar(([x, y]) => (!x || x === a.requisitoId ? [a.requisitoId, y] : [x, a.requisitoId]));
-                            window.scrollTo({ top: 0, behavior: "smooth" });
-                          }}
-                        >
-                          ⇄
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </li>
-        ))}
-        {!visibles.length && <p className="text-sm text-[var(--bone-dim)]">No hay ambigüedades con este filtro.</p>}
-      </ol>
+            <ol className="space-y-4">
+              {visibles.map((g, i) => <Grupo key={g.clave} g={g} i={i} />)}
+              {!visibles.length && (
+                <p className="text-sm text-[var(--bone-dim)]">
+                  {a.terminos.length ? "Ningún término con este filtro." : `${proyecto?.nombre ?? "Este proyecto"} aún no tiene términos ambiguos analizados.`}
+                </p>
+              )}
+            </ol>
+          </section>
+
+          {a.estructuras.length > 0 && (
+            <section className="space-y-3">
+              <h2>Alcance y anáfora</h2>
+              <p className="max-w-2xl text-sm text-[var(--bone-dim)]">Estructuras que detectaron los filtros (spaCy, sin LLM) y que pasaron al Clasificador como términos a interpretar.</p>
+              <ul className="border-t border-[var(--line)]">
+                {a.estructuras.map((e, i) => (
+                  <li key={`${e.req_id}-${e.termino}-${i}`} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-[var(--line)] py-2.5 text-sm">
+                    <Link to={`/requisitos/${e.req_id}`} className="mono w-12 text-[10px] text-[var(--bone-faint)] hover:text-[var(--c1)]">{e.req_id}</Link>
+                    <span className={`rounded px-1.5 text-[11px] ${infoTipo(e.decision_filtro === "anafora" ? "anaforica" : "alcance").clase}`}>{ETIQUETA_FILTRO[e.decision_filtro] ?? e.decision_filtro}</span>
+                    <span className="italic">«{e.termino}»</span>
+                    <span className="min-w-0 flex-1 text-[var(--bone-dim)] [overflow-wrap:anywhere]">{e.detalle}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          <div className="grid gap-6 md:grid-cols-2">
+            <ListaMarcados titulo="Vaguedad" tipo="vaguedad" items={a.vaguedad} nota="Límite impreciso (catálogo de vaguedad). Se marca para la persona; no se debate." />
+            <ListaMarcados titulo="Regionalismos" tipo="regional" items={a.regionales} nota="Expresiones del español de trabajo en México (catálogo regional). Pasan al Clasificador." />
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
-/* Dos requisitos lado a lado: términos en común y si se resolvieron igual */
-function Comparador({ requisitos, adopciones, seleccion, onSeleccion }) {
-  const [a, b] = seleccion.map((id) => requisitos.find((r) => r.requisitoId === id) ?? null);
-  const terminos = (r) => new Map((r?.marcados ?? []).map((m) => [norm(m.texto), m.texto]));
-  const ta = terminos(a), tb = terminos(b);
-  const comunes = [...ta.keys()].filter((k) => tb.has(k));
-
+function Totales({ a, tipo, onTipo }) {
+  const totalVias = Object.values(a.totales.por_via).reduce((x, y) => x + y, 0);
   return (
-    <section className="rounded-2xl border border-[var(--line)] p-5">
-      <div className="flex flex-wrap items-center gap-3">
-        <p className="mono text-[10px] text-[var(--bone-dim)]">Comparar requisitos</p>
-        {[0, 1].map((i) => (
-          <select
-            key={i}
-            value={seleccion[i] ?? ""}
-            onChange={(e) => onSeleccion(i === 0 ? [e.target.value || null, seleccion[1]] : [seleccion[0], e.target.value || null])}
-            className="mono rounded-full border border-[var(--line)] bg-transparent px-3 py-1.5 text-[10px] outline-none"
-          >
-            <option value="" className="bg-[#16130f]">{i === 0 ? "Requisito A…" : "Requisito B…"}</option>
-            {requisitos.map((r) => <option key={r.requisitoId} value={r.requisitoId} className="bg-[#16130f]">{r.requisitoId} · {r.texto.slice(0, 48)}</option>)}
-          </select>
-        ))}
+    <section className="grid gap-4 md:grid-cols-2">
+      <div className="rounded-2xl border border-[var(--line)] p-4">
+        <p className="mono mb-3 text-[9.5px] text-[var(--bone-faint)]">Por tipo de ambigüedad</p>
+        <div className="flex flex-wrap gap-2">
+          {TIPOS_DEBATIDOS.map((t) => (
+            <button
+              key={t}
+              onClick={() => onTipo(t)}
+              title={TIPOS[t].descripcion}
+              className={`rounded-lg px-3 py-1.5 text-left ${TIPOS[t].clase} ${tipo === t ? "ring-2 ring-[var(--bone)]" : ""}`}
+            >
+              <span className="block font-mono text-[20px] leading-none">{a.totales.por_tipo[t] ?? 0}</span>
+              <span className="text-[11px]">{TIPOS[t].etiqueta}</span>
+            </button>
+          ))}
+        </div>
       </div>
-
-      {a && b ? (
-        <div className="mt-4 space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            {[a, b].map((r) => (
-              <div key={r.requisitoId} className="rounded-xl bg-white/[0.025] p-4">
-                <p className="mono text-[9.5px] text-[var(--bone-faint)]">{r.requisitoId} · {r.proyecto}</p>
-                <p className="serif mt-1 text-[21px] leading-snug">«<TextoMarcado texto={r.texto} marcados={r.marcados} />»</p>
-                <p className="mono mt-2 text-[9.5px] text-[var(--bone-dim)]">
-                  {VIA[r.via]?.texto ?? "en proceso"}{r.similitud != null ? ` · similitud ${r.similitud.toFixed(2)}` : ""}
-                </p>
-              </div>
+      <div className="rounded-2xl border border-[var(--line)] p-4">
+        <p className="mono mb-3 text-[9.5px] text-[var(--bone-faint)]">Cómo se resolvieron</p>
+        {totalVias > 0 && (
+          <div className="mb-3 flex h-2 overflow-hidden rounded-full bg-white/[0.04]">
+            {Object.entries(a.totales.por_via).filter(([, n]) => n).map(([v, n]) => (
+              <span key={v} style={{ width: `${(100 * n) / totalVias}%`, background: INFO_VIA[v]?.tono ?? "rgba(239,233,222,.25)" }} />
             ))}
           </div>
-          <div>
-            <p className="mono mb-2 text-[9.5px] text-[var(--bone-faint)]">Términos en común</p>
-            {comunes.length ? (
-              <ul className="space-y-1 text-sm">
-                {comunes.map((k) => {
-                  const la = adopciones.get(a.requisitoId)?.get(k);
-                  const lb = adopciones.get(b.requisitoId)?.get(k);
-                  const igual = la && lb && norm(la) === norm(lb);
-                  return (
-                    <li key={k} className="flex flex-wrap items-baseline gap-x-2">
-                      <span className="italic text-[#ffb347]">«{ta.get(k)}»</span>
-                      <span className="text-[var(--bone-dim)]">{a.requisitoId}: {la ?? "—"} · {b.requisitoId}: {lb ?? "—"}</span>
-                      {la && lb && (
-                        <span className={`mono text-[9.5px] ${igual ? "text-[#8ff5c0]" : "text-[#ffb3bc]"}`}>{igual ? "se resolvió igual" : "se resolvió distinto"}</span>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : (
-              <p className="text-sm text-[var(--bone-dim)]">No comparten términos ambiguos.</p>
-            )}
-          </div>
-          <p className="mono text-[9.5px] text-[var(--bone-faint)]">
-            Próximamente: similitud semántica entre requisitos (embeddings) para detectar duplicados y contradicciones.
-          </p>
-        </div>
-      ) : (
-        <p className="mt-3 text-sm text-[var(--bone-faint)]">Elige dos requisitos, o usa ⇄ en la lista de términos.</p>
+        )}
+        <p className="mono flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-[var(--bone-dim)]">
+          {Object.entries(a.totales.por_via).map(([v, n]) => (
+            <span key={v} className="flex items-center gap-1.5">
+              <span className="punto" style={{ background: INFO_VIA[v]?.tono ?? "rgba(239,233,222,.25)" }} />
+              {INFO_VIA[v]?.etiqueta ?? "sin resolver"} {n}
+            </span>
+          ))}
+        </p>
+      </div>
+    </section>
+  );
+}
+
+function Grupo({ g, i }) {
+  return (
+    <li className="sube rounded-2xl border border-[var(--line)] bg-white/[0.02] p-5" style={{ "--i": Math.min(i, 12) }}>
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="serif text-[30px] italic leading-none">«{g.termino}»</span>
+        {g.tipos.map((t) => <span key={t} className={`rounded px-1.5 text-[11px] ${infoTipo(t).clase}`}>{infoTipo(t).etiqueta}</span>)}
+        <span className="mono text-[9.5px] text-[var(--bone-faint)]">detectado por {g.origenes.join(", ")}</span>
+        <span className="mono ml-auto text-[9.5px] text-[var(--bone-dim)]">{g.apariciones.length} {g.apariciones.length === 1 ? "requisito" : "requisitos"}</span>
+      </div>
+
+      {g.inconsistente && g.detalle_inconsistencia && <Inconsistencia d={g.detalle_inconsistencia} />}
+
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full min-w-[560px] table-fixed text-left text-sm">
+          <thead className="mono text-[9px] text-[var(--bone-faint)]">
+            <tr>
+              <th className="w-20 py-1.5 font-normal">Requisito</th>
+              <th className="w-24 py-1.5 font-normal">Tipo</th>
+              <th className="w-40 py-1.5 font-normal">Se resolvió</th>
+              <th className="py-1.5 font-normal">Significado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {g.apariciones.map((ap) => {
+              const via = ap.via ? INFO_VIA[ap.via] : null;
+              return (
+                <tr key={`${ap.req_id}-${ap.tipo_ambiguedad}`} className="border-t border-[var(--line)] align-top">
+                  <td className="py-2">
+                    <Link to={`/requisitos/${ap.req_id}`} className="mono text-[10px] hover:text-[var(--c1)]">{ap.req_id}</Link>
+                    <p className="mono text-[9px] text-[var(--bone-faint)]">C{ap.ciclo}</p>
+                  </td>
+                  <td className="py-2 text-[12px] text-[var(--bone-dim)]">{ap.tipo_ambiguedad ? infoTipo(ap.tipo_ambiguedad).etiqueta : "unívoco"}</td>
+                  <td className="mono py-2 text-[9.5px] text-[var(--bone-dim)]">
+                    {via ? <span className="flex items-center gap-1.5"><span className="punto" style={{ background: via.tono }} />{via.etiqueta}</span> : <span>{infoEstado(ap.estado).etiqueta.toLowerCase()}</span>}
+                    {ap.similitud_inicial != null && <span className="block text-[var(--bone-faint)]">sim. {ap.similitud_inicial.toFixed(2)}{ap.rondas ? ` · ${ap.rondas}R` : ""}</span>}
+                  </td>
+                  <td className="py-2 pr-2">
+                    {ap.interpretacion_final ? (
+                      <span><span className="text-emerald-500">✓ </span>{ap.interpretacion_final}</span>
+                    ) : ap.propuesta ? (
+                      <span className="text-[var(--bone-dim)]">{ap.propuesta} <span className="mono text-[9px] text-[var(--bone-faint)]">propuesta · {infoEstado(ap.estado).etiqueta.toLowerCase()}</span></span>
+                    ) : (
+                      <span className="text-[var(--bone-faint)]">—</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </li>
+  );
+}
+
+function Inconsistencia({ d }) {
+  return (
+    <div className="mt-3 space-y-2 rounded-lg bg-[#ff5265]/10 px-3 py-2.5 text-sm text-[#ffb3bc]">
+      <p>{d.texto}</p>
+      {d.significados.length > 0 && (
+        <ul className="space-y-1">
+          {d.significados.map((s) => (
+            <li key={s.significado}>
+              «{s.significado}» <span className="mono text-[9.5px] opacity-80">en {s.req_ids.map((r, i) => <span key={r}>{i ? ", " : ""}<Link className="underline" to={`/requisitos/${r}`}>{r}</Link></span>)}</span>
+            </li>
+          ))}
+        </ul>
       )}
+      {d.lel.length > 0 && (
+        <ul className="space-y-1">
+          {d.lel.map((e) => (
+            <li key={`${e.req_id}-${e.simbolo}`}>
+              LEL «{e.simbolo}»: {e.nocion.join("; ")} <span className="mono text-[9.5px] opacity-80">(<Link className="underline" to={`/requisitos/${e.req_id}`}>{e.req_id}</Link>)</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="text-[12px] opacity-80">Revisa si el dominio usa de verdad dos sentidos o si conviene unificar la entrada del LEL.</p>
+    </div>
+  );
+}
+
+function ListaMarcados({ titulo, tipo, items, nota }) {
+  return (
+    <section className="space-y-2">
+      <h2>{titulo}</h2>
+      <p className="text-sm text-[var(--bone-dim)]">{nota}</p>
+      {items.length ? (
+        <ul className="flex flex-wrap gap-2">
+          {items.map((x) => (
+            <li key={x.termino} className={`rounded-lg px-2.5 py-1 text-sm ${infoTipo(tipo).clase}`}>
+              «{x.termino}»{" "}
+              <span className="mono text-[9.5px] opacity-80">{x.req_ids.map((r, i) => <span key={r}>{i ? ", " : ""}<Link className="hover:underline" to={`/requisitos/${r}`}>{r}</Link></span>)}</span>
+            </li>
+          ))}
+        </ul>
+      ) : <p className="mono text-[10px] text-[var(--bone-faint)]">ninguno</p>}
     </section>
   );
 }

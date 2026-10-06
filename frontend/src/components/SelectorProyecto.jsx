@@ -6,6 +6,9 @@ const CLAVE = "dudamel.proyecto";
 export const proyectoRecordado = () => {
   try { return localStorage.getItem(CLAVE); } catch { return null; }
 };
+export const recordarProyecto = (id) => {
+  try { localStorage.setItem(CLAVE, id); } catch { /* sin almacenamiento */ }
+};
 
 export default function SelectorProyecto({ valor, onCambio }) {
   const [proyectos, setProyectos] = useState([]);
@@ -13,7 +16,7 @@ export default function SelectorProyecto({ valor, onCambio }) {
   const [nombre, setNombre] = useState("");
 
   const elegir = (id) => {
-    try { localStorage.setItem(CLAVE, id); } catch { /* sin almacenamiento */ }
+    recordarProyecto(id);
     onCambio(id);
   };
 

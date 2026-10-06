@@ -12,6 +12,7 @@ import Flujo from "./pages/Flujo";
 import Proyectos from "./pages/Proyectos";
 import Proyecto from "./pages/Proyecto";
 import Ambiguedades from "./pages/Ambiguedades";
+import Comparaciones from "./pages/Comparaciones";
 import Cola from "./pages/Cola";
 import DetalleRequisito from "./pages/DetalleRequisito";
 import Validacion from "./pages/Validacion";
@@ -46,6 +47,7 @@ export default function App() {
           <Route path="/proyectos" element={<Proyectos />} />
           <Route path="/proyectos/:id" element={<Proyecto />} />
           <Route path="/ambiguedades" element={<Ambiguedades />} />
+          <Route path="/comparaciones" element={<Comparaciones />} />
           <Route path="/historial" element={<Cola />} />
           <Route path="/requisitos/:id" element={<DetalleRequisito />} />
           <Route path="/requisitos/:id/validacion" element={<Validacion />} />
