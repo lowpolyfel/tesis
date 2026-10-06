@@ -17,3 +17,5 @@ Una modificación de fondo crea una versión nueva (`_v2`) en lugar de editar la
 | `critico_arbitraje_v1` | Crítico | Elegir una interpretación al agotar las rondas |
 | `modelador_v1` | Modelador | Entrada del LEL desde la interpretación validada (solo ambigüedad léxica) |
 | `modelador_requisito_v1` | Modelador | Requisito reescrito sin ambigüedad y sus metas (modelo de metas KMoS-SSA) |
+| `comparador_v1` | Comparador (fuera del núcleo) | Relación entre dos requisitos con citas; módulo exploratorio (ADR 0012) |
+| `agente_unico_v1` | Línea base | Un solo agente que detecta, clasifica e interpreta, para la evaluación (ADR 0014) |

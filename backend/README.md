@@ -29,9 +29,23 @@ guardan en `data/resultados/` (JSON). `GET /salud` dice cuál se está usando.
 uvicorn app.api.main:app --reload     # desde backend/
 ```
 
-Abre <http://localhost:8000/sandbox>. Endpoints: `POST /procesar`,
-`GET /traza/{req_id}`, `GET /eventos/{req_id}` (SSE), `POST /validar/{req_id}`,
-`GET /lel`, `GET /trazas`, `GET /salud`; documentación en `/docs`.
+La interfaz principal es Dudamel: en otra terminal, `cd ..\frontend`,
+`npm install` y `npm run dev`, y abre <http://localhost:5173> (ver
+`frontend/README.md`). La sandbox mínima sigue en <http://localhost:8000/sandbox>
+y la documentación de la API en `/docs`.
+
+Endpoints principales (todo lo que llama a un LLM pasa por la cola de un solo
+trabajador, ADR 0008):
+
+| Grupo | Rutas |
+|---|---|
+| Proyectos | `GET/POST /proyectos`, `GET/PATCH /proyectos/{id}`, `GET /proyectos/{id}/resumen`, `GET/POST /proyectos/{id}/requisitos` |
+| Documentos | `POST /proyectos/{id}/documentos` (PDF o .txt), `GET /proyectos/{id}/documentos`, `GET /documentos/{id}`, `POST /requisitos/separar` |
+| Requisitos | `POST /procesar`, `GET /requisitos/{id}` (vista por término), `GET /traza/{id}`, `GET /eventos/{id}` (SSE), `POST /validar/{id}`, `GET /requisitos/{id}/artefactos`, `GET /trazas`, `GET /cola` |
+| Proyecto | `GET /proyectos/{id}/ambiguedades`, `/flujo`, `/metas`, `/big-picture`, `GET /lel?proyecto_id=` |
+| Exploratorio | `POST/GET /proyectos/{id}/comparaciones`, `GET /comparaciones/{id}` (ADR 0012) |
+| Experimentación | `GET /calibracion`, `GET /proyectos/{id}/calibracion`, `GET /corpus`, `GET /corpus/{nombre}`, `POST/GET /evaluaciones`, `GET /evaluaciones/{id}` |
+| Configuración | `GET /configuracion`, `GET /catalogos`, `GET /salud` |
 
 ## Pruebas
 
@@ -61,6 +75,12 @@ interpretaciones y similitudes, y guarda el reporte en `data/resultados/aceptaci
   reintento, prompts versionados.
 - `app/agents/`: los cuatro agentes; reglas R1/R2 del Crítico en código (ADR 0004).
 - `app/orchestration/`: grafo = máquina de estados, validación con `interrupt` (ADR 0005).
-- `app/db/`: Mongo con respaldo JSON (ADR 0006).
+- `app/db/`: Mongo con respaldo JSON, proyectos (ADR 0006, 0008).
+- `app/documentos/`: carga de PDF/.txt y separación en requisitos (ADR 0009).
+- `app/analisis/`: vista por término y análisis del proyecto (ADR 0015).
+- `app/artefactos/`: modelo de metas y Big Picture, sin LLM (ADR 0011).
+- `app/comparacion/`: comparación entre requisitos, **exploratoria** (ADR 0012).
+- `app/calibracion/`: sensibilidad del umbral y contraste con el ground truth (ADR 0013).
+- `app/evaluacion/`: corpus y evaluación contra un solo agente (ADR 0014).
 - `app/api/`: FastAPI y `static/sandbox.html`.
 - `tests/`: replican la estructura de `app/`.
