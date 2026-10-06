@@ -7,7 +7,6 @@ import Shell from "./components/layout/Shell";
 import Intro from "./pages/intro/Intro";
 import Inicio from "./pages/Inicio";
 import Analisis from "./pages/Analisis";
-import GenerarLel from "./pages/GenerarLel";
 import BigPicture from "./pages/BigPicture";
 import Flujo from "./pages/Flujo";
 import Proyectos from "./pages/Proyectos";
@@ -40,7 +39,6 @@ export default function App() {
         <Route element={<Shell modo="escena" />}>
           <Route path="/inicio" element={<Inicio />} />
           <Route path="/analisis" element={<Analisis />} />
-          <Route path="/lel/generar" element={<GenerarLel />} />
           <Route path="/big-picture" element={<BigPicture />} />
           <Route path="/flujo" element={<Flujo />} />
         </Route>
@@ -52,12 +50,14 @@ export default function App() {
           <Route path="/requisitos/:id" element={<DetalleRequisito />} />
           <Route path="/requisitos/:id/validacion" element={<Validacion />} />
           <Route path="/lel" element={<Lel />} />
-          <Route path="/catalogos" element={<Navigate to="/catalogos/mexicanismos" replace />} />
+          <Route path="/catalogos" element={<Navigate to="/catalogos/regionales" replace />} />
           <Route path="/catalogos/:tipo" element={<Catalogos />} />
           <Route path="/calibracion" element={<Calibracion />} />
           <Route path="/evaluacion" element={<Evaluacion />} />
         </Route>
         <Route path="/cola" element={<Navigate to="/historial" replace />} />
+        {/* El LEL lo genera el Modelador al aprobar en Validación; ya no hay paso manual */}
+        <Route path="/lel/generar" element={<Navigate to="/lel" replace />} />
         <Route path="/cargar" element={<Navigate to="/inicio" replace />} />
         <Route path="*" element={<Navigate to="/inicio" replace />} />
       </Routes>

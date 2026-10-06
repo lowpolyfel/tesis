@@ -30,6 +30,7 @@ export function useEnVivo(reqId, { coreografia = null, ritmoInicial = 1 } = {}) 
     coreografia?.reiniciar();
 
     const cola = [];
+    const recibidos = new Set();
     let vivo = true;
     let despertar = null;
     const avisar = () => { despertar?.(); despertar = null; };
@@ -55,7 +56,13 @@ export function useEnVivo(reqId, { coreografia = null, ritmoInicial = 1 } = {}) 
     })();
 
     const detener = seguirRequisito(reqId, {
-      onMensaje: (m) => { setMensajes((l) => (l.some((x) => x.secuencia === m.secuencia) ? l : [...l, m])); cola.push(m); avisar(); },
+      onMensaje: (m) => {
+        if (recibidos.has(m.secuencia)) return; // reconexión: el mismo mensaje no se anima dos veces
+        recibidos.add(m.secuencia);
+        setMensajes((l) => [...l, m]);
+        cola.push(m);
+        avisar();
+      },
       onEstado: (d) => { cola.push({ estado: d.estado }); avisar(); },
       onFin: (d) => { cola.push({ estado: d.estado, fin: true }); avisar(); },
       onError: (e) => setError(e),
