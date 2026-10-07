@@ -1,65 +1,66 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useSearchParams } from "react-router";
-import { useOrb, usePoseEsfera } from "../orb/useOrb";
-
-const ENLACES = [
-  { a: "/inicio", texto: "Analizar" },
-  { a: "/proyectos", texto: "Proyectos" },
-  { a: "/historial", texto: "Historial" },
-  { a: "/lel", texto: "Léxico" },
-];
-/* Vistas de un proyecto completo */
-const ANALISIS = [
-  { a: "/ambiguedades", texto: "Ambigüedades" },
-  { a: "/comparaciones", texto: "Comparaciones", nota: "exploratorio" },
-  { a: "/big-picture", texto: "Metas y Big Picture" },
-  { a: "/flujo", texto: "Flujo KMoS-SSA" },
-];
-/* Herramientas de experimentación */
-const AJUSTES = [
-  { a: "/catalogos", texto: "Catálogos" },
-  { a: "/calibracion", texto: "Calibración" },
-  { a: "/evaluacion", texto: "Evaluación" },
-];
-
-const TITULOS = [
-  [/^\/proyectos\/[^/]+/, "Proyecto"],
-  [/^\/proyectos/, "Proyectos"],
-  [/^\/ambiguedades/, "Ambigüedades"],
-  [/^\/comparaciones/, "Comparaciones"],
-  [/^\/big-picture/, "Metas y Big Picture"],
-  [/^\/historial/, "Historial"],
-  [/^\/requisitos\/[^/]+\/validacion/, "Validación"],
-  [/^\/requisitos\//, "Traza"],
-  [/^\/lel/, "Léxico"],
-  [/^\/catalogos/, "Catálogos"],
-  [/^\/calibracion/, "Calibración"],
-  [/^\/evaluacion/, "Evaluación"],
-];
-
-/*
- * En las herramientas la esfera es un emblema vivo arriba a la izquierda,
- * junto al título; el contenido usa todo el ancho que queda. En móvil va a la
- * derecha, justo debajo de la barra (que ahí ocupa dos renglones), para no
- * tapar el menú.
- */
-const poseHerramienta = () => {
-  const barra = document.querySelector("[data-barra]")?.getBoundingClientRect().bottom ?? 84;
-  return {
-    d: { x: -0.5 + 100 / innerWidth, y: -0.5 + 150 / innerHeight, s: 0.24 },
-    m: { x: 0.5 - 34 / innerWidth, y: -0.5 + (barra + 20) / innerHeight, s: 0.12 },
-  };
-};
+import { useOrb } from "../orb/useOrb";
+import { isMobile } from "../orb/poses";
+import { poseSeccion, seccion } from "../orb/secciones";
+import Orbita from "../orb/Orbita";
+import { proyectoRecordado } from "../proyectoRecordado";
+import { Volver } from "../ui";
 
 /*
  * Marco de la aplicación.
- *  - "escena": pantallas del flujo; la página coreografía la esfera a pantalla completa
- *  - "herramienta": historial, léxico, catálogos, calibración, evaluación, traza
+ *  - "escena": analizar y la escena en vivo; la página coreografía la esfera.
+ *  - "herramienta": todo lo demás. El contenido va en una columna al centro y la
+ *    esfera principal vive enorme en el margen de la sección; al cambiar de
+ *    sección cruza al otro lado. Tocarla (o «Menú») abre el menú de la esfera.
  * Con ?figura=1 la herramienta se muestra clara y a ancho fijo, para capturas.
  */
+
+/* La sección de la ruta: define el lado, la altura y el tono de la esfera */
+export function seccionDe(pathname, params) {
+  if (/^\/proyectos\/[^/]+\/analizar/.test(pathname)) return "analizar";
+  if (/^\/proyectos\/[^/]+/.test(pathname)) {
+    const vista = params.get("vista");
+    return ["especificacion", "lexico", "mapa"].includes(vista) ? vista : "requisitos";
+  }
+  if (pathname === "/proyectos") return "proyectos";
+  if (pathname === "/mas") return "mas";
+  if (/^\/requisitos\/[^/]+\/validacion/.test(pathname)) return "revision";
+  if (/^\/requisitos\//.test(pathname)) return "requisito";
+  return "avanzado";
+}
+
+/* El proyecto en el que está la persona: el de la ruta, el de ?proyecto= o el último abierto */
+function proyectoActual(pathname, params) {
+  const m = pathname.match(/^\/proyectos\/([^/]+)/);
+  return m?.[1] ?? params.get("proyecto") ?? proyectoRecordado();
+}
+
+function destinosDelMenu(pid) {
+  const base = [{ id: "proyectos", etiqueta: "Proyectos", a: "/proyectos", mood: "idle" }];
+  if (pid) {
+    base.push(
+      { id: "analizar", etiqueta: "Analizar", a: `/proyectos/${pid}/analizar`, mood: "listening" },
+      { id: "requisitos", etiqueta: "Requisitos", a: `/proyectos/${pid}`, mood: seccion("requisitos").mood },
+      { id: "especificacion", etiqueta: "Especificación", a: `/proyectos/${pid}?vista=especificacion`, mood: seccion("especificacion").mood },
+      { id: "lexico", etiqueta: "Léxico", a: `/proyectos/${pid}?vista=lexico`, mood: seccion("lexico").mood },
+      { id: "mapa", etiqueta: "Mapa", a: `/proyectos/${pid}?vista=mapa`, mood: seccion("mapa").mood },
+    );
+  }
+  base.push({ id: "mas", etiqueta: "Más", a: pid ? `/mas?proyecto=${pid}` : "/mas", mood: "sistema" });
+  return base;
+}
+
 export default function Shell({ modo }) {
   const [params] = useSearchParams();
+  const { pathname } = useLocation();
   const figura = params.get("figura") === "1";
+  const [menu, setMenu] = useState(false);
+  const abrirMenu = useCallback(() => setMenu(true), []);
+  const pid = proyectoActual(pathname, params);
+  const destinos = useMemo(() => destinosDelMenu(pid), [pid]);
+
+  useEffect(() => setMenu(false), [pathname]);
 
   if (figura) {
     return (
@@ -71,90 +72,69 @@ export default function Shell({ modo }) {
 
   return (
     <>
-      <BarraSuperior />
-      {modo === "escena" ? <Outlet /> : <Herramienta />}
+      <BarraSuperior pid={pid} onMenu={modo === "escena" ? null : abrirMenu} />
+      {modo === "escena" ? <Outlet /> : <Herramienta onMenu={abrirMenu} />}
+      {modo !== "escena" && <Orbita abierta={menu} onCerrar={() => setMenu(false)} destinos={destinos} />}
     </>
   );
 }
 
-/*
- * Con fondo: el contenido que se desplaza pasa por debajo sin mezclarse con los
- * enlaces. El borde inferior se desvanece para no cortar la escena con una franja.
- */
-function BarraSuperior() {
+/* Barra mínima: la marca, los proyectos, «Más» y el menú de la esfera */
+function BarraSuperior({ pid, onMenu }) {
+  const enlace = ({ isActive }) =>
+    `mono text-[10.5px] transition-colors ${isActive ? "text-[var(--bone)]" : "text-[var(--bone-faint)] hover:text-[var(--bone)]"}`;
   return (
-    <header data-barra className="no-print fixed inset-x-0 top-0 z-20 flex items-center justify-between gap-4 bg-[linear-gradient(to_bottom,var(--bg)_calc(100%-14px),transparent)] px-5 py-5 md:px-10 md:py-7">
-      <Link to="/inicio" className="mono flex items-center gap-2.5 text-[11px] text-[var(--bone)] opacity-85 hover:opacity-100">
+    <header data-barra className="no-print fixed inset-x-0 top-0 z-30 flex items-center justify-between gap-4 bg-[linear-gradient(to_bottom,var(--bg)_55%,transparent)] px-5 pt-5 pb-8 md:px-10 md:pt-6">
+      <Link to="/proyectos" className="mono flex items-center gap-2.5 text-[11px] text-[var(--bone)] opacity-90 hover:opacity-100">
         <span className="punto" style={{ background: "radial-gradient(circle at 35% 30%,#fffaf0,#d9cdb8)", boxShadow: "0 0 0 1.5px var(--c1),0 0 12px var(--glow)" }} />
         Dudamel
       </Link>
-      <nav className="flex flex-wrap justify-end gap-x-5 gap-y-1">
-        {ENLACES.map((e) => (
-          <NavLink key={e.a} to={e.a} end={e.a === "/lel"} className={claseEnlace}>
-            {e.texto}
-          </NavLink>
-        ))}
-        <Menu titulo="Análisis" enlaces={ANALISIS} />
-        <Menu titulo="Ajustes" enlaces={AJUSTES} />
+      <nav className="flex items-center gap-5 md:gap-7">
+        <NavLink to="/proyectos" end className={enlace}>Proyectos</NavLink>
+        <NavLink to={pid ? `/mas?proyecto=${pid}` : "/mas"} className={enlace}>Más</NavLink>
+        {onMenu && (
+          <button onClick={onMenu} className="mono flex items-center gap-2 rounded-full border border-[var(--line)] px-3 py-1.5 text-[10.5px] text-[var(--bone-dim)] hover:border-[var(--c1)] hover:text-[var(--bone)]" aria-haspopup="dialog">
+            <span className="punto" style={{ background: "var(--c1)", boxShadow: "0 0 10px var(--glow)" }} /> Menú
+          </button>
+        )}
       </nav>
     </header>
   );
 }
 
-const claseEnlace = ({ isActive }) =>
-  `mono text-[10px] transition-colors ${isActive ? "text-[var(--bone)] underline decoration-[var(--c1)] underline-offset-[6px]" : "text-[var(--bone-faint)] hover:text-[var(--bone)]"}`;
-
-/* Grupo de enlaces en un desplegable */
-function Menu({ titulo, enlaces }) {
-  const [abierto, setAbierto] = useState(false);
-  const ref = useRef(null);
+/*
+ * La columna de contenido y la esfera de la sección. La capa exterior no recibe
+ * el puntero: en los márgenes, el clic llega a la esfera (que abre el menú).
+ */
+function Herramienta({ onMenu }) {
   const { pathname } = useLocation();
-  const activo = enlaces.some((e) => pathname.startsWith(e.a));
-  useEffect(() => setAbierto(false), [pathname]);
-  useEffect(() => {
-    if (!abierto) return;
-    const fuera = (e) => { if (!ref.current?.contains(e.target)) setAbierto(false); };
-    document.addEventListener("pointerdown", fuera);
-    return () => document.removeEventListener("pointerdown", fuera);
-  }, [abierto]);
-  return (
-    <div ref={ref} className="relative">
-      <button onClick={() => setAbierto((x) => !x)} className={claseEnlace({ isActive: activo })}>{titulo} ▾</button>
-      {abierto && (
-        <div className="sube absolute top-7 right-0 flex min-w-44 flex-col gap-3 rounded-xl border border-[var(--line)] bg-[color-mix(in_oklab,var(--bg)_92%,transparent)] p-4 backdrop-blur-xl">
-          {enlaces.map((e) => (
-            <NavLink key={e.a} to={e.a} className={claseEnlace}>
-              {e.texto}{e.nota && <span className="ml-1.5 normal-case tracking-normal text-amber-200/70">({e.nota})</span>}
-            </NavLink>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Herramienta() {
-  const { pathname } = useLocation();
+  const [params] = useSearchParams();
   const orb = useOrb();
-  const titulo = TITULOS.find(([re]) => re.test(pathname))?.[1] ?? "";
-  const [pose, setPose] = useState(null);
-  useLayoutEffect(() => { // tras montar: la pose móvil mide la barra
-    const f = () => setPose(poseHerramienta());
-    f();
-    addEventListener("resize", f);
-    return () => removeEventListener("resize", f);
-  }, []);
-  usePoseEsfera(pose, [pose]);
+  const sec = seccionDe(pathname, params);
+  const pid = params.get("proyecto");
+  const ancha = sec === "avanzado"; // tablas anchas de las herramientas de experimentación
 
   useEffect(() => {
-    orb.update("core", { label: null, sub: null });
-    orb.poke(0.5);
-  }, [orb, titulo]);
-  useEffect(() => () => orb.update("core", { label: null, sub: null }), [orb]);
+    const colocar = () => orb.setPose(poseSeccion(sec, ancha ? 1080 : undefined));
+    colocar();
+    orb.setMood(seccion(sec).mood);
+    orb.update("core", { label: null, sub: null, active: false });
+    orb.poke(0.6);
+    addEventListener("resize", colocar);
+    return () => removeEventListener("resize", colocar);
+  }, [orb, sec, ancha]);
+
+  // la esfera se puede tocar mientras se está en una herramienta
+  useEffect(() => {
+    orb.update("core", { onClick: onMenu });
+    return () => orb.update("core", { onClick: undefined });
+  }, [orb, onMenu]);
 
   return (
-    <div className="tema-oscuro relative z-10 min-h-screen px-4 pt-28 pb-16 md:pr-10 md:pl-[190px]">
-      <div key={pathname} className="sube mx-auto max-w-5xl">
+    <div className="tema-oscuro pointer-events-none relative z-10 min-h-screen px-4 pt-24 pb-20 md:pt-28">
+      <div key={pathname} className={`aparece pointer-events-auto mx-auto ${ancha ? "max-w-[1080px]" : "max-w-[860px]"} ${isMobile() ? "pb-[36vh]" : ""}`}>
+        {/* las herramientas de «Más» regresan a «Más» */}
+        {sec === "avanzado" && <div className="mb-6"><Volver a={pid ? `/mas?proyecto=${pid}` : "/mas"}>Más</Volver></div>}
         <Outlet />
       </div>
     </div>

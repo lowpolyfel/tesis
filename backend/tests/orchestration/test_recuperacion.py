@@ -148,12 +148,12 @@ def test_la_entrada_del_lel_dice_que_hizo_la_persona(tmp_path, analizador):
     sin_cambios = {"interpretaciones": [I1, I2]}
     srv, _, repo = montar(tmp_path, analizador, {
         "extractor_v1": [EXTRACCION_SESION],
-        "clasificador_v2": [clasificacion(I1, I2)],
+        "clasificador_v3": [clasificacion(I1, I2)],
         "critico_v1": r3_todas(False),
         "clasificador_refinamiento_v1": [sin_cambios, sin_cambios],
-        "critico_arbitraje_v1": [{"interpretacion_elegida": "I1", "justificacion_por_regla": [
+        "critico_arbitraje_v2": [{"interpretacion_elegida": "I1", "justificacion_por_regla": [
             {"regla": r, "argumento": f"argumento {r}"} for r in ("R1", "R2", "R3")]}],
-        "modelador_v1": [MODELADO],
+        "modelador_v2": [MODELADO],
     })
     req = srv.procesar(SESION)
     # el arbitraje propuso I1; la persona elige I2

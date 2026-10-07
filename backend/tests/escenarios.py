@@ -34,17 +34,20 @@ MODELADO = {"entrada_lel": {"simbolo": "sesión", "tipo": "objeto", "nocion": ["
 
 def modelado_requisito(prompt):
     """Guion por omisión del Modelador por requisito: repite el requisito original y una meta."""
-    texto = prompt.usuario.split("«", 1)[1].split("»", 1)[0]
-    return {"requisito_reescrito": texto, "metas": [
+    texto = prompt.usuario.split("Requisito original:", 1)[1].split("«", 1)[1].split("»", 1)[0]
+    return {"requisito_reescrito": texto, "tipo_requisito": "funcional", "categoria": None, "supuestos": [], "metas": [
         {"id": "M1", "enunciado": "Cumplir el requisito", "tipo": "meta", "actor": None, "simbolos": [],
          "contribuye_a": None}]}
 
 
 def montar(tmp_path, analizador, guiones, checkpointer=None, **ajustes):
+    # Las pruebas del flujo con validación humana fijan `siempre`; las de la validación
+    # automática (ADR 0017) lo cambian con `validacion_humana=...`.
+    ajustes = {"validacion_humana": "siempre", **ajustes}
     settings = Settings(_env_file=None, similarity_threshold=0.75, max_debate_rounds=2,
                         resultados_dir=str(tmp_path / "resultados"), checkpoint_path=str(tmp_path / "cp.sqlite"),
                         **ajustes)
-    guiones = {"modelador_requisito_v1": modelado_requisito, **guiones}
+    guiones = {"modelador_requisito_v2": modelado_requisito, **guiones}
     llm = LLMFalso(guiones)
     repo = RepositorioJson(settings.ruta(settings.resultados_dir))
     deps = armar(settings, repo, analizador, extractor=llm, clasificador=llm, critico=llm, modelador=llm,
@@ -55,6 +58,6 @@ def montar(tmp_path, analizador, guiones, checkpointer=None, **ajustes):
 def guiones_sesion_cercana():
     return {
         "extractor_v1": [EXTRACCION_SESION],
-        "clasificador_v2": [clasificacion(I1, interp("I2", "periodo de uso", P1_CERCANA))],
-        "modelador_v1": [MODELADO],
+        "clasificador_v3": [clasificacion(I1, interp("I2", "periodo de uso", P1_CERCANA))],
+        "modelador_v2": [MODELADO],
     }

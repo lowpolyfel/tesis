@@ -16,16 +16,22 @@ router = APIRouter(tags=["proyectos"])
 ServicioDep = Annotated[Servicio, Depends(obtener_servicio)]
 
 
+CONTEXTO_MAX = 4000  # caracteres: cabe en el prompt de cada agente junto con el requisito y el LEL
+
+
 class EntradaProyecto(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     nombre: str = Field(min_length=1, max_length=120)
     descripcion: str | None = Field(None, max_length=2000)
+    contexto: str | None = Field(None, max_length=CONTEXTO_MAX)
 
 
 class CambiosProyecto(BaseModel):
+    """Solo cambia lo que viene; `contexto: ""` lo borra."""
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     nombre: str | None = Field(None, min_length=1, max_length=120)
     descripcion: str | None = Field(None, max_length=2000)
+    contexto: str | None = Field(None, max_length=CONTEXTO_MAX)
 
 
 class RequisitoNuevo(BaseModel):
@@ -56,7 +62,7 @@ def listar(srv: ServicioDep) -> list[Proyecto]:
 
 @router.post("/proyectos", status_code=201, response_model=Proyecto)
 def crear(entrada: EntradaProyecto, srv: ServicioDep) -> Proyecto:
-    return srv.proyectos.crear(entrada.nombre, entrada.descripcion)
+    return srv.proyectos.crear(entrada.nombre, entrada.descripcion, contexto=entrada.contexto or None)
 
 
 @router.get("/proyectos/{proyecto_id}", response_model=Proyecto)

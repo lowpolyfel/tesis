@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends
 from app.artefactos import (
     artefactos_requisito,
     big_picture_proyecto,
+    especificacion_proyecto,
     formas,
     metas_proyecto,
 )
@@ -32,20 +33,33 @@ def _insumos(proyecto_id: str, srv: Servicio) -> tuple[list[dict], list, list[di
     return repo.listar_docs(COLECCION_FORMALIZADOS, proyecto_id=proyecto_id), repo.listar_lel(proyecto_id), trazas
 
 
+def _seleccion(req_ids: str | None) -> set[str] | None:
+    """`?req_ids=R01,R03`: solo esos requisitos (ADR 0017); vacío o ausente, todos."""
+    ids = {r.strip() for r in (req_ids or "").split(",") if r.strip()}
+    return ids or None
+
+
 @router.get("/proyectos/{proyecto_id}/metas", response_model=formas.MetasProyecto)
-def metas(p: ProyectoDep, srv: ServicioDep) -> dict:
-    """Metas de todos los requisitos formalizados con id global, actores normalizados
+def metas(p: ProyectoDep, srv: ServicioDep, req_ids: str | None = None) -> dict:
+    """Metas de los requisitos formalizados con id global, actores normalizados
     (más los sujetos del LEL), conteo por tipo y expresiones vagas candidatas a metas blandas."""
     formalizados, lel, trazas = _insumos(p.proyecto_id, srv)
-    return metas_proyecto(formalizados, lel, trazas, srv.deps.analizador)
+    return metas_proyecto(formalizados, lel, trazas, srv.deps.analizador, _seleccion(req_ids))
 
 
 @router.get("/proyectos/{proyecto_id}/big-picture", response_model=formas.BigPicture)
-def big_picture(p: ProyectoDep, srv: ServicioDep) -> dict:
+def big_picture(p: ProyectoDep, srv: ServicioDep, req_ids: str | None = None) -> dict:
     """Grafo de conocimiento (nodos y aristas), panorama para la interfaz y su
-    exportación a Mermaid y PlantUML."""
+    exportación a Mermaid y PlantUML. Con `req_ids`, el de esos requisitos."""
     formalizados, lel, trazas = _insumos(p.proyecto_id, srv)
-    return big_picture_proyecto(formalizados, lel, trazas, srv.deps.analizador)
+    return big_picture_proyecto(formalizados, lel, trazas, srv.deps.analizador, _seleccion(req_ids))
+
+
+@router.get("/proyectos/{proyecto_id}/especificacion", response_model=formas.Especificacion)
+def especificacion(p: ProyectoDep, srv: ServicioDep, req_ids: str | None = None) -> dict:
+    """Requisitos funcionales y no funcionales reescritos, con sus supuestos, y el glosario (LEL)."""
+    formalizados, lel, trazas = _insumos(p.proyecto_id, srv)
+    return especificacion_proyecto(formalizados, lel, trazas, _seleccion(req_ids))
 
 
 @router.get("/requisitos/{req_id}/artefactos", response_model=formas.ArtefactosRequisito)

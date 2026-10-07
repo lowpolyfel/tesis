@@ -23,9 +23,11 @@ class Proyectos:
         self.repo.guardar_doc(COLECCION, PROYECTO_GENERAL, p.model_dump(mode="json"))
         return p
 
-    def crear(self, nombre: str, descripcion: str | None = None, tipo: str = "normal") -> Proyecto:
+    def crear(self, nombre: str, descripcion: str | None = None, tipo: str = "normal",
+              contexto: str | None = None) -> Proyecto:
         datos = self.repo.crear_doc(COLECCION, "P", lambda pid: Proyecto(
-            proyecto_id=pid, nombre=nombre, descripcion=descripcion, tipo=tipo).model_dump(mode="json"))
+            proyecto_id=pid, nombre=nombre, descripcion=descripcion, tipo=tipo,
+            contexto=contexto).model_dump(mode="json"))
         return Proyecto.model_validate(datos)
 
     def obtener(self, proyecto_id: str) -> Proyecto | None:

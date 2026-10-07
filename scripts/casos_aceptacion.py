@@ -131,7 +131,8 @@ def imprimir(clave: str, texto: str, esperado: str, obs: dict, ok: bool, detalle
 
 
 def main() -> None:
-    settings = get_settings()
+    # los casos se observan hasta la validación humana: aquí siempre se pausa (ADR 0017)
+    settings = get_settings().model_copy(update={"validacion_humana": "siempre"})
     verificar_ollama(settings)
     deps = crear_dependencias(settings)
     servicio = Servicio(deps)

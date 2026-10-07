@@ -99,14 +99,14 @@ def montar_dos_terminos(tmp_path, analizador, critico=None):
     sin_cambios = {"interpretaciones": [T1, T2]}
     srv, _, repo = montar(tmp_path, analizador, {
         "extractor_v1": [extraccion(("sesión", "objeto"), ("turno", "objeto"))],
-        "clasificador_v2": [{"resultados": [
+        "clasificador_v3": [{"resultados": [
             {"termino": "sesión", "tipo_ambiguedad": "lexica", "interpretaciones": [I1, I2]},
             {"termino": "turno", "tipo_ambiguedad": "lexica", "interpretaciones": [T1, T2]}]}],
         "critico_v1": critico or r3_todas(False),
         "clasificador_refinamiento_v1": [
             {"interpretaciones": [I1], "retiradas": [{"interpretacion_id": "I2", "motivo": "agrega red"}]},
             sin_cambios, sin_cambios],
-        "critico_arbitraje_v1": [{"interpretacion_elegida": "I1", "justificacion_por_regla": JUSTIFICACION}]})
+        "critico_arbitraje_v2": [{"interpretacion_elegida": "I1", "justificacion_por_regla": JUSTIFICACION}]})
     srv.deps.embeddings = EmbeddingsFalsos({**VECTORES, T1["parafrasis_del_requisito"]: [1.0, 0.0],
                                             T2["parafrasis_del_requisito"]: [0.0, 1.0]})
     return srv, repo, srv.procesar(TURNO)
@@ -118,11 +118,11 @@ def montar_directo_y_debate(tmp_path, analizador, critico):
     sin_cambios = {"interpretaciones": [T1, T2]}
     srv, _, _ = montar(tmp_path, analizador, {
         "extractor_v1": [extraccion(("sesión", "objeto"), ("turno", "objeto"))],
-        "clasificador_v2": [{"resultados": [
+        "clasificador_v3": [{"resultados": [
             {"termino": "sesión", "tipo_ambiguedad": "lexica", "interpretaciones": [I1, I2_CERCANA]},
             {"termino": "turno", "tipo_ambiguedad": "lexica", "interpretaciones": [T1, T2]}]}],
         "critico_v1": critico, "clasificador_refinamiento_v1": [sin_cambios, sin_cambios],
-        "critico_arbitraje_v1": [{"interpretacion_elegida": "I1", "justificacion_por_regla": JUSTIFICACION}]})
+        "critico_arbitraje_v2": [{"interpretacion_elegida": "I1", "justificacion_por_regla": JUSTIFICACION}]})
     srv.deps.embeddings = EmbeddingsFalsos({**VECTORES, T1["parafrasis_del_requisito"]: [1.0, 0.0],
                                             T2["parafrasis_del_requisito"]: [0.0, 1.0]})
     return srv
@@ -146,7 +146,7 @@ def montar_proyecto(tmp_path, analizador):
             CUENTA: extraccion(("administrador", "sujeto"), ("usuario", "sujeto")),
             IMPRIMIR: ["no es json", "{roto"],
         }),
-        "clasificador_v2": segun_texto({
+        "clasificador_v3": segun_texto({
             SESION: clasificacion(I1, I2_CERCANA),
             CERRAR: {"resultados": univocos("sistema", "cerrar") + [
                 {"termino": "sesión", "tipo_ambiguedad": "lexica", "interpretaciones": [C1, C2]}]},
@@ -163,9 +163,9 @@ def montar_proyecto(tmp_path, analizador):
             CERRAR: [{"interpretaciones": [C1], "retiradas": [{"interpretacion_id": "I2", "motivo": "agrega red"}]}],
             JALAR: [sin_cambios, sin_cambios],
         }),
-        "critico_arbitraje_v1": segun_texto({JALAR: [{"interpretacion_elegida": "I2",
+        "critico_arbitraje_v2": segun_texto({JALAR: [{"interpretacion_elegida": "I2",
                                                       "justificacion_por_regla": JUSTIFICACION}]}),
-        "modelador_v1": segun_texto({SESION: MODELADO, CERRAR: NOCION_CONEXION}),
+        "modelador_v2": segun_texto({SESION: MODELADO, CERRAR: NOCION_CONEXION}),
     }
     srv, _, repo = montar(tmp_path, analizador, guiones)
     srv.deps.embeddings = EmbeddingsFalsos(VECTORES_PROYECTO)

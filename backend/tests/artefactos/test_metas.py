@@ -239,7 +239,7 @@ def test_contribucion_que_cierra_un_ciclo_se_omite():
     from app.models.contratos import SalidaModeladorRequisito
 
     ciclo = [meta("M1", "Registrar a", contribuye_a="M2"), meta("M2", "Guardar b", "tarea", contribuye_a="M1")]
-    SalidaModeladorRequisito.model_validate({"requisito_reescrito": "x", "metas": ciclo})
+    SalidaModeladorRequisito.model_validate({"requisito_reescrito": "x", "tipo_requisito": "funcional", "metas": ciclo})
     triangulo = [meta("M1", "Registrar a", contribuye_a="M3"), meta("M2", "Guardar b", contribuye_a="M1"),
                  meta("M3", "Leer c", contribuye_a="M2"), meta("M4", "Enviar d", contribuye_a="M2")]
     m = metas_proyecto([formalizado("R01", "x", ciclo), formalizado("R02", "x", triangulo)], [])

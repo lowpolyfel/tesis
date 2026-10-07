@@ -333,6 +333,8 @@ pendiente_validacion -> validado | rechazado -> formalizado
 | Stack Node vs Python | Recomendado Node. Falta confirmar con la asesora |
 | Criterios del Crítico | Deben reescribirse como reglas verificables |
 | Umbral 0.75 | Provisional. Se calibra en Fase 3 |
+| Validación humana | Solo cuando los agentes no llegan a consenso (arbitraje); lo demás se aprueba solo y queda corregible. Configurable con `VALIDACION_HUMANA` (ADR 0017) |
+| Contexto del proyecto | Cada proyecto tiene un contexto general que reciben los agentes; el Modelador concreta lo vago con él y anota sus supuestos (ADR 0017) |
 | Referencia de Alotaibi | No verificable. Buscar en el registro PRISMA o retirarla |
 | Significado de KMoS-SSA | El artículo de 2024 dice *"Knowledge Management of Strategic options through Soft Systemic Analysis"*; el Capítulo 3 dice *"on a Strategy options"*. Conviene alinear |
 | Larbi y Akli | Se citan por nombre en la Justificación pero su párrafo de presentación ya no está en Antecedentes |

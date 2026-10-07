@@ -87,7 +87,7 @@ def retirar_las_demas(prompt) -> dict:
 def guiones() -> dict:
     return {
         "extractor_v1": lambda p: EXTRACCION[texto_de(p)],
-        "clasificador_v2": lambda p: CLASIFICACION[texto_de(p)],
+        "clasificador_v3": lambda p: CLASIFICACION[texto_de(p)],
         "critico_v1": r3_todas(False),
         "clasificador_refinamiento_v1": retirar_las_demas,
         "agente_unico_v1": lambda p: LINEA_BASE[texto_de(p)],

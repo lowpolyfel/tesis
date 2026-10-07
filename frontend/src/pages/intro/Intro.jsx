@@ -47,7 +47,7 @@ export default function Intro() {
   const enter = useCallback(() => {
     pose("welcome");
     setLeaving(true);
-    exitTimer.current = setTimeout(() => navigate("/inicio"), EXIT_MS + 200);
+    exitTimer.current = setTimeout(() => navigate("/proyectos"), EXIT_MS + 200);
   }, [navigate, pose]);
 
   useEffect(() => {

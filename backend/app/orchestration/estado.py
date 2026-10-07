@@ -36,6 +36,8 @@ class EstadoGrafo(TypedDict, total=False):
     req_id: str
     proyecto_id: str
     texto: str
+    contexto: str | None  # contexto general del proyecto al cargar el requisito (ADR 0017)
+    evaluacion: bool  # proyecto de evaluación: siempre se detiene antes de validar (ADR 0014)
     estado: str  # Estado
     ronda: int
     lel: list[dict]  # EntradaLEL vigente al cargar el requisito (no cambia durante el proceso)

@@ -51,12 +51,15 @@ export function resumenMensaje(m) {
     case "solicitud_validacion":
       return `${plural(p.terminos?.length ?? 0, "término", "términos")} por validar${p.vaguedad?.length ? ` · vaguedad: ${p.vaguedad.join(", ")}` : ""}`;
     case "validacion": {
+      if (p.automatica) return `aprobada por el sistema (${String(p.motivo ?? "").replaceAll("_", " ")})`;
       const cambios = (p.terminos ?? []).filter((t) => t.cambio && t.cambio !== "ninguno");
       return `${p.decision === "aprobar" ? "aprobó" : "rechazó"}${cambios.length ? ` · ${cambios.map((t) => `«${t.termino}» ${t.cambio}`).join(", ")}` : ""}${p.comentario ? ` · «${p.comentario}»` : ""}`;
     }
+    case "edicion":
+      return `corrigió ${p.objeto === "lel" ? `la entrada del LEL de «${p.termino}»` : "el requisito formalizado"}: ${Object.keys(p.despues ?? {}).join(", ")}`;
     case "formalizacion":
       if (p.alcance === "termino") return `LEL: ${p.entrada_lel?.simbolo ?? p.termino} (${p.entrada_lel?.tipo ?? "—"})`;
-      return `requisito reescrito · ${plural(p.entradas_lel?.length ?? 0, "entrada", "entradas")} del LEL · ${plural(p.metas?.length ?? 0, "meta", "metas")}`;
+      return `requisito reescrito${p.tipo_requisito ? ` (${p.tipo_requisito.replace("_", " ")})` : ""} · ${plural(p.entradas_lel?.length ?? 0, "entrada", "entradas")} del LEL · ${plural(p.metas?.length ?? 0, "meta", "metas")}${p.supuestos?.length ? ` · ${plural(p.supuestos.length, "supuesto", "supuestos")}` : ""}`;
     case "error":
       return `${p.excepcion ?? "error"}${p.nodo ? ` en ${p.nodo}` : ""}: ${p.mensaje ?? ""}`;
     default:

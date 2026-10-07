@@ -21,7 +21,10 @@ export const obtenerCola = () => get("/cola");
 
 /* ======================= Proyectos ======================= */
 export const listarProyectos = () => get("/proyectos");
-export const crearProyecto = ({ nombre, descripcion }) => post("/proyectos", { nombre, descripcion: descripcion || null });
+export const crearProyecto = ({ nombre, descripcion, contexto }) =>
+  post("/proyectos", { nombre, descripcion: descripcion || null, contexto: contexto || null });
+/** Límite del contexto general del proyecto (CONTEXTO_MAX en app/api/routes/proyectos.py) */
+export const CONTEXTO_MAX = 4000;
 export const obtenerProyecto = (proyectoId) => get(`/proyectos/${id(proyectoId)}`);
 export const editarProyecto = (proyectoId, cambios) => patch(`/proyectos/${id(proyectoId)}`, cambios);
 export const resumenProyecto = (proyectoId) => get(`/proyectos/${id(proyectoId)}/resumen`);
@@ -64,11 +67,22 @@ export const listarTrazas = (proyectoId) => get("/trazas", { proyecto_id: proyec
 export const validarRequisito = (reqId, { decision, interpretacionesEditadas = {}, comentario = null }) =>
   post(`/validar/${id(reqId)}`, { decision, interpretaciones_editadas: interpretacionesEditadas, comentario: comentario || null });
 export const artefactosDeRequisito = (reqId) => get(`/requisitos/${id(reqId)}/artefactos`);
+/**
+ * Corregir un resultado ya formalizado (ADR 0017); cada corrección queda en la traza.
+ * cambios: { requisito_reescrito?, tipo_requisito?, categoria?, supuestos? }
+ */
+export const corregirFormalizacion = (reqId, cambios) => patch(`/requisitos/${id(reqId)}/formalizacion`, cambios);
+/** cambios: { simbolo?, tipo?, nocion?, impacto? } de la entrada del LEL de `termino` */
+export const corregirLel = (reqId, termino, cambios) => patch(`/requisitos/${id(reqId)}/lel/${id(termino)}`, cambios);
 
 /* ======================= LEL y artefactos de proyecto ======================= */
 export const obtenerLel = (proyectoId) => get("/lel", { proyecto_id: proyectoId });
-export const metasDeProyecto = (proyectoId) => get(`/proyectos/${id(proyectoId)}/metas`);
-export const bigPictureDeProyecto = (proyectoId) => get(`/proyectos/${id(proyectoId)}/big-picture`);
+/* `reqIds`: solo esos requisitos (lista); vacío o ausente, todos los formalizados */
+const seleccion = (reqIds) => ({ req_ids: reqIds?.length ? reqIds.join(",") : undefined });
+export const metasDeProyecto = (proyectoId, reqIds) => get(`/proyectos/${id(proyectoId)}/metas`, seleccion(reqIds));
+export const bigPictureDeProyecto = (proyectoId, reqIds) => get(`/proyectos/${id(proyectoId)}/big-picture`, seleccion(reqIds));
+/** Requisitos funcionales y no funcionales reescritos, con supuestos, y el glosario */
+export const especificacionDeProyecto = (proyectoId, reqIds) => get(`/proyectos/${id(proyectoId)}/especificacion`, seleccion(reqIds));
 
 /* ======================= Análisis de proyecto ======================= */
 export const ambiguedadesDeProyecto = (proyectoId) => get(`/proyectos/${id(proyectoId)}/ambiguedades`);

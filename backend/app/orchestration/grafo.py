@@ -8,10 +8,16 @@ decisiones del umbral y de las rondas. El único nodo que no es un estado es
     cargado → extraido → interpretado → aceptado_directo ─────────────┐
                                       └→ en_debate ⟲ → consenso ──────┤
                                                    └→ arbitrado ──────┤
-                                                 pendiente_validacion ┘
-                                                          ↓ humano (interrupt)
-                                          validado → formalizado | rechazado
+                            ┌── ¿hace falta una persona? (ADR 0017) ──┘
+                            │ sí                                  no │
+                 pendiente_validacion → humano (interrupt)   validacion_automatica
+                                  ↓                                  ↓
+                     validado | rechazado            validado → formalizado
     (cualquier nodo con fallo → error)
+
+`validacion_automatica` tampoco es un estado: aprueba la propuesta de los agentes
+sin cambios y lo registra en la traza como una validación del sistema. Una
+persona sigue pudiendo corregir el resultado formalizado (ADR 0017).
 """
 from __future__ import annotations
 
@@ -24,6 +30,7 @@ from langgraph.errors import GraphBubbleUp
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
+from app.db.proyectos import Proyectos
 from app.divergence import evaluar_divergencia
 from app.llm import FalloEstructurado, Respuesta
 from app.models import (
@@ -42,6 +49,7 @@ from app.models import (
     TerminoFiltrado,
     TipoMensaje,
     Validacion,
+    ValidacionHumana,
     Via,
 )
 from app.nlp import normalizar
@@ -134,11 +142,18 @@ def construir_grafo(deps: Dependencias, checkpointer):
 
     @nodo
     def cargado(st: EstadoGrafo) -> dict:
-        # La traza ya existe en `cargado`; aquí se fija el LEL del proyecto contra el que se procesa.
+        # La traza ya existe en `cargado`; aquí se fijan el LEL y el contexto del proyecto contra
+        # los que se procesa. El contexto es el que se copió en la traza al cargar el requisito.
         proyecto_id = st.get("proyecto_id") or PROYECTO_GENERAL
         lel = [EntradaLEL.model_validate(e.model_dump(include=set(EntradaLEL.model_fields))).model_dump(mode="json")
                for e in repo.listar_lel(proyecto_id)]
+        proyecto = Proyectos(repo).obtener(proyecto_id)
+        traza = repo.obtener_traza(st["req_id"])
+        config = traza.config if traza else {}
+        contexto = config["contexto_proyecto"] if "contexto_proyecto" in config else (proyecto.contexto if proyecto else None)
         return {"estado": Estado.CARGADO.value, "proyecto_id": proyecto_id, "ronda": 0, "lel": lel,
+                "contexto": (contexto or "").strip() or None,
+                "evaluacion": bool(proyecto and proyecto.tipo == "evaluacion"),
                 "candidatos": {}, "fallo": None}
 
     @nodo
@@ -173,7 +188,7 @@ def construir_grafo(deps: Dependencias, checkpointer):
         if candidatos:
             entrada = [TerminoCandidato(termino=c["termino"], categoria_tentativa=c["categoria_tentativa"],
                                         origen=c["origen"], detalle=c.get("detalle")) for c in candidatos.values()]
-            r = deps.clasificador.clasificar(texto, entrada, lel_de(st))
+            r = deps.clasificador.clasificar(texto, entrada, lel_de(st), st.get("contexto"))
             emitir(st, emisor=Nodo.CLASIFICADOR, receptor=Nodo.DIVERGENCIA, tipo=TipoMensaje.INTERPRETACIONES,
                    payload={"resultados": _dump(r.valor.resultados)}, respuesta=r)
             por_termino = {normalizar(x.termino): x for x in r.valor.resultados}
@@ -277,7 +292,8 @@ def construir_grafo(deps: Dependencias, checkpointer):
             if c.get("decision") != Estado.EN_DEBATE.value:
                 continue
             historial = [RondaDebate.model_validate(h) for h in c["historial"]]
-            a = deps.critico.arbitrar(texto, c["termino"], _interps(c["interpretaciones"]), lel, historial)
+            a = deps.critico.arbitrar(texto, c["termino"], _interps(c["interpretaciones"]), lel, historial,
+                                      st.get("contexto"))
             c["decision"], c["via"] = Estado.ARBITRADO.value, Via.ARBITRAJE.value
             c["propuesta"] = a.valor.interpretacion_elegida
             c["justificacion"] = _dump(a.valor.justificacion_por_regla)
@@ -319,6 +335,21 @@ def construir_grafo(deps: Dependencias, checkpointer):
         return {"validacion": v.model_dump(mode="json"), "candidatos": candidatos}
 
     @nodo
+    def validacion_automatica(st: EstadoGrafo) -> dict:
+        """Aprueba la propuesta de cada término sin cambios cuando no hace falta una persona."""
+        candidatos = {k: dict(c) for k, c in st["candidatos"].items()}
+        detalle = []
+        for termino, c in con_interpretaciones(candidatos).items():
+            final = interpretacion_por_id(c, c["propuesta"])
+            c["final"], c["cambio"] = final, "ninguno"
+            detalle.append({"termino": termino, "propuesta": c["propuesta"], "final": final, "cambio": "ninguno"})
+        emitir(st, emisor=Nodo.SISTEMA, receptor=Nodo.MODELADOR, tipo=TipoMensaje.VALIDACION,
+               payload={"decision": "aprobar", "comentario": None, "terminos": detalle, "automatica": True,
+                        "motivo": motivo_automatica(st)})
+        return {"validacion": {"decision": "aprobar", "interpretaciones_editadas": {}, "comentario": None,
+                               "automatica": True}, "candidatos": candidatos}
+
+    @nodo
     def validado(st: EstadoGrafo) -> dict:
         return entrar(st, Estado.VALIDADO)
 
@@ -333,18 +364,19 @@ def construir_grafo(deps: Dependencias, checkpointer):
         - alcance, anafórica, sintáctica → se resuelven en el requisito reescrito;
         - el requisito completo → reescrito y sus metas (modelo de metas).
         Los unívocos no entran al LEL."""
-        texto, req_id = st["texto"], st["req_id"]
+        texto, req_id, contexto = st["texto"], st["req_id"], st.get("contexto")
         proyecto_id = st.get("proyecto_id") or PROYECTO_GENERAL
         resueltos = con_interpretaciones(st["candidatos"])
         univocos = [c["termino"] for c in st["candidatos"].values() if c.get("univoco")]
         vaguedad = [t["termino"] for t in st.get("terminos", []) if t["decision_filtro"] == DecisionFiltro.VAGUEDAD.value]
+        regionales = [t["termino"] for t in st.get("terminos", []) if t["decision_filtro"] == DecisionFiltro.REGIONAL.value]
 
         hechas = []
         for termino, c in resueltos.items():
             if not va_al_lel(c):
                 continue
             interp = Interpretacion.model_validate(c["final"])
-            m = deps.modelador.modelar(texto, termino, interp)
+            m = deps.modelador.modelar(texto, termino, interp, contexto)
             entrada = EntradaLELFormalizada(
                 **m.valor.entrada_lel.model_dump(), proyecto_id=proyecto_id,
                 req_id=req_id, termino=termino, via=c["via"],
@@ -358,14 +390,17 @@ def construir_grafo(deps: Dependencias, checkpointer):
         simbolos = sorted({e["simbolo"] for e in st.get("lel", [])} | {e.simbolo for e, _ in hechas})
         mr = deps.modelador.modelar_requisito(
             texto, [{k: r[k] for k in ("termino", "tipo_ambiguedad", "interpretacion")} for r in resoluciones],
-            vaguedad, simbolos)
+            vaguedad, simbolos, contexto, regionales)
 
         # todo o nada: se guarda después de que el Modelador terminó con todo. Si el proceso
         # cae después de aquí, el nodo se reejecuta: guardar_lel reemplaza las de este req_id.
         repo.guardar_lel([e for e, _ in hechas])
         formalizado_doc = {
             "req_id": req_id, "proyecto_id": proyecto_id, "requisito_original": texto,
-            "requisito_reescrito": mr.valor.requisito_reescrito, "resoluciones": resoluciones,
+            "requisito_reescrito": mr.valor.requisito_reescrito,
+            "tipo_requisito": mr.valor.tipo_requisito.value,
+            "categoria": mr.valor.categoria.value if mr.valor.categoria else None,
+            "supuestos": mr.valor.supuestos, "resoluciones": resoluciones,
             "metas": [m.model_dump(mode="json") for m in mr.valor.metas],
             "entradas_lel": [e.simbolo for e, _ in hechas], "univocos": univocos, "vaguedad": vaguedad,
             "fecha": date.today().isoformat(), "modelo": mr.modelo, "prompt_version": mr.prompt_version,
@@ -409,6 +444,26 @@ def construir_grafo(deps: Dependencias, checkpointer):
                             if t["decision_filtro"] in (DecisionFiltro.ALCANCE.value, DecisionFiltro.ANAFORA.value)],
         }
 
+    # ------------------------------------------------------------ ¿hace falta una persona?
+
+    def arbitrados(st: EstadoGrafo) -> list[str]:
+        return [c["termino"] for c in con_interpretaciones(st["candidatos"]).values()
+                if c.get("via") == Via.ARBITRAJE.value]
+
+    def necesita_persona(st: EstadoGrafo) -> bool:
+        """ADR 0017. Un proyecto de evaluación se detiene siempre antes de validar (ADR 0014)."""
+        modo = ValidacionHumana(s.validacion_humana)
+        if st.get("evaluacion") or modo == ValidacionHumana.SIEMPRE:
+            return True
+        if modo == ValidacionHumana.NUNCA:
+            return False
+        return bool(arbitrados(st))
+
+    def motivo_automatica(st: EstadoGrafo) -> str:
+        if ValidacionHumana(s.validacion_humana) == ValidacionHumana.NUNCA:
+            return "validacion_desactivada"
+        return "sin_ambiguedad" if not con_interpretaciones(st["candidatos"]) else "sin_arbitraje"
+
     # ------------------------------------------------------------ aristas
 
     def o_error(siguiente: str):
@@ -436,7 +491,7 @@ def construir_grafo(deps: Dependencias, checkpointer):
 
     g = StateGraph(EstadoGrafo)
     for fn in (cargado, extraido, interpretado, aceptado_directo, en_debate, consenso, arbitrado,
-               pendiente_validacion, humano, validado, rechazado, formalizado, error):
+               pendiente_validacion, humano, validacion_automatica, validado, rechazado, formalizado, error):
         g.add_node(fn.__name__, fn)
 
     g.add_edge(START, "cargado")
@@ -444,10 +499,16 @@ def construir_grafo(deps: Dependencias, checkpointer):
     g.add_conditional_edges("extraido", o_error("interpretado"), ["interpretado", "error"])
     g.add_conditional_edges("interpretado", tras_interpretado, ["aceptado_directo", "en_debate", "error"])
     g.add_conditional_edges("en_debate", tras_ronda, ["consenso", "en_debate", "arbitrado", "error"])
+    def tras_resolucion(st: EstadoGrafo) -> str:
+        if st.get("fallo"):
+            return "error"
+        return "pendiente_validacion" if necesita_persona(st) else "validacion_automatica"
+
     for origen in ("aceptado_directo", "consenso", "arbitrado"):
-        g.add_conditional_edges(origen, o_error("pendiente_validacion"), ["pendiente_validacion", "error"])
+        g.add_conditional_edges(origen, tras_resolucion, ["pendiente_validacion", "validacion_automatica", "error"])
     g.add_conditional_edges("pendiente_validacion", o_error("humano"), ["humano", "error"])
     g.add_conditional_edges("humano", tras_humano, ["validado", "rechazado", "error"])
+    g.add_conditional_edges("validacion_automatica", o_error("validado"), ["validado", "error"])
     g.add_conditional_edges("validado", o_error("formalizado"), ["formalizado", "error"])
     g.add_conditional_edges("formalizado", o_error(END), [END, "error"])
     g.add_edge("rechazado", END)

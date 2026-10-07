@@ -16,13 +16,13 @@ from app.models import (
 )
 from app.nlp import normalizar
 
-from ..base import a_json
+from ..base import a_json, texto_contexto
 from .reglas import ReglasCritico
 
 
 class Critico:
     def __init__(self, cliente: ClienteLLM, reglas: ReglasCritico,
-                 prompt: str = "critico_v1", prompt_arbitraje: str = "critico_arbitraje_v1"):
+                 prompt: str = "critico_v1", prompt_arbitraje: str = "critico_arbitraje_v2"):
         self.cliente = cliente
         self.reglas = reglas
         self.prompt = cargar_prompt(prompt)
@@ -62,13 +62,16 @@ class Critico:
         return Respuesta(salida, r3.modelo, r3.prompt_version, r3.intentos)
 
     def arbitrar(self, texto: str, termino: str, interpretaciones: list[Interpretacion], lel: list[EntradaLEL],
-                 historial: list[RondaDebate]) -> Respuesta[SalidaArbitraje]:
+                 historial: list[RondaDebate], contexto: str | None = None) -> Respuesta[SalidaArbitraje]:
         ids = {i.id for i in interpretaciones}
 
         def verificar(s: SalidaArbitraje) -> None:
             if s.interpretacion_elegida not in ids:
                 raise ValueError(f"interpretacion_elegida debe ser una de {sorted(ids)}")
 
-        prompt = self.prompt_arbitraje.renderizar(texto=texto, termino=termino, interpretaciones=a_json(interpretaciones),
-                                                  lel=a_json(lel), historial=a_json(historial))
+        variables = {"texto": texto, "termino": termino, "interpretaciones": a_json(interpretaciones),
+                     "lel": a_json(lel), "historial": a_json(historial)}
+        if "${contexto}" in self.prompt_arbitraje.usuario:
+            variables["contexto"] = texto_contexto(contexto)
+        prompt = self.prompt_arbitraje.renderizar(**variables)
         return generar(self.cliente, prompt, SalidaArbitraje, verificar=verificar)

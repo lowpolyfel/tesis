@@ -46,8 +46,8 @@
 .tema-oscuro h1 {
   font-family: var(--font-serif);
   font-weight: 400;
-  font-size: clamp(2.4rem, 3.6vw, 3.4rem);
-  line-height: 1;
+  font-size: clamp(2.2rem, 3.2vw, 3rem);
+  line-height: 1.02;
   letter-spacing: -0.02em;
 }
 .tema-oscuro h2 { font-family: var(--font-mono); letter-spacing: 0.14em; font-weight: 500; font-size: 11px; }

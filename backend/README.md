@@ -40,6 +40,7 @@ Variables de `.env` que conviene conocer al correrlo (además de las calibrables
 |---|---|---|
 | `CORS_ORIGENES` | `http://localhost:5173,http://127.0.0.1:5173` | Orígenes del frontend, separados por coma. Agrega aquí el de otra máquina o dominio. |
 | `CORS_ORIGENES_REGEX` | cualquier puerto de `localhost` y `127.0.0.1` | Además de la lista: `npm run dev` en 5174 o `npm run preview` (4173) funcionan sin tocar nada. Vacía, solo cuenta la lista. |
+| `VALIDACION_HUMANA` | `si_hay_arbitraje` | Cuándo espera el grafo a una persona: solo si un término se resolvió por arbitraje, `siempre` o `nunca` (ADR 0017). Los proyectos de evaluación siempre se detienen antes de validar. |
 | `OLLAMA_TIMEOUT_S` | `300` | Tiempo máximo de cada llamada a Ollama. Si se agota, el requisito termina en `error` con la explicación en la traza, en vez de detener la cola. |
 | `SSE_INTERVALO_S` | `0.3` | Cada cuánto `/eventos` revisa la traza. |
 
@@ -53,10 +54,10 @@ trabajador, ADR 0008):
 
 | Grupo | Rutas |
 |---|---|
-| Proyectos | `GET/POST /proyectos`, `GET/PATCH /proyectos/{id}`, `GET /proyectos/{id}/resumen`, `GET/POST /proyectos/{id}/requisitos` |
+| Proyectos | `GET/POST /proyectos`, `GET/PATCH /proyectos/{id}` (nombre y contexto general), `GET /proyectos/{id}/resumen`, `GET/POST /proyectos/{id}/requisitos` |
 | Documentos | `POST /proyectos/{id}/documentos` (PDF o .txt), `GET /proyectos/{id}/documentos`, `GET /documentos/{id}`, `POST /requisitos/separar` |
-| Requisitos | `POST /procesar`, `GET /requisitos/{id}` (vista por término), `GET /traza/{id}`, `GET /eventos/{id}` (SSE), `POST /validar/{id}`, `GET /requisitos/{id}/artefactos`, `GET /trazas`, `GET /cola` |
-| Proyecto | `GET /proyectos/{id}/ambiguedades`, `/flujo`, `/metas`, `/big-picture`, `GET /lel?proyecto_id=` |
+| Requisitos | `POST /procesar`, `GET /requisitos/{id}` (vista por término), `GET /traza/{id}`, `GET /eventos/{id}` (SSE), `POST /validar/{id}`, `GET /requisitos/{id}/artefactos`, `PATCH /requisitos/{id}/formalizacion`, `PATCH /requisitos/{id}/lel/{termino}`, `GET /trazas`, `GET /cola` |
+| Proyecto | `GET /proyectos/{id}/especificacion` (RF/RNF y glosario), `/ambiguedades`, `/flujo`, `/metas`, `/big-picture` (las tres de artefactos aceptan `?req_ids=`), `GET /lel?proyecto_id=` |
 | Exploratorio | `POST/GET /proyectos/{id}/comparaciones`, `GET /comparaciones/{id}` (ADR 0012) |
 | Experimentación | `GET /calibracion`, `GET /proyectos/{id}/calibracion`, `GET /corpus`, `GET /corpus/{nombre}`, `POST/GET /evaluaciones`, `GET /evaluaciones/{id}` |
 | Configuración | `GET /configuracion`, `GET /catalogos`, `GET /salud` |
@@ -77,7 +78,7 @@ si no, se omiten.
 python ..\scripts\casos_aceptacion.py
 ```
 
-Corre los tres requisitos de la fase hasta la validación humana, imprime filtros,
+Corre los tres requisitos de la fase hasta la validación humana (fija `VALIDACION_HUMANA=siempre`), imprime filtros,
 interpretaciones y similitudes, y guarda el reporte en `data/resultados/aceptacion/`.
 Puede correr con la API arriba, también con el respaldo JSON (las escrituras se
 serializan con un candado de archivo, ADR 0006); lo que no conviene es arrancar
@@ -96,7 +97,7 @@ paralelo.
 - `app/db/`: Mongo con respaldo JSON, proyectos (ADR 0006, 0008).
 - `app/documentos/`: carga de PDF/.txt y separación en requisitos (ADR 0009).
 - `app/analisis/`: vista por término y análisis del proyecto (ADR 0015).
-- `app/artefactos/`: modelo de metas y Big Picture, sin LLM (ADR 0011).
+- `app/artefactos/`: especificación RF/RNF, modelo de metas y Big Picture, sin LLM (ADR 0011, 0017).
 - `app/comparacion/`: comparación entre requisitos, **exploratoria** (ADR 0012).
 - `app/calibracion/`: sensibilidad del umbral y contraste con el ground truth (ADR 0013).
 - `app/evaluacion/`: corpus y evaluación contra un solo agente (ADR 0014).

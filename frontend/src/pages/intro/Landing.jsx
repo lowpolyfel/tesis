@@ -16,9 +16,9 @@ export default function Landing() {
         Toda <em>duda</em> merece una respuesta.
       </h1>
       <p className="lead rise" style={{ "--i": 2 }}>
-        Dudamel lee tus requisitos de software como lo haría un equipo: encuentra las palabras
-        que admiten más de una interpretación, deja que sus agentes las debatan y te propone una
-        sola, clara y documentada, para que tú la valides.
+        Dudamel lee tus requisitos como lo haría un equipo: encuentra las palabras que admiten
+        más de una interpretación, deja que sus agentes las debatan y los reescribe completos.
+        Solo te pregunta cuando no se ponen de acuerdo.
       </p>
       <div className="actions rise" style={{ "--i": 3 }}>
         <Button onClick={enter}>Empezar</Button>

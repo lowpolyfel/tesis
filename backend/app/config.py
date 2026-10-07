@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     # Reglas del Crítico (v1, provisionales)
     significado_max_palabras: int = Field(12, ge=1)
 
+    # Cuándo espera el grafo a una persona (ADR 0017): si_hay_arbitraje | siempre | nunca
+    validacion_humana: Literal["si_hay_arbitraje", "siempre", "nunca"] = "si_hay_arbitraje"
+
     # NLP
     spacy_model: str = "es_core_news_sm"
 
@@ -113,6 +116,7 @@ class Settings(BaseSettings):
             "llm_seed": self.llm_seed,
             "significado_max_palabras": self.significado_max_palabras,
             "spacy_model": self.spacy_model,
+            "validacion_humana": self.validacion_humana,
         }
 
     def origenes_cors(self) -> list[str]:
