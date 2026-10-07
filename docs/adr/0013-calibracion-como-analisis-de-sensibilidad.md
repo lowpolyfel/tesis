@@ -89,9 +89,9 @@ Dos hechos acotan el diseño:
    con la misma forma (`app/calibracion/formas.py`). `desde >= hasta`, paso no
    positivo o fuera de rango responden 422. El paso mínimo es 0.001: solo
    protege el tamaño de la respuesta (a lo más 1001 umbrales más el configurado y
-   2001 bins, porque el coseno está en [-1, 1]); no cambia ningún resultado. Si
-   la configuración misma trae `CALIBRACION_DESDE >= CALIBRACION_HASTA`, la ruta
-   sin parámetros también responde 422.
+   2001 bins, porque el coseno está en [-1, 1]); no cambia ningún resultado. Una
+   configuración con `CALIBRACION_DESDE >= CALIBRACION_HASTA` se rechaza al
+   arrancar (`Settings`).
 
 ## Justificación
 

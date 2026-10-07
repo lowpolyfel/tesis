@@ -155,3 +155,19 @@ def test_tras_un_reinicio_el_informe_vuelve_a_encolar_la_linea_base(tmp_path, an
         assert reiniciado.cola.estado()["pendientes"] == []  # terminada: no se vuelve a encolar
     finally:
         reiniciado.detener()
+
+
+def test_al_arrancar_la_api_retoma_las_evaluaciones_pendientes(tmp_path, analizador):
+    """Con la API real, el lifespan del router llama a `evaluacion.recuperar`: la evaluación
+    a medias termina sin que nadie consulte su informe."""
+    from app.api.main import create_app
+
+    srv, _, _ = montar(tmp_path, analizador, guiones(), corpus_dir=str(tmp_path / "corpus"))
+    escribir_corpus(tmp_path / "corpus", "escenario")
+    ev = evaluacion.crear(srv, "escenario")  # el proceso se cae antes de encolar la línea base
+
+    reiniciado, llm, _ = montar(tmp_path, analizador, guiones(), corpus_dir=str(tmp_path / "corpus"))
+    with TestClient(create_app(reiniciado)):
+        assert reiniciado.cola.esperar(20)
+        assert evaluacion.obtener(reiniciado, ev.evaluacion_id).estado == "terminada"
+    assert len(llm.llamadas["agente_unico_v1"]) == 5  # una por requisito y el reintento de D: nada doble

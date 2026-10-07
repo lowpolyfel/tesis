@@ -23,10 +23,18 @@ def bases_de_comparacion(trazas: list[Traza], formalizados: dict[str, dict]) -> 
 
     Se excluyen los requisitos en `error` o `rechazado` y los que otro requisito
     (no excluido) vuelve a procesar: compararlos con su propia versión nueva
-    solo produciría un duplicado obvio.
+    solo produciría un duplicado obvio. La cadena se sigue hacia atrás: si R02
+    reprocesa R01 y falla, y R03 reprocesa R02, R03 sustituye también a R01.
     """
-    vigentes = [t for t in trazas if t.estado not in EXCLUIR]
-    reprocesado_en = {t.origen.reproceso_de: t.req_id for t in vigentes if t.origen and t.origen.reproceso_de}
+    anterior = {t.req_id: t.origen.reproceso_de for t in trazas if t.origen and t.origen.reproceso_de}
+    reprocesado_en: dict[str, str] = {}
+    for t in trazas:
+        if t.estado in EXCLUIR:
+            continue
+        r = anterior.get(t.req_id)
+        while r is not None and r not in reprocesado_en:  # lo ya marcado ya tiene marcada su cadena (y corta ciclos)
+            reprocesado_en[r] = t.req_id
+            r = anterior.get(r)
     requisitos, excluidos = [], []
     for t in sorted(trazas, key=lambda t: (numero(t.req_id), t.req_id)):
         if t.estado in EXCLUIR:

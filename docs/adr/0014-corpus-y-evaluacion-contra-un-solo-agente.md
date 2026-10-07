@@ -203,14 +203,14 @@ sistema con los del ground truth y qué se cuenta como acierto.
   avisa cuando hay términos `resuelto_por_lel`. Un reproceso crea otra traza que la
   evaluación no sigue.
 - **Reinicio.** La cola vive en memoria: tras un reinicio se pierde la línea base
-  que faltaba. `evaluacion.recuperar(servicio)`, llamado después de
-  `servicio.iniciar()`, la vuelve a encolar con el cierre; **todavía no lo llama el
-  arranque de la API** (`app/api/main.py`). Mientras tanto, `GET
-  /evaluaciones/{id}` lo suple: si falta línea base y ningún trabajo de esa
-  evaluación está en la cola, la vuelve a encolar. Así una evaluación a medias solo
-  se retoma cuando alguien la abre, y la consulta, además de escribir el documento,
-  puede encolar trabajo (que no repite llamadas: lo que ya tiene resultado se
-  salta).
+  que faltaba. Al arrancar la API, el `lifespan` del router de evaluaciones llama
+  a `evaluacion.recuperar(servicio)` (después de `servicio.iniciar()`, que retoma
+  los grafos), y la vuelve a encolar con el cierre, como hace comparaciones.
+  Además, `GET /evaluaciones/{id}` lo suple si el servicio se armó sin ese
+  arranque (scripts, pruebas): si falta línea base y ningún trabajo de esa
+  evaluación está en la cola, la vuelve a encolar. Esa consulta, además de
+  escribir el documento, puede encolar trabajo (que no repite llamadas: lo que ya
+  tiene resultado se salta).
 - **Cola.** La línea base va en la prioridad `analisis`: un corpus grande retrasa
   las comparaciones de otros proyectos, y requisitos nuevos de otros proyectos se
   adelantan a la línea base.

@@ -3,12 +3,17 @@
 La evaluación llama a los LLM (grafo y línea base): siempre pasa por la cola.
 Las métricas se calculan al vuelo desde las trazas, el ground truth guardado y la
 línea base.
+
+Al arrancar la API, el lifespan del router vuelve a encolar la línea base y el
+cierre de las evaluaciones que un reinicio dejó a medias (como en comparaciones).
 """
 from __future__ import annotations
 
+import logging
+from contextlib import asynccontextmanager
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from app import evaluacion
@@ -18,7 +23,24 @@ from app.orchestration import Servicio
 
 from ..dependencias import obtener_servicio
 
-router = APIRouter(tags=["evaluaciones"])
+log = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def _recuperar_al_arrancar(app: FastAPI):
+    # corre dentro del lifespan de la app, que ya armó el servicio y arrancó la cola
+    srv = getattr(app.state, "servicio", None)
+    if srv is not None:
+        try:
+            ids = evaluacion.recuperar(srv)
+            if ids:
+                log.info("Evaluaciones reencoladas tras el reinicio: %s", ", ".join(ids))
+        except Exception:  # una evaluación ilegible no debe impedir que arranque la API
+            log.exception("No se pudieron recuperar las evaluaciones pendientes")
+    yield
+
+
+router = APIRouter(tags=["evaluaciones"], lifespan=_recuperar_al_arrancar)
 ServicioDep = Annotated[Servicio, Depends(obtener_servicio)]
 
 

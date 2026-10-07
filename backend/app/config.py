@@ -8,7 +8,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 RAIZ_REPO = Path(__file__).resolve().parents[2]
@@ -78,6 +78,13 @@ class Settings(BaseSettings):
     calibracion_desde: float = Field(0.50, ge=0.0, le=1.0)
     calibracion_hasta: float = Field(0.95, ge=0.0, le=1.0)
     calibracion_paso: float = Field(0.05, gt=0.0, le=0.5)
+
+    @model_validator(mode="after")
+    def _rejilla_valida(self) -> "Settings":
+        if self.calibracion_desde >= self.calibracion_hasta:
+            raise ValueError(f"CALIBRACION_DESDE ({self.calibracion_desde}) debe ser menor que "
+                             f"CALIBRACION_HASTA ({self.calibracion_hasta})")
+        return self
 
     def ruta(self, relativa: str) -> Path:
         """Rutas relativas se resuelven contra la raíz del repositorio."""

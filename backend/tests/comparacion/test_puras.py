@@ -131,6 +131,17 @@ def test_bases_de_comparacion():
         ("R07", "error", None)]
 
 
+def test_bases_siguen_la_cadena_de_reprocesos():
+    """R02 reprocesa R01 y falla; R03 reprocesa R02: R03 sustituye también a R01 (antes
+    entraban R01 y R03, el mismo requisito dos veces)."""
+    trazas = [_traza("R01", Estado.FORMALIZADO), _traza("R02", Estado.ERROR, origen=Origen(reproceso_de="R01")),
+              _traza("R03", Estado.FORMALIZADO, origen=Origen(reproceso_de="R02"))]
+    requisitos, excluidos = bases_de_comparacion(trazas, {})
+    assert [r.req_id for r in requisitos] == ["R03"]
+    assert [(e.req_id, e.motivo, e.detalle) for e in excluidos] == [
+        ("R01", "reprocesado", "lo vuelve a procesar R03"), ("R02", "error", None)]
+
+
 def test_significados_validados_solo_lexicos():
     formalizado = {"resoluciones": [
         {"termino": "sesión", "tipo_ambiguedad": "lexica", "interpretacion": {"significado": "periodo de uso"}},
