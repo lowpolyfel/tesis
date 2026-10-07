@@ -63,6 +63,7 @@ def separar_accion(enunciado: str) -> tuple[str | None, str]:
     palabra no tiene forma de infinitivo, no se inventa un verbo."""
     limpio = " ".join(enunciado.split()).strip(_BORDES)
     primera, _, resto = limpio.partition(" ")
+    primera = primera.rstrip(_BORDES)  # «Registrar,» o «Registrar:»
     if _INFINITIVO.match(normalizar(primera)):
         return primera.lower(), resto.strip(_BORDES)
     return None, limpio

@@ -19,7 +19,7 @@ from app.nlp import Analizador, normalizar
 from .exportar import a_mermaid, a_plantuml
 from .metas import construir, vaguedad_candidata
 from .seleccion import seleccionar
-from .simbolos import Simbolo, agrupar_lel, clave
+from .simbolos import Simbolo, agrupar_lel, clave, orden_entrada
 from .terminos import Comparador, numero_req, separar_accion
 
 
@@ -65,7 +65,7 @@ def _terminos_resueltos(docs: list[dict], lel: list[EntradaLELFormalizada], fuer
                            "cambio": r.get("cambio"), "req_id": doc["req_id"]})
     # requisitos formalizados antes del documento por requisito: sus términos solo están en el LEL
     anteriores = {f["req_id"] for f in fuera if f["motivo"] == "sin_formalizacion"}
-    for e in sorted((e for e in lel if e.req_id in anteriores), key=lambda e: numero_req(e.req_id)):
+    for e in sorted((e for e in lel if e.req_id in anteriores), key=orden_entrada):
         salida.append({"termino": e.termino, "significado": e.interpretacion.significado, "via": e.via.value,
                        "tipo_ambiguedad": "lexica", "cambio": "edicion" if e.editada_por_humano else None,
                        "req_id": e.req_id})
@@ -111,7 +111,9 @@ def big_picture_proyecto(formalizados: list[dict], lel: list[EntradaLELFormaliza
                 aristas.unir(m["id"], s.id, "usa")
                 usan[s.id].add(m["req_id"])
             if not encontrados:
-                sin_simbolo.setdefault(normalizar(termino), {"termino": termino, "metas": []})["metas"].append(m["id"])
+                metas_sin = sin_simbolo.setdefault(normalizar(termino), {"termino": termino, "metas": []})["metas"]
+                if m["id"] not in metas_sin:  # «Cliente» y «cliente» en la misma meta
+                    metas_sin.append(m["id"])
 
     resueltos = {d["req_id"]: _resueltos_por(d, simbolos) for d in docs}
     for d in docs:
@@ -161,14 +163,14 @@ def _panorama(docs, metas, actores, simbolos, usan, lel, fuera, comp) -> dict:
         restricciones += [{"texto": v["texto"], "req_id": v["req_id"], "origen": "vaguedad", "meta": None}
                           for v in vagas if v["req_id"] == d["req_id"] and v["meta_blanda"] is None]
 
-    # R03 depende de R01 si usa un símbolo que resolvió la formalización de R01
+    # R03 depende de R01 si usa un símbolo que resolvió la formalización de R01; quien
+    # resolvió el símbolo por su cuenta (dos entradas del mismo símbolo) no depende del otro
     dependencias = {}
     for s in simbolos:
-        for de in usan[s.id]:
+        for de in usan[s.id] - set(s.req_ids):
             for a in s.req_ids:
-                if de != a:
-                    dependencias[(numero_req(de), de, numero_req(a), a, normalizar(s.simbolo))] = {
-                        "de": de, "a": a, "por": s.simbolo}
+                dependencias[(numero_req(de), de, numero_req(a), a, normalizar(s.simbolo))] = {
+                    "de": de, "a": a, "por": s.simbolo}
     return {
         "actores": [g.nombre for g in actores],
         "acciones": acciones,

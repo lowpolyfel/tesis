@@ -50,11 +50,18 @@ class Simbolo:
         return self.entradas[0].nocion[0] if self.entradas and self.entradas[0].nocion else None
 
 
+def orden_entrada(e: EntradaLELFormalizada) -> tuple:
+    """Requisito más antiguo primero; el resto solo desempata para que el
+    resultado no dependa del orden en que llegan las entradas."""
+    return (numero_req(e.req_id), e.req_id, e.fecha, normalizar(e.simbolo), e.simbolo, normalizar(e.termino),
+            e.termino, str(e.tipo), e.nocion, e.impacto)
+
+
 def agrupar_lel(lel: list[EntradaLELFormalizada]) -> list[Simbolo]:
     """Un `Simbolo` por forma normalizada, ordenados por esa forma. La entrada
     del requisito más antiguo decide cómo se escribe y su tipo."""
     grupos: dict[str, Simbolo] = {}
-    for e in sorted(lel, key=lambda e: numero_req(e.req_id)):
+    for e in sorted(lel, key=orden_entrada):
         k = clave(e.simbolo)
         if k not in grupos:
             grupos[k] = Simbolo(id=f"simbolo:{k}", simbolo=e.simbolo, subtipo=str(e.tipo))

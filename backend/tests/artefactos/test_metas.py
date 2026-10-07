@@ -135,6 +135,9 @@ def test_utilidades_de_texto(analizador):
     assert separar_accion("Registrar el periodo de uso.") == ("registrar", "el periodo de uso")
     assert separar_accion("Darse de alta") == ("darse", "de alta")
     assert separar_accion("Que el cliente quede registrado") == (None, "Que el cliente quede registrado")
+    # la puntuación pegada al verbo no le quita la forma de infinitivo
+    assert separar_accion("Registrar, guardar y enviar el reporte") == ("registrar", "guardar y enviar el reporte")
+    assert separar_accion("Registrar: la sesión.") == ("registrar", "la sesión")
     plano, lemas = Comparador(), Comparador(analizador)
     assert plano.aparece("sesión", "El sistema registra la SESION.") and not plano.aparece("sesión", "sesiones")
     assert lemas.aparece("sesión", "Cierra las sesiones abiertas.")
@@ -149,3 +152,82 @@ def test_documento_mal_formado_no_rompe_los_ids():
                                  meta("M1", "Repetida"), {"enunciado": "sin id", "tipo": "meta"}])
     m = metas_proyecto([d], [])
     assert [(x["id"], x["enunciado"], x["simbolos"]) for x in m["metas"]] == [("R01.M1", "Registrar x", ["sesión"])]
+
+
+def test_reproceso_en_cadena_pasa_por_la_version_que_fallo():
+    # R02 vuelve a procesar R01 y falla; R03 vuelve a procesar R02 y llega: R01 ya no es vigente
+    docs = [formalizado(r, "El sistema debe imprimir.", [meta("M1", "Imprimir el reporte")]) for r in ("R01", "R03")]
+    resumenes = [resumen("R01", "formalizado"), resumen("R02", "error", "R01"), resumen("R03", "formalizado", "R02")]
+    dentro, fuera = seleccionar(docs, resumenes)
+    assert [d["req_id"] for d in dentro] == ["R03"]
+    assert fuera == [
+        {"req_id": "R01", "estado": "formalizado", "motivo": "reprocesado", "detalle": "lo vuelve a procesar R03"},
+        {"req_id": "R02", "estado": "error", "motivo": "error", "detalle": None},
+    ]
+    assert [x["id"] for x in metas_proyecto(docs, [], resumenes)["metas"]] == ["R03.M1"]
+
+
+def test_reproceso_en_cadena_nombra_la_version_mas_nueva():
+    docs = [formalizado(r, "x", [meta("M1", "Imprimir el reporte")]) for r in ("R01", "R02")]
+    resumenes = [resumen("R01", "formalizado"), resumen("R02", "formalizado", "R01"),
+                 resumen("R03", "pendiente_validacion", "R02")]
+    dentro, fuera = seleccionar(docs, resumenes)
+    assert dentro == []
+    assert [(f["req_id"], f["motivo"], f["detalle"]) for f in fuera] == [
+        ("R01", "reprocesado", "lo vuelve a procesar R03"), ("R02", "reprocesado", "lo vuelve a procesar R03"),
+        ("R03", "en_proceso", None)]
+
+
+def test_reproceso_a_si_mismo_o_circular_no_deja_fuera_a_todos():
+    docs = [formalizado(r, "x", [meta("M1", "Imprimir el reporte")]) for r in ("R01", "R03")]
+    dentro, fuera = seleccionar(docs[:1], [resumen("R01", "formalizado", "R01")])
+    assert ([d["req_id"] for d in dentro], fuera) == (["R01"], [])
+    # solo una versión más nueva sustituye a otra: R03 queda y R01 sale
+    dentro, fuera = seleccionar(docs, [resumen("R01", "formalizado", "R03"), resumen("R03", "formalizado", "R01")])
+    assert [d["req_id"] for d in dentro] == ["R03"]
+    assert [(f["req_id"], f["motivo"]) for f in fuera] == [("R01", "reprocesado")]
+
+
+def test_actores_con_la_misma_clave_son_un_solo_grupo():
+    # «—» no tiene palabras que comparar y «el el sistema» no es «sistema»: sin unirlos por
+    # clave habría dos nodos con el mismo id
+    from tests.artefactos.ayudantes import entrada
+
+    docs = [formalizado("R01", "x", [meta("M1", "Imprimir el reporte", actor="—"), meta("M2", "Guardar", actor="—"),
+                                     meta("M3", "Leer", actor="el el sistema")]),
+            formalizado("R02", "x", [meta("M1", "Leer el reporte", actor="—")])]
+    sujeto = [entrada("El sistema", "sujeto", ["El software."], ["Registra."], "R01")]
+    m = metas_proyecto(docs, sujeto)
+    assert [(a["nombre"], a["simbolo_lel"], a["metas"]) for a in m["actores"]] == [
+        ("El sistema", "El sistema", ["R01.M3"]), ("—", None, ["R01.M1", "R01.M2", "R02.M1"])]
+
+
+def test_artefactos_de_un_requisito_nombran_al_actor_como_el_proyecto(analizador):
+    docs = [formalizado("R01", "Los usuarios consultan.", [meta("M1", "Consultar el saldo", actor="Los usuarios")]),
+            formalizado("R02", "El usuario paga.", [meta("M1", "Pagar el saldo", actor="El usuario")])]
+    resumenes = [resumen("R01", "formalizado"), resumen("R02", "formalizado")]
+    proyecto = {x["id"]: x["actor"] for x in metas_proyecto(docs, [], resumenes, analizador)["metas"]}
+    assert proyecto == {"R01.M1": "usuarios", "R02.M1": "usuarios"}
+    a = artefactos_requisito("R02", "P01", "formalizado", docs[1], [], analizador, docs, resumenes)
+    assert [(x["id"], x["actor"], x["actor_original"]) for x in a["metas"]] == [("R02.M1", "usuarios", "El usuario")]
+    # sin el proyecto, el requisito solo se ve a sí mismo
+    solo = artefactos_requisito("R02", "P01", "formalizado", docs[1], [], analizador)
+    assert [x["actor"] for x in solo["metas"]] == ["usuario"]
+    # sin spaCy también: «SISTEMA» (escrito como sigla) es el «sistema» de R01
+    docs = [formalizado("R01", "x", [meta("M1", "Imprimir", actor="El sistema")]),
+            formalizado("R02", "x", [meta("M1", "Guardar", actor="SISTEMA")])]
+    a = artefactos_requisito("R02", "P01", "formalizado", docs[1], [], None, docs, resumenes)
+    assert [x["actor"] for x in a["metas"]] == ["sistema"]
+
+
+def test_meta_de_tipo_desconocido_o_sin_enunciado_se_omite():
+    from app.artefactos import big_picture_proyecto
+
+    d = formalizado("R01", "x", [meta("M1", "Registrar x"), meta("M2", "Lograr y", "objetivo"),
+                                 {"id": "M3", "enunciado": None, "tipo": "meta"}, "no es meta"])
+    m = metas_proyecto([d], [])
+    formas.MetasProyecto.model_validate(m)
+    assert [x["id"] for x in m["metas"]] == ["R01.M1"]
+    bp = big_picture_proyecto([d], [], None)
+    formas.BigPicture.model_validate(bp)
+    assert [n["id"] for n in bp["nodos"]] == ["R01", "R01.M1"]

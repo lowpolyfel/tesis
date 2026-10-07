@@ -9,6 +9,7 @@ prototipo (CONTEXTO §7): el texto se pega en cualquier visor.
 from __future__ import annotations
 
 import re
+import unicodedata
 
 from .simbolos import Simbolo
 from .terminos import separar_accion
@@ -52,9 +53,15 @@ def ids_saneados(ids: list[str]) -> dict[str, str]:
     return salida
 
 
+def _una_linea(texto: str) -> str:
+    """Espacios colapsados y sin caracteres de control (un NUL que venga de un
+    PDF no es válido en el SVG que dibuja el visor)."""
+    return " ".join("".join(c for c in str(texto) if unicodedata.category(c) != "Cc" or c.isspace()).split())
+
+
 def texto_mermaid(texto: str) -> str:
     """Una línea, sin caracteres que rompan una etiqueta entre comillas."""
-    t = " ".join(str(texto).split())
+    t = _una_linea(texto)
     t = t.replace("#", "#35;").replace('"', "#quot;").replace("<", "#lt;").replace(">", "#gt;").replace("`", "#96;")
     return t or " "
 
@@ -89,8 +96,12 @@ def a_mermaid(nodos: list[dict], aristas: list[dict]) -> str:
 # ---------------------------------------------------------------- PlantUML
 
 def texto_plantuml(texto: str) -> str:
-    t = " ".join(str(texto).split())
-    return t.replace('"', "'").replace("{", "(").replace("}", ")").replace("<", "‹").replace(">", "›") or " "
+    """Una línea sin lo que PlantUML interpreta: comillas, llaves, `<`, `>`, la
+    barra invertida (al final de una línea la une con la siguiente; `\\n` es un salto)
+    y `/'`, que abre un comentario y borra el texto hasta un `'/` de la misma línea."""
+    t = _una_linea(texto)
+    return (t.replace('"', "'").replace("{", "(").replace("}", ")").replace("<", "‹").replace(">", "›")
+            .replace("\\", "∖").replace("/'", "/’") or " ")
 
 
 def a_plantuml(nodos: list[dict], aristas: list[dict], simbolos: list[Simbolo]) -> str:

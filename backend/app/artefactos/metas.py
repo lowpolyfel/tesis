@@ -13,7 +13,7 @@ from app.models import EntradaLELFormalizada
 from app.nlp import Analizador, normalizar
 
 from .seleccion import ordenar, seleccionar
-from .simbolos import Simbolo, agrupar_lel
+from .simbolos import Simbolo, agrupar_lel, clave
 from .terminos import Comparador, nombre_actor, numero_meta
 
 TIPOS_META = ("meta", "meta_blanda", "tarea", "recurso")
@@ -28,7 +28,7 @@ class GrupoActor:
 
     @property
     def id(self) -> str:
-        return "actor:" + "_".join(normalizar(self.nombre).split())
+        return "actor:" + clave(self.nombre)
 
 
 def id_global(req_id: str, meta_id: str) -> str:
@@ -36,11 +36,13 @@ def id_global(req_id: str, meta_id: str) -> str:
 
 
 def _metas_del_doc(doc: dict) -> list[dict]:
-    """Metas del documento en orden de id; una meta sin id o con id repetido no
-    podría ser un nodo del grafo y se omite (el contrato del Modelador ya lo impide)."""
+    """Metas del documento en orden de id. Una meta sin id, con id repetido, sin
+    enunciado o de un tipo desconocido no podría ser un nodo del grafo y se omite
+    (el contrato del Modelador ya lo impide; esto cuida de un documento editado a mano)."""
     unicas: dict[str, dict] = {}
     for m in doc.get("metas") or []:
-        if m.get("id") and m["id"] not in unicas:
+        if (isinstance(m, dict) and isinstance(m.get("id"), str) and m["id"] and m["id"] not in unicas
+                and m.get("tipo") in TIPOS_META and isinstance(m.get("enunciado"), str)):
             unicas[m["id"]] = m
     return sorted(unicas.values(), key=lambda m: numero_meta(m["id"]))
 
@@ -55,8 +57,10 @@ def construir(docs: list[dict], simbolos: list[Simbolo], comp: Comparador) -> tu
     def grupo_de(actor: str) -> GrupoActor:
         # se compara ya sin mayúscula inicial: spaCy toma «Usuarios» como nombre propio y no lo lematiza
         limpio = nombre_actor(actor)
+        k = clave(limpio)
         for g in grupos:
-            if any(comp.mismo(limpio, v) for v in g.variantes):
+            # la misma clave daría el mismo id de nodo («—» no tiene palabras que comparar)
+            if k == clave(g.nombre) or any(k == clave(v) or comp.mismo(limpio, v) for v in g.variantes):
                 return g
         g = GrupoActor(nombre=limpio, simbolo_lel=None, variantes=[limpio])
         grupos.append(g)
@@ -117,14 +121,20 @@ def metas_proyecto(formalizados: list[dict], lel: list[EntradaLELFormalizada],
 
 
 def artefactos_requisito(req_id: str, proyecto_id: str, estado: str, formalizado: dict | None,
-                         lel: list[EntradaLELFormalizada], analizador: Analizador | None = None) -> dict:
+                         lel: list[EntradaLELFormalizada], analizador: Analizador | None = None,
+                         formalizados: list[dict] = (), trazas_resumen: list[dict] | None = None) -> dict:
     """{req_id, proyecto_id, estado, formalizado, entradas_lel, metas}: el documento
     formalizado tal cual, las entradas del LEL que salieron de este requisito y sus
-    metas con id global (actores nombrados contra los sujetos del LEL del proyecto).
+    metas con id global. Con `formalizados` y `trazas_resumen` del proyecto, los
+    actores se agrupan como en `metas_proyecto` (un actor se une al primer grupo con
+    el que coincide), así que cada meta lleva el mismo `actor` en las dos vistas.
     Forma: `formas.ArtefactosRequisito`."""
-    metas, _ = construir([formalizado] if formalizado else [], agrupar_lel(lel), Comparador(analizador))
+    docs, _ = seleccionar(list(formalizados), trazas_resumen)
+    if formalizado:
+        docs = [d for d in docs if d["req_id"] != req_id] + [formalizado]
+    metas, _ = construir(docs, agrupar_lel(lel), Comparador(analizador))
     return {
         "req_id": req_id, "proyecto_id": proyecto_id, "estado": estado, "formalizado": formalizado,
         "entradas_lel": [e.model_dump(mode="json") for e in lel if e.req_id == req_id],
-        "metas": metas,
+        "metas": [m for m in metas if m["req_id"] == req_id],
     }
