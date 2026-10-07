@@ -50,7 +50,7 @@ def requisito(repo, proyecto_id: str, texto: str, estado: Estado = Estado.CARGAD
             "req_id": t.req_id, "proyecto_id": proyecto_id, "requisito_original": texto,
             "requisito_reescrito": reescrito or texto, "resoluciones": resoluciones or [], "metas": [],
             "entradas_lel": [], "univocos": [], "vaguedad": [], "fecha": "2026-10-06",
-            "modelo": "llm-falso", "prompt_version": "modelador_requisito_v1"})
+            "modelo": "llm-falso", "prompt_version": "modelador_requisito_v2"})
     return t.req_id
 
 

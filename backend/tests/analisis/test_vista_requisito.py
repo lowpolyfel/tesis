@@ -44,8 +44,8 @@ def _sin_estado(interps):
 
 def test_aceptado_directo_pendiente_y_luego_formalizado(tmp_path, analizador):
     srv, _, repo = montar(tmp_path, analizador, {
-        "extractor_v1": [EXTRACCION_SESION], "clasificador_v2": [clasificacion(I1, I2_CERCANA)],
-        "modelador_v1": [MODELADO]})
+        "extractor_v1": [EXTRACCION_SESION], "clasificador_v3": [clasificacion(I1, I2_CERCANA)],
+        "modelador_v2": [MODELADO]})
     req = srv.procesar(SESION)
     v = vista(srv, req)
     assert (v["req_id"], v["proyecto_id"], v["ciclo"], v["texto"], v["origen"]) == (req, "P00", 1, SESION, None)
@@ -60,7 +60,7 @@ def test_aceptado_directo_pendiente_y_luego_formalizado(tmp_path, analizador):
                     "modelador": "qwen2.5:7b"},
         "modelo_embeddings": "nomic-embed-text", "temperatura": 0.0, "semilla": 42, "significado_max_palabras": 12,
         "spacy_model": "es_core_news_sm", "catalogos": {"regionales": "v1-semilla", "vaguedad": "v1-semilla"},
-        "persistencia": repo.descripcion, "otros": {}}
+        "persistencia": repo.descripcion, "validacion_humana": "siempre", "contexto_proyecto": None, "otros": {}}
 
     # marcados: tramo exacto del texto y tipo según el Clasificador
     assert [(m["texto"], m["decision_filtro"], m["tipo"], m["univoco"]) for m in v["marcados"]] == [
@@ -113,11 +113,11 @@ def test_aceptado_directo_pendiente_y_luego_formalizado(tmp_path, analizador):
 
 def test_consenso_por_retiro_en_la_ronda_1(tmp_path, analizador):
     srv, _, _ = montar(tmp_path, analizador, {
-        "extractor_v1": [EXTRACCION_SESION], "clasificador_v2": [clasificacion(I1, I2)],
+        "extractor_v1": [EXTRACCION_SESION], "clasificador_v3": [clasificacion(I1, I2)],
         "critico_v1": r3_todas(False),
         "clasificador_refinamiento_v1": [{"interpretaciones": [I1],
                                           "retiradas": [{"interpretacion_id": "I2", "motivo": "agrega servidor"}]}],
-        "modelador_v1": [MODELADO]})
+        "modelador_v2": [MODELADO]})
     req = srv.procesar(SESION)
     s = termino(vista(srv, req), "sesión")
     assert s["divergencia_inicial"]["decision"] == "en_debate" and s["divergencia_inicial"]["similitud"] == 0.0
@@ -140,7 +140,7 @@ def test_consenso_por_retiro_en_la_ronda_1(tmp_path, analizador):
 
 def test_consenso_por_umbral_muestra_la_ultima_version_de_cada_interpretacion(tmp_path, analizador):
     srv, _, _ = montar(tmp_path, analizador, {
-        "extractor_v1": [EXTRACCION_SESION], "clasificador_v2": [clasificacion(I1, I2)],
+        "extractor_v1": [EXTRACCION_SESION], "clasificador_v3": [clasificacion(I1, I2)],
         "critico_v1": r3_todas(False),
         "clasificador_refinamiento_v1": [{"interpretaciones": [I1, INTERP_I2_REFINADA]}]})
     s = termino(vista(srv, srv.procesar(SESION)), "sesión")
@@ -156,10 +156,10 @@ def test_consenso_por_umbral_muestra_la_ultima_version_de_cada_interpretacion(tm
 def test_arbitraje_tras_dos_rondas_y_eleccion_humana(tmp_path, analizador):
     sin_cambios = {"interpretaciones": [I1, I2]}
     srv, _, _ = montar(tmp_path, analizador, {
-        "extractor_v1": [EXTRACCION_SESION], "clasificador_v2": [clasificacion(I1, I2)],
+        "extractor_v1": [EXTRACCION_SESION], "clasificador_v3": [clasificacion(I1, I2)],
         "critico_v1": r3_todas(False), "clasificador_refinamiento_v1": [sin_cambios, sin_cambios],
-        "critico_arbitraje_v1": [{"interpretacion_elegida": "I2", "justificacion_por_regla": JUSTIFICACION}],
-        "modelador_v1": [MODELADO]})
+        "critico_arbitraje_v2": [{"interpretacion_elegida": "I2", "justificacion_por_regla": JUSTIFICACION}],
+        "modelador_v2": [MODELADO]})
     req = srv.procesar(SESION)
     s = termino(vista(srv, req), "sesión")
     assert [r["ronda"] for r in s["rondas"]] == [1, 2]
@@ -178,8 +178,8 @@ def test_arbitraje_tras_dos_rondas_y_eleccion_humana(tmp_path, analizador):
 
 def test_edicion_humana_queda_en_la_vista_del_termino(tmp_path, analizador):
     srv, _, _ = montar(tmp_path, analizador, {
-        "extractor_v1": [EXTRACCION_SESION], "clasificador_v2": [clasificacion(I1, I2_CERCANA)],
-        "modelador_v1": [MODELADO]})
+        "extractor_v1": [EXTRACCION_SESION], "clasificador_v3": [clasificacion(I1, I2_CERCANA)],
+        "modelador_v2": [MODELADO]})
     req = srv.procesar(SESION)
     editada = interp("I1", "periodo autenticado", "Otra paráfrasis.")
     srv.validar(req, Validacion(decision="aprobar", interpretaciones_editadas={"sesión": Interpretacion(**editada)}))
@@ -193,7 +193,7 @@ def test_vaguedad_sin_interpretaciones(tmp_path, analizador):
         "extractor_v1": [{"terminos": [{"termino": "sistema", "categoria_tentativa": "sujeto"},
                                        {"termino": "responder", "categoria_tentativa": "verbo"},
                                        {"termino": "ahorita", "categoria_tentativa": "estado"}]}],
-        "clasificador_v2": [{"resultados": [{"termino": "sistema", "univoco": True},
+        "clasificador_v3": [{"resultados": [{"termino": "sistema", "univoco": True},
                                             {"termino": "responder", "univoco": True}]}]})
     v = vista(srv, srv.procesar("El sistema debe responder ahorita."))
     ahorita = next(m for m in v["marcados"] if m["texto"] == "ahorita")
@@ -267,7 +267,7 @@ def test_error_en_el_extractor(proyecto):
 
 def test_error_a_mitad_del_debate(tmp_path, analizador):
     srv, _, _ = montar(tmp_path, analizador, {
-        "extractor_v1": [EXTRACCION_SESION], "clasificador_v2": [clasificacion(I1, I2)],
+        "extractor_v1": [EXTRACCION_SESION], "clasificador_v3": [clasificacion(I1, I2)],
         "critico_v1": ["no es json", "tampoco"]})
     v = vista(srv, srv.procesar(SESION))
     assert v["estado"] == "error" and [t["estado"] for t in v["transiciones"]][-2:] == ["en_debate", "error"]
@@ -290,9 +290,9 @@ def test_vista_en_vivo_durante_el_debate(tmp_path, analizador):
 
     sin_cambios = {"interpretaciones": [I1, I2]}
     srv, _, _ = montar(tmp_path, analizador, {
-        "extractor_v1": [EXTRACCION_SESION], "clasificador_v2": [clasificacion(I1, I2)],
+        "extractor_v1": [EXTRACCION_SESION], "clasificador_v3": [clasificacion(I1, I2)],
         "critico_v1": critico_que_mira, "clasificador_refinamiento_v1": [sin_cambios, sin_cambios],
-        "critico_arbitraje_v1": [{"interpretacion_elegida": "I1", "justificacion_por_regla": JUSTIFICACION}]})
+        "critico_arbitraje_v2": [{"interpretacion_elegida": "I1", "justificacion_por_regla": JUSTIFICACION}]})
     servicio.append(srv)
     srv.procesar(SESION)
 
@@ -319,10 +319,10 @@ def test_traza_recien_cargada(tmp_path, analizador):
 def test_trazas_truncadas_en_cualquier_punto_no_rompen_la_vista(tmp_path, analizador):
     sin_cambios = {"interpretaciones": [I1, I2]}
     srv, _, _ = montar(tmp_path, analizador, {
-        "extractor_v1": [EXTRACCION_SESION], "clasificador_v2": [clasificacion(I1, I2)],
+        "extractor_v1": [EXTRACCION_SESION], "clasificador_v3": [clasificacion(I1, I2)],
         "critico_v1": r3_todas(False), "clasificador_refinamiento_v1": [sin_cambios, sin_cambios],
-        "critico_arbitraje_v1": [{"interpretacion_elegida": "I2", "justificacion_por_regla": JUSTIFICACION}],
-        "modelador_v1": [MODELADO]})
+        "critico_arbitraje_v2": [{"interpretacion_elegida": "I2", "justificacion_por_regla": JUSTIFICACION}],
+        "modelador_v2": [MODELADO]})
     req = srv.procesar(SESION)
     srv.validar(req, APROBAR)
     t = srv.traza(req)
@@ -339,9 +339,9 @@ def test_trazas_truncadas_en_cualquier_punto_no_rompen_la_vista(tmp_path, analiz
 def test_mensajes_repetidos_tras_reinicio_cuenta_el_ultimo(tmp_path, analizador):
     sin_cambios = {"interpretaciones": [I1, I2]}
     srv, _, _ = montar(tmp_path, analizador, {
-        "extractor_v1": [EXTRACCION_SESION], "clasificador_v2": [clasificacion(I1, I2)],
+        "extractor_v1": [EXTRACCION_SESION], "clasificador_v3": [clasificacion(I1, I2)],
         "critico_v1": r3_todas(False), "clasificador_refinamiento_v1": [sin_cambios, sin_cambios],
-        "critico_arbitraje_v1": [{"interpretacion_elegida": "I2", "justificacion_por_regla": JUSTIFICACION}]})
+        "critico_arbitraje_v2": [{"interpretacion_elegida": "I2", "justificacion_por_regla": JUSTIFICACION}]})
     req = srv.procesar(SESION)
     original = srv.traza(req)
     objecion = next(m for m in original.mensajes if m.tipo == "objecion" and m.ronda == 1)
@@ -359,7 +359,7 @@ def test_mensajes_repetidos_tras_reinicio_cuenta_el_ultimo(tmp_path, analizador)
 
 def test_clasificacion_repetida_descarta_similitudes_anteriores(tmp_path, analizador):
     srv, _, _ = montar(tmp_path, analizador, {
-        "extractor_v1": [EXTRACCION_SESION], "clasificador_v2": [clasificacion(I1, I2_CERCANA)]})
+        "extractor_v1": [EXTRACCION_SESION], "clasificador_v3": [clasificacion(I1, I2_CERCANA)]})
     original = srv.traza(srv.procesar(SESION))
     interps = next(m for m in original.mensajes if m.tipo == "interpretaciones")
     # primera ejecución, interrumpida: «registrar» era ambiguo y alcanzó a medirse
@@ -380,8 +380,8 @@ def test_clasificacion_repetida_descarta_similitudes_anteriores(tmp_path, analiz
 
 def test_traza_anterior_al_tipo_de_ambiguedad(tmp_path, analizador):
     srv, _, _ = montar(tmp_path, analizador, {
-        "extractor_v1": [EXTRACCION_SESION], "clasificador_v2": [clasificacion(I1, I2_CERCANA)],
-        "modelador_v1": [MODELADO]})
+        "extractor_v1": [EXTRACCION_SESION], "clasificador_v3": [clasificacion(I1, I2_CERCANA)],
+        "modelador_v2": [MODELADO]})
     req = srv.procesar(SESION)
     srv.validar(req, APROBAR)
     t = srv.traza(req)
@@ -424,7 +424,7 @@ def test_normalizar_config(config, esperado):
 
 def test_resumen_requisito(tmp_path, analizador):
     srv, _, _ = montar(tmp_path, analizador, {
-        "extractor_v1": [EXTRACCION_SESION], "clasificador_v2": [clasificacion(I1, I2_CERCANA)]})
+        "extractor_v1": [EXTRACCION_SESION], "clasificador_v3": [clasificacion(I1, I2_CERCANA)]})
     t = srv.traza(srv.procesar(SESION))
     r = resumen_requisito(t)
     formas.ResumenRequisito.model_validate(r)
@@ -444,9 +444,9 @@ def test_reejecucion_de_una_ronda_descarta_lo_que_la_ultima_no_repitio(tmp_path,
     viejo no tiene a quién reemplazarlo por clave, pero va antes de la última objeción."""
     sin_cambios = {"interpretaciones": [I1, I2]}
     srv, _, _ = montar(tmp_path, analizador, {
-        "extractor_v1": [EXTRACCION_SESION], "clasificador_v2": [clasificacion(I1, I2)],
+        "extractor_v1": [EXTRACCION_SESION], "clasificador_v3": [clasificacion(I1, I2)],
         "critico_v1": r3_todas(False), "clasificador_refinamiento_v1": [sin_cambios, sin_cambios],
-        "critico_arbitraje_v1": [{"interpretacion_elegida": "I2", "justificacion_por_regla": JUSTIFICACION}]})
+        "critico_arbitraje_v2": [{"interpretacion_elegida": "I2", "justificacion_por_regla": JUSTIFICACION}]})
     original = srv.traza(srv.procesar(SESION))
     objecion = next(m for m in original.mensajes if m.tipo == "objecion" and m.ronda == 1)
     abandonada = [
@@ -509,15 +509,15 @@ def test_error_del_modelador_tras_aprobar(tmp_path, analizador):
     from app.analisis import flujo_proyecto
 
     srv, _, repo = montar(tmp_path, analizador, {
-        "extractor_v1": [EXTRACCION_SESION], "clasificador_v2": [clasificacion(I1, I2_CERCANA)],
-        "modelador_v1": ["no es json", "tampoco"]})
+        "extractor_v1": [EXTRACCION_SESION], "clasificador_v3": [clasificacion(I1, I2_CERCANA)],
+        "modelador_v2": ["no es json", "tampoco"]})
     req = srv.procesar(SESION)
     srv.validar(req, APROBAR)
     v = vista(srv, req)
     assert (v["estado"], v["terminal"], v["en_proceso"]) == ("error", True, False)
     assert [x["estado"] for x in v["transiciones"]][-2:] == ["validado", "error"]
     assert v["validacion"]["decision"] == "aprobar" and v["formalizacion"] is None
-    assert [(e["nodo"], e["prompt_version"]) for e in v["errores"]] == [("formalizado", "modelador_v1")]
+    assert [(e["nodo"], e["prompt_version"]) for e in v["errores"]] == [("formalizado", "modelador_v2")]
     s = termino(v, "sesión")
     assert s["validacion"] == {"final": I1, "cambio": "ninguno"} and s["entrada_lel"] is None
     assert v["resumen"]["via"] == "aceptado_directo" and v["resumen"]["n_errores"] == 1
@@ -591,9 +591,9 @@ def test_listas_nulas_en_un_payload_no_tumban_las_vistas(tmp_path, analizador):
 
     sin_cambios = {"interpretaciones": [I1, I2]}
     srv, _, _ = montar(tmp_path, analizador, {
-        "extractor_v1": [EXTRACCION_SESION], "clasificador_v2": [clasificacion(I1, I2)],
+        "extractor_v1": [EXTRACCION_SESION], "clasificador_v3": [clasificacion(I1, I2)],
         "critico_v1": r3_todas(False), "clasificador_refinamiento_v1": [sin_cambios, sin_cambios],
-        "critico_arbitraje_v1": [{"interpretacion_elegida": "I2", "justificacion_por_regla": JUSTIFICACION}]})
+        "critico_arbitraje_v2": [{"interpretacion_elegida": "I2", "justificacion_por_regla": JUSTIFICACION}]})
     t = srv.traza(srv.procesar(SESION))
     nulos = {"objecion": ("evaluaciones", "objeciones"), "refinamiento": ("interpretaciones", "retiradas"),
              "arbitraje": ("justificacion_por_regla",)}

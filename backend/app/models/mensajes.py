@@ -60,13 +60,18 @@ PROYECTO_GENERAL = "P00"
 class Proyecto(BaseModel):
     """Agrupa requisitos de un mismo dominio. Cada proyecto tiene su propio LEL
     (la memoria no se mezcla entre dominios, ADR 0008). `evaluacion` marca los
-    proyectos que crea una corrida contra el corpus."""
+    proyectos que crea una corrida contra el corpus.
+
+    `contexto` es el contexto general del dominio (de qué trata el sistema, quién
+    lo usa, cómo hablan): los agentes lo reciben con cada requisito del proyecto
+    para descartar interpretaciones ajenas al dominio y concretar lo vago (ADR 0017)."""
 
     model_config = ConfigDict(extra="forbid")
 
     proyecto_id: str
     nombre: str = Field(min_length=1)
     descripcion: str | None = None
+    contexto: str | None = None
     tipo: Literal["normal", "evaluacion"] = "normal"
     creado: datetime = Field(default_factory=ahora)
 

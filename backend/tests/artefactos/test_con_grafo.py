@@ -5,7 +5,7 @@ from app.artefactos import big_picture_proyecto, formas, metas_proyecto
 from app.models import Estado, Validacion
 from tests.escenarios import SESION, guiones_sesion_cercana, montar
 
-METAS = {"requisito_reescrito": "El sistema debe registrar el periodo de uso del usuario.", "metas": [
+METAS = {"requisito_reescrito": "El sistema debe registrar el periodo de uso del usuario.", "tipo_requisito": "funcional", "metas": [
     {"id": "M1", "enunciado": "Registrar el periodo de uso del usuario", "tipo": "meta", "actor": "El sistema",
      "simbolos": ["sesión"], "contribuye_a": None},
     {"id": "M2", "enunciado": "Conservar el historial de sesiones", "tipo": "recurso", "actor": None,
@@ -13,7 +13,7 @@ METAS = {"requisito_reescrito": "El sistema debe registrar el periodo de uso del
 
 
 def test_formalizado_por_el_grafo(tmp_path, analizador):
-    srv, _, repo = montar(tmp_path, analizador, {**guiones_sesion_cercana(), "modelador_requisito_v1": [METAS]})
+    srv, _, repo = montar(tmp_path, analizador, {**guiones_sesion_cercana(), "modelador_requisito_v2": [METAS]})
     p = srv.proyectos.crear("Con grafo")
     req_id = srv.procesar(SESION, p.proyecto_id)
     assert srv.traza(req_id).estado == Estado.PENDIENTE_VALIDACION

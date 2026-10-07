@@ -40,7 +40,7 @@ def formalizado(req_id: str, original: str, metas: list[dict], *, reescrito: str
             "requisito_reescrito": reescrito if reescrito is not None else original,
             "resoluciones": list(resoluciones), "metas": metas, "entradas_lel": list(entradas_lel), "univocos": [],
             "vaguedad": list(vaguedad), "fecha": "2026-10-06", "modelo": "llm-falso",
-            "prompt_version": "modelador_requisito_v1"}
+            "prompt_version": "modelador_requisito_v2"}
 
 
 def entrada(simbolo: str, tipo: str, nocion: list[str], impacto: list[str], req_id: str, *, termino: str | None = None,

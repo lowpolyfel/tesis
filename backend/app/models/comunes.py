@@ -40,6 +40,7 @@ class TipoMensaje(StrEnum):
     SOLICITUD_VALIDACION = "solicitud_validacion"
     VALIDACION = "validacion"
     FORMALIZACION = "formalizacion"
+    EDICION = "edicion"  # una persona corrige un resultado ya formalizado (ADR 0017)
     ERROR = "error"
 
 
@@ -102,6 +103,40 @@ class Regla(StrEnum):
     R1 = "R1"  # consistencia de vocabulario
     R2 = "R2"  # sin entidades nuevas
     R3 = "R3"  # reduce la ambigüedad
+
+
+class ValidacionHumana(StrEnum):
+    """Cuándo se pausa el grafo para que una persona valide (ADR 0017).
+
+    - `si_hay_arbitraje`: solo si algún término se resolvió por arbitraje (los
+      agentes no llegaron a consenso); lo demás se aprueba solo y queda editable.
+    - `siempre`: todo requisito espera a una persona (el flujo original).
+    - `nunca`: todo se aprueba solo.
+    Los proyectos de evaluación siempre se detienen antes de validar (ADR 0014).
+    """
+
+    SI_HAY_ARBITRAJE = "si_hay_arbitraje"
+    SIEMPRE = "siempre"
+    NUNCA = "nunca"
+
+
+class TipoRequisito(StrEnum):
+    FUNCIONAL = "funcional"
+    NO_FUNCIONAL = "no_funcional"
+
+
+class CategoriaNoFuncional(StrEnum):
+    """Categorías de los requisitos no funcionales (características de calidad de ISO/IEC 25010, más legal)."""
+
+    RENDIMIENTO = "rendimiento"
+    SEGURIDAD = "seguridad"
+    USABILIDAD = "usabilidad"
+    FIABILIDAD = "fiabilidad"
+    DISPONIBILIDAD = "disponibilidad"
+    MANTENIBILIDAD = "mantenibilidad"
+    PORTABILIDAD = "portabilidad"
+    COMPATIBILIDAD = "compatibilidad"
+    LEGAL = "legal"
 
 
 class Via(StrEnum):

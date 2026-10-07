@@ -76,12 +76,22 @@ def _terminos_resueltos(docs: list[dict], lel: list[EntradaLELFormalizada], fuer
     return sorted(salida, key=lambda t: (numero_req(t["req_id"]), t["req_id"]))  # estable: cada requisito en su orden
 
 
+def solo_seleccion(docs: list[dict], fuera: list[dict], solo: set[str] | None) -> tuple[list[dict], list[dict]]:
+    """Con `solo`, los requisitos elegidos por la persona (ADR 0017); sin él, todos."""
+    if solo is None:
+        return docs, fuera
+    return [d for d in docs if d["req_id"] in solo], [f for f in fuera if f["req_id"] in solo]
+
+
 def big_picture_proyecto(formalizados: list[dict], lel: list[EntradaLELFormalizada], trazas_resumen: list[dict] | None,
-                         analizador: Analizador | None = None) -> dict:
+                         analizador: Analizador | None = None, solo: set[str] | None = None) -> dict:
     """{nodos, aristas, panorama, terminos_sin_simbolo, requisitos_fuera, mermaid,
     plantuml}. Forma: `formas.BigPicture`. Con `analizador` las coincidencias de
-    texto también comparan lemas; sin él, solo la forma normalizada."""
-    docs, fuera = seleccionar(formalizados, trazas_resumen)
+    texto también comparan lemas; sin él, solo la forma normalizada.
+
+    Con `solo` (req_ids) el Big Picture es el de esos requisitos: sus metas y actores,
+    y solo los símbolos del LEL que ellos usan, resuelven o mencionan."""
+    docs, fuera = solo_seleccion(*seleccionar(formalizados, trazas_resumen), solo)
     comp = Comparador(analizador)
     simbolos = agrupar_lel(lel)
     metas, actores = construir(docs, simbolos, comp)
@@ -139,6 +149,19 @@ def big_picture_proyecto(formalizados: list[dict], lel: list[EntradaLELFormaliza
     for g in actores:
         if g.simbolo_lel:
             aristas.unir(g.id, simbolo_por_nombre[g.simbolo_lel].id, "relacionado_con")
+
+    if solo is not None:  # sin los símbolos que ningún requisito elegido toca
+        actores_ids = {g.id for g in actores}
+        tocados = {a["destino"] for a in aristas if a["relacion"] in ("usa", "resuelve", "menciona")
+                   or (a["relacion"] == "relacionado_con" and a["origen"] in actores_ids)}
+        simbolos = [s for s in simbolos if s.id in tocados]
+        nodos = [n for n in nodos if n["tipo"] != "simbolo" or n["id"] in tocados]
+        quedan = {n["id"] for n in nodos}
+        recortadas = _Aristas()
+        for a in aristas:
+            if a["origen"] in quedan and a["destino"] in quedan:
+                recortadas.unir(a["origen"], a["destino"], a["relacion"])
+        aristas = recortadas
 
     return {
         "nodos": nodos,

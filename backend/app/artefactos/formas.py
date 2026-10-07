@@ -153,3 +153,32 @@ class ArtefactosRequisito(Forma):
     formalizado: dict | None
     entradas_lel: list[EntradaLELFormalizada]
     metas: list[MetaGlobal]
+
+
+# ---------------------------------------------------------------- especificación (ADR 0017)
+
+class RequisitoEspecificado(Forma):
+    clave: str  # RF-01, RNF-01; el req_id si no tiene tipo
+    req_id: str
+    marca: str | None  # numeración del documento de origen
+    original: str
+    reescrito: str
+    tipo_requisito: Literal["funcional", "no_funcional"] | None
+    categoria: str | None
+    supuestos: list[str]
+    corregido: str | None  # fecha de la última corrección manual
+
+
+class EntradaGlosario(Forma):
+    simbolo: str
+    tipo: SubtipoSimbolo
+    nocion: str | None
+    req_ids: list[str]
+
+
+class Especificacion(Forma):
+    funcionales: list[RequisitoEspecificado]
+    no_funcionales: list[RequisitoEspecificado]
+    sin_clasificar: list[RequisitoEspecificado]
+    glosario: list[EntradaGlosario]
+    requisitos_fuera: list[RequisitoFuera]

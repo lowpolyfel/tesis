@@ -10,7 +10,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
-from .comunes import Categoria, DecisionFiltro, Regla, TipoAmbiguedad, Via
+from .comunes import Categoria, CategoriaNoFuncional, DecisionFiltro, Regla, TipoAmbiguedad, TipoRequisito, Via
 
 
 class Contrato(BaseModel):
@@ -286,13 +286,24 @@ class Meta(Contrato):
 
 
 class SalidaModeladorRequisito(Contrato):
-    """Formalización de un requisito validado: reescrito sin ambigüedad y sus metas."""
+    """Formalización de un requisito validado: reescrito completo y sin ambigüedad,
+    su tipo (funcional o no funcional) y sus metas.
+
+    `supuestos` registra lo que el Modelador concretó a partir del contexto del
+    proyecto y no del texto (p. ej. «ahorita» → «en menos de 5 segundos»): queda a
+    la vista para que una persona lo confirme o lo corrija (ADR 0017)."""
 
     requisito_reescrito: str = Field(min_length=1)
+    tipo_requisito: TipoRequisito
+    categoria: CategoriaNoFuncional | None = None
+    supuestos: list[str] = Field(default=[], max_length=6)
     metas: list[Meta] = Field(min_length=1, max_length=6)
 
     @model_validator(mode="after")
     def _referencias(self) -> "SalidaModeladorRequisito":
+        if self.tipo_requisito == TipoRequisito.FUNCIONAL:
+            self.categoria = None  # la categoría solo describe a los no funcionales
+        self.supuestos = [x for x in (s.strip() for s in self.supuestos) if x]
         ids = [m.id for m in self.metas]
         if len(ids) != len(set(ids)):
             raise ValueError(f"ids de meta repetidos: {ids}")
@@ -315,3 +326,5 @@ class EntradaLELFormalizada(EntradaLEL):
     # None en las entradas guardadas antes de que existiera el campo.
     cambio: Literal["ninguno", "eleccion", "edicion"] | None = None
     fecha: str
+    # fecha de la última corrección manual de la entrada ya formalizada (ADR 0017)
+    corregida: str | None = None

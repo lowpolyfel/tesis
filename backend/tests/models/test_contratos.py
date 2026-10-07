@@ -125,13 +125,31 @@ def test_metas_del_requisito():
     from app.models import SalidaModeladorRequisito
 
     meta = {"id": "M1", "enunciado": "Registrar la sesión", "tipo": "meta"}
-    assert SalidaModeladorRequisito.model_validate({"requisito_reescrito": "r", "metas": [meta]})
-    for malo in ({"requisito_reescrito": "r", "metas": []},
-                 {"requisito_reescrito": "r", "metas": [{**meta, "tipo": "deseo"}]},
-                 {"requisito_reescrito": "r", "metas": [meta, meta]},
-                 {"requisito_reescrito": "r", "metas": [{**meta, "contribuye_a": "M1"}]}):
+    base = {"requisito_reescrito": "r", "tipo_requisito": "funcional"}
+    assert SalidaModeladorRequisito.model_validate({**base, "metas": [meta]})
+    for malo in ({**base, "metas": []},
+                 {**base, "metas": [{**meta, "tipo": "deseo"}]},
+                 {**base, "metas": [meta, meta]},
+                 {**base, "metas": [{**meta, "contribuye_a": "M1"}]},
+                 {"requisito_reescrito": "r", "metas": [meta]},  # sin tipo de requisito
+                 {**base, "tipo_requisito": "deseable", "metas": [meta]},
+                 {**base, "tipo_requisito": "no_funcional", "categoria": "belleza", "metas": [meta]}):
         with pytest.raises(ValidationError):
             SalidaModeladorRequisito.model_validate(malo)
+
+
+def test_requisito_no_funcional_y_supuestos():
+    from app.models import SalidaModeladorRequisito
+
+    meta = {"id": "M1", "enunciado": "Responder pronto", "tipo": "meta_blanda"}
+    nf = SalidaModeladorRequisito.model_validate({"requisito_reescrito": "r", "tipo_requisito": "no_funcional",
+                                                  "categoria": "rendimiento", "supuestos": ["ahorita = 5 s", ""],
+                                                  "metas": [meta]})
+    assert (nf.categoria, nf.supuestos) == ("rendimiento", ["ahorita = 5 s"])
+    # la categoría solo describe a los no funcionales
+    f = SalidaModeladorRequisito.model_validate({"requisito_reescrito": "r", "tipo_requisito": "funcional",
+                                                 "categoria": "seguridad", "metas": [meta]})
+    assert f.categoria is None and f.supuestos == []
 
 
 def test_tipo_de_ambiguedad_obligatorio_si_no_es_univoco():

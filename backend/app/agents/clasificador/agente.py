@@ -12,12 +12,12 @@ from app.models import (
 )
 from app.nlp.spacy_es import normalizar
 
-from ..base import a_json
+from ..base import a_json, texto_contexto
 
 
 class Clasificador:
     def __init__(self, cliente: ClienteLLM, significado_max_palabras: int,
-                 prompt: str = "clasificador_v2", prompt_refinamiento: str = "clasificador_refinamiento_v1"):
+                 prompt: str = "clasificador_v3", prompt_refinamiento: str = "clasificador_refinamiento_v1"):
         self.cliente = cliente
         self.max_palabras = significado_max_palabras
         self.prompt = cargar_prompt(prompt)
@@ -27,7 +27,8 @@ class Clasificador:
     def _contexto(self) -> dict:
         return {"significado_max_palabras": self.max_palabras}
 
-    def clasificar(self, texto: str, candidatos: list[TerminoCandidato], lel: list[EntradaLEL]) -> Respuesta[SalidaClasificador]:
+    def clasificar(self, texto: str, candidatos: list[TerminoCandidato], lel: list[EntradaLEL],
+                   contexto: str | None = None) -> Respuesta[SalidaClasificador]:
         esperados = {normalizar(c.termino) for c in candidatos}
 
         def verificar(s: SalidaClasificador) -> None:
@@ -37,7 +38,10 @@ class Clasificador:
             if faltan or sobran or len(recibidos) != len(set(recibidos)):
                 raise ValueError(f"debe haber exactamente un resultado por término candidato; faltan {sorted(faltan)}, sobran {sorted(sobran)}")
 
-        prompt = self.prompt.renderizar(texto=texto, terminos=a_json(candidatos), lel=a_json(lel), max_palabras=self.max_palabras)
+        variables = {"texto": texto, "terminos": a_json(candidatos), "lel": a_json(lel), "max_palabras": self.max_palabras}
+        if "${contexto}" in self.prompt.usuario:  # las versiones anteriores a v3 no lo usan
+            variables["contexto"] = texto_contexto(contexto)
+        prompt = self.prompt.renderizar(**variables)
         return generar(self.cliente, prompt, SalidaClasificador, contexto=self._contexto, verificar=verificar)
 
     def refinar(self, texto: str, termino: str, interpretaciones: list[Interpretacion],

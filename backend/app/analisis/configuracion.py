@@ -25,7 +25,8 @@ def configuracion_vigente(s: Settings, config_traza: dict) -> dict:
 
         {umbral, max_rondas, modelos{extractor, clasificador, critico, modelador},
          modelo_embeddings, temperatura, semilla, significado_max_palabras, spacy_model,
-         catalogos, persistencia, otros, proveedor_critico,
+         catalogos, persistencia, validacion_humana, contexto_proyecto (null: es por proyecto),
+         otros, proveedor_critico,
          modelos_auxiliares{comparador, agente_unico},
          calibracion{desde, hasta, paso, umbrales}, comparacion{relacion_umbral,
          duplicado_umbral, max_pares}, nota}

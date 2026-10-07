@@ -31,7 +31,7 @@ def entorno(tmp_path_factory, analizador):
     cercana = clasificacion(I1, interp("I2", "periodo de uso", P1_CERCANA))
     srv, _, repo = montar(tmp_path_factory.mktemp("calibracion"), analizador, {
         "extractor_v1": [EXTRACCION_SESION] * 5,
-        "clasificador_v2": [cercana, clasificacion(I1, I2), UNIVOCO, clasificacion(I1, I2), cercana],
+        "clasificador_v3": [cercana, clasificacion(I1, I2), UNIVOCO, clasificacion(I1, I2), cercana],
         "critico_v1": r3_todas(False),
         "clasificador_refinamiento_v1": [RETIRA_I2, RETIRA_I2],
     })

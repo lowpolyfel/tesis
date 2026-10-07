@@ -13,8 +13,8 @@ MODELADO_CONEXION = {"entrada_lel": {"simbolo": "sesión", "tipo": "objeto", "no
 def test_trazas_del_grafo(tmp_path, analizador):
     guiones = {
         "extractor_v1": [EXTRACCION_SESION, EXTRACCION_SESION],
-        "clasificador_v2": [clasificacion(I1, interp("I2", "periodo de uso", P1_CERCANA))] * 2,
-        "modelador_v1": [MODELADO, MODELADO_CONEXION],
+        "clasificador_v3": [clasificacion(I1, interp("I2", "periodo de uso", P1_CERCANA))] * 2,
+        "modelador_v2": [MODELADO, MODELADO_CONEXION],
         "comparador_v1": juez_por_par({("R01", "R02"): juicio("redundancia", "registrar la sesión", "registrar la sesión")}),
     }
     srv, llm, repo = montar(tmp_path, analizador, guiones)

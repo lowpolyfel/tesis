@@ -303,6 +303,7 @@ def analizar(traza: Traza) -> Analisis:
         p = m_validacion.payload
         validacion = {"decision": p.get("decision"), "comentario": p.get("comentario"),
                       "terminos": p.get("terminos") or [],
+                      "automatica": bool(p.get("automatica")), "motivo": p.get("motivo"),
                       "timestamp": m_validacion.model_dump(mode="json")["timestamp"]}
     errores = [{"secuencia": m.secuencia, "nodo": m.payload.get("nodo"), "excepcion": m.payload.get("excepcion"),
                 "mensaje": m.payload.get("mensaje"),
@@ -350,7 +351,7 @@ def vista_requisito(traza: Traza, formalizado: dict | None = None) -> dict:
                      entrada_lel: {...} | null}],
          resumen: {n_terminos, n_ambiguos, tipos, vaguedad, regionales, resueltos_por_lel,
                    estructuras, similitud_minima, via, rondas_max, n_errores},
-         solicitud, validacion: {decision, comentario, terminos, timestamp} | null,
+         solicitud, validacion: {decision, comentario, terminos, automatica, motivo, timestamp} | null,
          formalizacion, errores: [{secuencia, nodo, excepcion, mensaje, prompt_version}],
          n_mensajes, n_repetidos, ultima_secuencia}
 

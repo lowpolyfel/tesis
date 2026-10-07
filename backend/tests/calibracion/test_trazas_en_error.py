@@ -42,7 +42,7 @@ def falla_en(llamada: int, respuesta):
 def test_trazas_en_error_y_reprocesos_en_cadena(tmp_path, analizador):
     srv, _, _ = montar(tmp_path, analizador, {
         "extractor_v1": falla_en(3, EXTRACCION_SESION),
-        "clasificador_v2": falla_en(0, clasificacion(I1, I2)),
+        "clasificador_v3": falla_en(0, clasificacion(I1, I2)),
         "critico_v1": falla_en(1, r3_todas(False)),
         "clasificador_refinamiento_v1": falla_en(0, RETIRA_I2),
     })

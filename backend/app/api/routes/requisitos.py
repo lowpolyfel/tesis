@@ -10,7 +10,17 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models import PROYECTO_GENERAL, ESTADOS_TERMINALES, Estado, Traza, Validacion
+from app.models import (
+    PROYECTO_GENERAL,
+    ESTADOS_TERMINALES,
+    Categoria,
+    CategoriaNoFuncional,
+    EntradaLELFormalizada,
+    Estado,
+    TipoRequisito,
+    Traza,
+    Validacion,
+)
 from app.orchestration import ConflictoDeEstado, Servicio
 
 from ..dependencias import apagando, obtener_servicio, traza_existente
@@ -103,3 +113,56 @@ def validar(req_id: str, validacion: Validacion, srv: ServicioDep) -> dict:
     except ValueError as e:
         raise HTTPException(422, str(e))
     return {"req_id": req_id, "decision": validacion.decision}
+
+
+# ---------------------------------------------------------------- correcciones (ADR 0017)
+
+class CorreccionFormalizacion(BaseModel):
+    """Lo que la persona corrige del requisito formalizado; solo cambia lo que viene."""
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    requisito_reescrito: str | None = Field(None, min_length=1, max_length=2000)
+    tipo_requisito: TipoRequisito | None = None
+    categoria: CategoriaNoFuncional | None = None
+    supuestos: list[Annotated[str, Field(min_length=1, max_length=400)]] | None = Field(None, max_length=10)
+
+
+class CorreccionLEL(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    simbolo: str | None = Field(None, min_length=1, max_length=120)
+    tipo: Categoria | None = None
+    nocion: list[Annotated[str, Field(min_length=1, max_length=600)]] | None = Field(None, min_length=1, max_length=6)
+    impacto: list[Annotated[str, Field(min_length=1, max_length=600)]] | None = Field(None, min_length=1, max_length=6)
+
+
+def _cambios(c: BaseModel, anulables: tuple[str, ...] = ()) -> dict:
+    """Los campos enviados; `null` solo cuenta en los que se pueden vaciar."""
+    datos = c.model_dump(mode="json", exclude_unset=True)
+    return {k: v for k, v in datos.items() if v is not None or k in anulables}
+
+
+@router.patch("/requisitos/{req_id}/formalizacion")
+def corregir_formalizacion(req_id: str, correccion: CorreccionFormalizacion, srv: ServicioDep) -> dict:
+    """Corrige el requisito reescrito, su tipo, categoría o supuestos. 409 si no está formalizado."""
+    cambios = _cambios(correccion, anulables=("categoria",))
+    if not cambios:
+        raise HTTPException(422, "no hay nada que corregir")
+    try:
+        return srv.corregir_formalizacion(req_id, cambios)
+    except KeyError:
+        raise HTTPException(404, f"No existe el requisito {req_id}")
+    except ConflictoDeEstado as e:
+        raise HTTPException(409, str(e))
+
+
+@router.patch("/requisitos/{req_id}/lel/{termino}", response_model=EntradaLELFormalizada)
+def corregir_lel(req_id: str, termino: str, correccion: CorreccionLEL, srv: ServicioDep) -> EntradaLELFormalizada:
+    """Corrige la entrada del LEL que salió de este requisito para `termino`."""
+    cambios = _cambios(correccion)
+    if not cambios:
+        raise HTTPException(422, "no hay nada que corregir")
+    try:
+        return srv.corregir_lel(req_id, termino, cambios)
+    except KeyError as e:
+        raise HTTPException(404, str(e).strip("'\""))
+    except ConflictoDeEstado as e:
+        raise HTTPException(409, str(e))

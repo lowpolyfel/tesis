@@ -17,19 +17,22 @@ from app.db.proyectos import Proyectos
 from app.models import (
     PROYECTO_GENERAL,
     ESTADOS_TERMINALES,
+    EntradaLELFormalizada,
     Estado,
     Nodo,
     Origen,
     TipoMensaje,
+    TipoRequisito,
     Traza,
     Validacion,
     ahora,
 )
+from app.nlp import normalizar
 
 from .cola import Cola
 from .dependencias import Dependencias
 from .estado import con_interpretaciones
-from .grafo import construir_grafo
+from .grafo import COLECCION_FORMALIZADOS, construir_grafo
 
 
 log = logging.getLogger(__name__)
@@ -137,13 +140,15 @@ class Servicio:
 
     def registrar(self, texto: str, proyecto_id: str = PROYECTO_GENERAL, origen: Origen | None = None,
                   ciclo: int | None = None) -> str:
-        """Crea la traza en `cargado` y reserva el requisito para ejecutarlo. Sin `ciclo`, abre uno nuevo."""
-        if self.proyectos.obtener(proyecto_id) is None:
+        """Crea la traza en `cargado` y reserva el requisito para ejecutarlo. Sin `ciclo`, abre uno nuevo.
+        La traza guarda una copia del contexto del proyecto: es el que reciben los agentes (ADR 0017)."""
+        proyecto = self.proyectos.obtener(proyecto_id)
+        if proyecto is None:
             raise KeyError(proyecto_id)
+        config = {**self.deps.config_traza(), "contexto_proyecto": (proyecto.contexto or "").strip() or None}
         with self._candado_ciclos:  # el ciclo nuevo queda tomado al crear su primera traza
             ciclo = ciclo or self.siguiente_ciclo(proyecto_id)
-            traza = self.repo.crear_traza(texto, self.deps.config_traza(), proyecto_id=proyecto_id, origen=origen,
-                                          ciclo=ciclo)
+            traza = self.repo.crear_traza(texto, config, proyecto_id=proyecto_id, origen=origen, ciclo=ciclo)
         self._reservar(traza.req_id)
         return traza.req_id
 
@@ -237,6 +242,63 @@ class Servicio:
         if not doc or pausa is None or doc.get("pausa") != pausa:
             return None
         return Validacion.model_validate(doc["validacion"])
+
+    # ------------------------------------------------------------ correcciones (ADR 0017)
+
+    def _formalizado(self, req_id: str) -> tuple[Traza, dict]:
+        traza = self.repo.obtener_traza(req_id)
+        if traza is None:
+            raise KeyError(f"No existe el requisito {req_id}")
+        if traza.estado != Estado.FORMALIZADO:
+            raise ConflictoDeEstado(f"{req_id} está en '{traza.estado}': solo se corrige un requisito formalizado")
+        doc = self.repo.obtener_doc(COLECCION_FORMALIZADOS, req_id)
+        if doc is None:
+            raise ConflictoDeEstado(f"{req_id} se formalizó antes del documento por requisito (ADR 0010); reprocésalo")
+        return traza, doc
+
+    def _registrar_correccion(self, req_id: str, objeto: str, antes: dict, despues: dict, **extra) -> None:
+        self.repo.agregar_mensaje(req_id, ronda=0, emisor=Nodo.HUMANO, receptor=Nodo.SISTEMA, tipo=TipoMensaje.EDICION,
+                                  payload={"objeto": objeto, **extra, "antes": antes, "despues": despues})
+
+    def corregir_formalizacion(self, req_id: str, cambios: dict) -> dict:
+        """Una persona corrige el requisito reescrito, su tipo, categoría o supuestos. Se guarda
+        en el documento formalizado y queda en la traza como un mensaje `edicion` (antes y después)."""
+        _, doc = self._formalizado(req_id)
+        nuevo = {**doc, **cambios}
+        if nuevo.get("tipo_requisito") != TipoRequisito.NO_FUNCIONAL.value:
+            nuevo["categoria"] = None
+        claves = [k for k in ("requisito_reescrito", "tipo_requisito", "categoria", "supuestos") if k in cambios or k == "categoria"]
+        antes = {k: doc.get(k) for k in claves}
+        despues = {k: nuevo.get(k) for k in claves}
+        if antes == despues:
+            return doc
+        nuevo["corregido"] = ahora().date().isoformat()
+        self.repo.guardar_doc(COLECCION_FORMALIZADOS, req_id, nuevo)
+        self._registrar_correccion(req_id, "formalizacion", antes, despues)
+        return nuevo
+
+    def corregir_lel(self, req_id: str, termino: str, cambios: dict) -> EntradaLELFormalizada:
+        """Una persona corrige la entrada del LEL que salió de `req_id` para `termino`. El LEL
+        es la memoria del proyecto: los requisitos que se procesen después usan la corregida."""
+        traza, doc = self._formalizado(req_id)
+        entradas = [e for e in self.repo.listar_lel(traza.proyecto_id)
+                    if e.req_id == req_id and normalizar(e.termino) == normalizar(termino)]
+        if not entradas:
+            raise KeyError(f"{req_id} no tiene una entrada del LEL para «{termino}»")
+        actual = entradas[-1]
+        nueva = EntradaLELFormalizada.model_validate({**actual.model_dump(mode="json"), **cambios,
+                                                     "corregida": ahora().date().isoformat()})
+        claves = list(cambios)
+        antes = actual.model_dump(mode="json", include=set(claves))
+        despues = nueva.model_dump(mode="json", include=set(claves))
+        if antes == despues:
+            return actual
+        self.repo.guardar_lel([nueva])  # reemplaza la del mismo req_id y término
+        if nueva.simbolo != actual.simbolo and actual.simbolo in (doc.get("entradas_lel") or []):
+            doc["entradas_lel"] = [nueva.simbolo if s == actual.simbolo else s for s in doc["entradas_lel"]]
+            self.repo.guardar_doc(COLECCION_FORMALIZADOS, req_id, doc)
+        self._registrar_correccion(req_id, "lel", antes, despues, termino=actual.termino)
+        return nueva
 
     def traza(self, req_id: str) -> Traza | None:
         return self.repo.obtener_traza(req_id)

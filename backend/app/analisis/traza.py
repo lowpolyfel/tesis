@@ -31,7 +31,7 @@ def alcance_formalizacion(payload: dict) -> str:
 def clave_mensaje(m: Mensaje) -> tuple | None:
     """Dos mensajes con la misma clave dicen lo mismo; None si nunca se reemplaza (errores)."""
     p = m.payload or {}
-    if m.tipo == TipoMensaje.ERROR:
+    if m.tipo in (TipoMensaje.ERROR, TipoMensaje.EDICION):  # cada corrección cuenta, en orden
         return None
     if m.tipo in _UNO_POR_REQUISITO:
         return (m.tipo,)
@@ -122,6 +122,9 @@ def normalizar_config(config: dict | None) -> dict:
         "spacy_model": _primero(c, "spacy_model"),
         "catalogos": dict(_primero(c, "catalogos") or {}),
         "persistencia": _primero(c, "persistencia"),
+        # ADR 0017; las trazas anteriores no los traen
+        "validacion_humana": _primero(c, "validacion_humana"),
+        "contexto_proyecto": _primero(c, "contexto_proyecto"),
     }
     if modelos:
         c["modelos"] = modelos

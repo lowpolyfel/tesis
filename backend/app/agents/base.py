@@ -14,3 +14,11 @@ def a_json(datos: Any) -> str:
     elif isinstance(datos, list):
         datos = [d.model_dump(mode="json") if isinstance(d, BaseModel) else d for d in datos]
     return json.dumps(datos, ensure_ascii=False, indent=2)
+
+
+SIN_CONTEXTO = "(el proyecto no tiene contexto general)"
+
+
+def texto_contexto(contexto: str | None) -> str:
+    """El contexto general del proyecto como va en los prompts (ADR 0017)."""
+    return (contexto or "").strip() or SIN_CONTEXTO

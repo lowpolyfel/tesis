@@ -43,6 +43,8 @@ class ConfigNormalizada(Forma):
     spacy_model: str | None
     catalogos: dict[str, Any]  # versión de cada catálogo, tal cual la trae su JSON
     persistencia: str | None
+    validacion_humana: str | None  # cuándo se pausó para una persona (ADR 0017); None en trazas anteriores
+    contexto_proyecto: str | None  # contexto del proyecto que recibieron los agentes (ADR 0017)
     otros: dict[str, Any]  # claves de la configuración que esta vista no reconoce
 
 
@@ -195,6 +197,8 @@ class ValidacionVista(Forma):
     decision: str
     comentario: str | None
     terminos: list[dict[str, Any]]
+    automatica: bool = False  # la aprobó el sistema: no hacía falta una persona (ADR 0017)
+    motivo: str | None = None  # sin_ambiguedad | sin_arbitraje | validacion_desactivada
     timestamp: datetime
 
 

@@ -123,10 +123,13 @@ def vaguedad_candidata(docs: list[dict], metas: list[dict], comp: Comparador) ->
 
 
 def metas_proyecto(formalizados: list[dict], lel: list[EntradaLELFormalizada],
-                   trazas_resumen: list[dict] | None = None, analizador: Analizador | None = None) -> dict:
+                   trazas_resumen: list[dict] | None = None, analizador: Analizador | None = None,
+                   solo: set[str] | None = None) -> dict:
     """{metas, actores, por_tipo, metas_blandas_desde_vaguedad, sin_actor,
-    requisitos_fuera}. Forma: `formas.MetasProyecto`."""
+    requisitos_fuera}. Forma: `formas.MetasProyecto`. Con `solo`, solo esos requisitos."""
     docs, fuera = seleccionar(formalizados, trazas_resumen)
+    if solo is not None:
+        docs, fuera = [d for d in docs if d["req_id"] in solo], [f for f in fuera if f["req_id"] in solo]
     comp = Comparador(analizador)
     metas, actores = construir(docs, agrupar_lel(lel), comp)
     return {
