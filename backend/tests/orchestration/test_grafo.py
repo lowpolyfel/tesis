@@ -408,3 +408,31 @@ def test_el_contexto_del_proyecto_llega_a_los_agentes_y_queda_en_la_traza(tmp_pa
     sin = srv.procesar(SESION)  # el proyecto General no tiene contexto
     assert srv.traza(sin).config["contexto_proyecto"] is None
     assert "(el proyecto no tiene contexto general)" in llm.llamadas["clasificador_v3"][1].usuario
+
+
+def test_requisito_del_supervisor_con_contexto_no_termina_en_error(tmp_path, analizador):
+    """Caso real (Ollama): con el contexto, el Clasificador dejó «checar» con un solo
+    significado sin marcarlo unívoco y el contrato lo rechazaba dos veces → error."""
+    texto = "El supervisor podrá checar los pendientes de su equipo ahorita mismo."
+    pa = "El supervisor podrá checar los pendientes del equipo del supervisor ahorita mismo."
+    pb = "El supervisor podrá checar los pendientes del equipo de los pendientes ahorita mismo."
+    checar_una = {"termino": "checar", "univoco": False, "tipo_ambiguedad": "lexica", "interpretaciones": [
+        interp("I1", "revisar", texto.replace("checar", "revisar"))]}
+    srv, llm, _ = montar(tmp_path, analizador, {
+        "extractor_v1": [{"terminos": [{"termino": "supervisor", "categoria_tentativa": "sujeto"},
+                                       {"termino": "checar", "categoria_tentativa": "verbo"},
+                                       {"termino": "pendientes", "categoria_tentativa": "objeto"},
+                                       {"termino": "ahorita", "categoria_tentativa": "estado"}]}],
+        "clasificador_v3": [{"resultados": [
+            {"termino": "supervisor", "univoco": True}, checar_una, {"termino": "pendientes", "univoco": True},
+            {"termino": "su equipo", "tipo_ambiguedad": "anaforica", "interpretaciones": [
+                interp("I1", "el equipo del supervisor", pa), interp("I2", "el equipo de los pendientes", pb)]}]}],
+    }, validacion_humana="si_hay_arbitraje")
+    p = srv.proyectos.crear("Mesa de ayuda", contexto="Mesa de ayuda; cada supervisor tiene un equipo de agentes.")
+    t = srv.traza(srv.procesar(texto, p.proyecto_id))
+    assert t.estado == Estado.FORMALIZADO, [m.payload for m in t.mensajes if m.tipo == "error"]
+    filtrado = next(m for m in t.mensajes if m.tipo == "filtrado").payload["terminos"]
+    assert {f["termino"]: f["decision_filtro"] for f in filtrado}["su equipo"] == "anafora"
+    resultados = next(m for m in t.mensajes if m.tipo == "interpretaciones").payload["resultados"]
+    checar = next(r for r in resultados if r["termino"] == "checar")
+    assert checar["univoco"] is True and checar["nota"] and llm.llamadas["clasificador_v3"][0]

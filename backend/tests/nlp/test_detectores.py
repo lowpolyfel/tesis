@@ -20,6 +20,14 @@ def test_posesivo_con_dos_antecedentes(det):
     assert "administrador" in d.detalle and d.inicio == 50
 
 
+def test_el_posesivo_no_arrastra_lo_que_sigue_al_sustantivo(det):
+    # spaCy etiqueta «ahorita» como verbo y lo mete en el sintagma «su equipo ahorita mismo»
+    [d] = det.buscar("El supervisor podrá checar los pendientes de su equipo ahorita mismo.")
+    assert d.texto == "su equipo" and d.antecedentes == ("supervisor", "pendientes")
+    [d] = det.buscar("El administrador debe notificar al usuario cuando su cuenta bancaria expire.")
+    assert d.texto == "su cuenta bancaria"
+
+
 def test_posesivo_con_un_solo_antecedente_no_se_marca(det):
     assert patrones(det, "El sistema debe guardar sus notas.") == []
 

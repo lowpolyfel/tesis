@@ -61,6 +61,22 @@ def _rasgo(tok: Token, nombre: str) -> list[str]:
     return tok.morph.get(nombre)
 
 
+def _sintagma_posesivo(doc: Doc, posesivo: Token, propio: Span | None) -> Span:
+    """Del posesivo a su sustantivo, más los adjetivos que lo modifican: «su cuenta»,
+    «su cuenta bancaria». No toma lo demás del sintagma de spaCy, que a veces arrastra
+    adverbios mal etiquetados («su equipo ahorita mismo»: «ahorita» sale como verbo)."""
+    if propio is not None and propio.root.i > posesivo.i:
+        nucleo = propio.root
+    elif posesivo.head.pos_ in ("NOUN", "PROPN") and posesivo.head.i > posesivo.i:
+        nucleo = posesivo.head  # «su cuenta» aunque spaCy no lo marque como sintagma
+    else:
+        return doc[posesivo.i:posesivo.i + 1]
+    fin = nucleo.i + 1
+    while fin < len(doc) and doc[fin].pos_ == "ADJ" and doc[fin].head.i == nucleo.i:
+        fin += 1
+    return doc[posesivo.i:fin]
+
+
 class Detectores:
     def __init__(self, analizador: Analizador):
         self.analizador = analizador
@@ -107,12 +123,7 @@ class Detectores:
                               and (not numero or not _rasgo(c, "Number") or _rasgo(c, "Number") == numero)]
             if len(candidatos) < 2:
                 continue
-            if posesivo and propio is not None:
-                span = propio
-            elif posesivo and t.head.pos_ in ("NOUN", "PROPN") and t.head.i > t.i:
-                span = doc[t.i:t.head.i + 1]  # «su cuenta» aunque spaCy no lo marque como sintagma
-            else:
-                span = doc[t.i:t.i + 1]
+            span = _sintagma_posesivo(doc, t, propio) if posesivo else doc[t.i:t.i + 1]
             nombres = tuple(c.text for c in candidatos)
             salida.append(Deteccion(
                 tipo="anafora", patron="posesivo" if posesivo else "demostrativo",
