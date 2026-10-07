@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useApi } from "../hooks/useApi";
 import { listarProyectos, obtenerLel } from "../services/backend";
@@ -10,10 +11,14 @@ const normalizar = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase
  * El LEL de cada proyecto (ADR 0008: la memoria no se mezcla entre dominios).
  * Solo entran términos léxicos resueltos y validados por una persona; los
  * unívocos no entran. Búsqueda por símbolo o término y filtro por tipo.
+ * La búsqueda se escribe en un estado local y pasa a `?q=` después: atado a la
+ * URL, cada tecla esperaba la navegación y se perdían caracteres.
  */
+const ESPERA_URL_MS = 300;
+
 export default function Lel() {
   const [params, setParams] = useSearchParams();
-  const q = params.get("q") ?? "";
+  const [q, setQ] = useState(() => params.get("q") ?? "");
   const tipo = params.get("tipo") ?? "";
   const proyecto = params.get("proyecto") ?? "";
   const { datos: entradas, error, cargando } = useApi(() => obtenerLel(proyecto || undefined), [proyecto]);
@@ -22,6 +27,12 @@ export default function Lel() {
     const p = Object.fromEntries(params);
     setParams(Object.fromEntries(Object.entries({ ...p, ...cambios }).filter(([, v]) => v)), { replace: true });
   };
+  useEffect(() => {
+    if (q === (params.get("q") ?? "")) return undefined;
+    const t = setTimeout(() => actualizar({ q }), ESPERA_URL_MS);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q]);
   const nombreDe = (pid) => (proyectos ?? []).find((p) => p.proyecto_id === pid)?.nombre ?? pid;
 
   if (error) return <p className="text-sm text-[var(--danger)]">{error.message}</p>;
@@ -44,7 +55,7 @@ export default function Lel() {
       <div className="flex flex-wrap items-center gap-3">
         <input
           value={q}
-          onChange={(e) => actualizar({ q: e.target.value })}
+          onChange={(e) => setQ(e.target.value)}
           placeholder="Buscar símbolo o término…"
           className="linea w-64 py-1.5 text-sm"
         />

@@ -117,9 +117,13 @@ export default function Calibracion() {
             {fila && <Cambios fila={fila} />}
           </section>
 
-          {c.con_ground_truth ? <GroundTruth g={c.con_ground_truth} umbral={fila?.umbral} onUmbral={setUmbral} /> : (
+          {c.con_ground_truth ? <GroundTruth g={c.con_ground_truth} umbral={fila?.umbral} onUmbral={setUmbral} /> : todos ? (
             <p className="text-sm text-[var(--bone-dim)]">
-              Sin etiquetas de referencia para {todos ? "estos proyectos" : "este proyecto"}. Una <Link className="underline" to="/evaluacion">evaluación contra el corpus</Link> deja etiquetas y aquí aparece la precisión y la exhaustividad por umbral.
+              Juntos no hay contraste con el ground truth: cada <Link className="underline" to="/evaluacion">evaluación contra el corpus</Link> deja sus etiquetas en su propio proyecto de evaluación, y esta vista los deja fuera. Para ver la precisión y la exhaustividad por umbral, elige ese proyecto.
+            </p>
+          ) : (
+            <p className="text-sm text-[var(--bone-dim)]">
+              Sin etiquetas de referencia para este proyecto. Solo los proyectos que crea una <Link className="underline" to="/evaluacion">evaluación contra el corpus</Link> las tienen; en el suyo aparece la precisión y la exhaustividad por umbral.
             </p>
           )}
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useSearchParams } from "react-router";
 import { useOrb, usePoseEsfera } from "../orb/useOrb";
 
@@ -11,7 +11,7 @@ const ENLACES = [
 /* Vistas de un proyecto completo */
 const ANALISIS = [
   { a: "/ambiguedades", texto: "Ambigüedades" },
-  { a: "/comparaciones", texto: "Comparaciones" },
+  { a: "/comparaciones", texto: "Comparaciones", nota: "exploratorio" },
   { a: "/big-picture", texto: "Metas y Big Picture" },
   { a: "/flujo", texto: "Flujo KMoS-SSA" },
 ];
@@ -39,13 +39,17 @@ const TITULOS = [
 
 /*
  * En las herramientas la esfera es un emblema vivo arriba a la izquierda,
- * junto al título; el contenido usa todo el ancho que queda.
+ * junto al título; el contenido usa todo el ancho que queda. En móvil va a la
+ * derecha, justo debajo de la barra (que ahí ocupa dos renglones), para no
+ * tapar el menú.
  */
-const POSE_HERRAMIENTA = { d: { x: -0.5 + 100 / 1440, y: -0.5 + 150 / 900, s: 0.24 }, m: { x: 0.36, y: -0.42, s: 0.14 } };
-const poseHerramienta = () => ({
-  d: { x: -0.5 + 100 / innerWidth, y: -0.5 + 150 / innerHeight, s: 0.24 },
-  m: POSE_HERRAMIENTA.m,
-});
+const poseHerramienta = () => {
+  const barra = document.querySelector("[data-barra]")?.getBoundingClientRect().bottom ?? 84;
+  return {
+    d: { x: -0.5 + 100 / innerWidth, y: -0.5 + 150 / innerHeight, s: 0.24 },
+    m: { x: 0.5 - 34 / innerWidth, y: -0.5 + (barra + 20) / innerHeight, s: 0.12 },
+  };
+};
 
 /*
  * Marco de la aplicación.
@@ -73,9 +77,13 @@ export default function Shell({ modo }) {
   );
 }
 
+/*
+ * Con fondo: el contenido que se desplaza pasa por debajo sin mezclarse con los
+ * enlaces. El borde inferior se desvanece para no cortar la escena con una franja.
+ */
 function BarraSuperior() {
   return (
-    <header className="no-print fixed inset-x-0 top-0 z-20 flex items-center justify-between gap-4 px-5 py-5 md:px-10 md:py-7">
+    <header data-barra className="no-print fixed inset-x-0 top-0 z-20 flex items-center justify-between gap-4 bg-[linear-gradient(to_bottom,var(--bg)_calc(100%-14px),transparent)] px-5 py-5 md:px-10 md:py-7">
       <Link to="/inicio" className="mono flex items-center gap-2.5 text-[11px] text-[var(--bone)] opacity-85 hover:opacity-100">
         <span className="punto" style={{ background: "radial-gradient(circle at 35% 30%,#fffaf0,#d9cdb8)", boxShadow: "0 0 0 1.5px var(--c1),0 0 12px var(--glow)" }} />
         Dudamel
@@ -114,7 +122,11 @@ function Menu({ titulo, enlaces }) {
       <button onClick={() => setAbierto((x) => !x)} className={claseEnlace({ isActive: activo })}>{titulo} ▾</button>
       {abierto && (
         <div className="sube absolute top-7 right-0 flex min-w-44 flex-col gap-3 rounded-xl border border-[var(--line)] bg-[color-mix(in_oklab,var(--bg)_92%,transparent)] p-4 backdrop-blur-xl">
-          {enlaces.map((e) => <NavLink key={e.a} to={e.a} className={claseEnlace}>{e.texto}</NavLink>)}
+          {enlaces.map((e) => (
+            <NavLink key={e.a} to={e.a} className={claseEnlace}>
+              {e.texto}{e.nota && <span className="ml-1.5 normal-case tracking-normal text-amber-200/70">({e.nota})</span>}
+            </NavLink>
+          ))}
         </div>
       )}
     </div>
@@ -125,9 +137,10 @@ function Herramienta() {
   const { pathname } = useLocation();
   const orb = useOrb();
   const titulo = TITULOS.find(([re]) => re.test(pathname))?.[1] ?? "";
-  const [pose, setPose] = useState(poseHerramienta);
-  useEffect(() => {
+  const [pose, setPose] = useState(null);
+  useLayoutEffect(() => { // tras montar: la pose móvil mide la barra
     const f = () => setPose(poseHerramienta());
+    f();
     addEventListener("resize", f);
     return () => removeEventListener("resize", f);
   }, []);

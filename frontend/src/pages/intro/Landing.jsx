@@ -1,8 +1,9 @@
 import { useApp } from "../../components/intro/useApp";
 import Button from "../../components/intro/Button";
 
+/* Sin cuentas: el prototipo es de un solo usuario y la validación no registra autor */
 export default function Landing() {
-  const { go } = useApp();
+  const { enter } = useApp();
 
   return (
     <section className="panel panel-left">
@@ -16,14 +17,13 @@ export default function Landing() {
       </h1>
       <p className="lead rise" style={{ "--i": 2 }}>
         Dudamel lee tus requisitos de software como lo haría un equipo: encuentra las palabras
-        que admiten más de una lectura, deja que sus agentes las debatan y te entrega una sola
-        interpretación, clara y documentada.
+        que admiten más de una interpretación, deja que sus agentes las debatan y te propone una
+        sola, clara y documentada, para que tú la valides.
       </p>
       <div className="actions rise" style={{ "--i": 3 }}>
-        <Button onClick={() => go("register", { poseKey: "register1" })}>Crear cuenta</Button>
-        <Button variant="ghost" onClick={() => go("login")}>Iniciar sesión</Button>
+        <Button onClick={enter}>Empezar</Button>
       </div>
-      <p className="fineprint rise" style={{ "--i": 4 }}>Prototipo de tesis · v0.1</p>
+      <p className="fineprint rise" style={{ "--i": 4 }}>Prototipo de tesis · v0.1 · sin cuentas: un solo usuario, en esta máquina</p>
     </section>
   );
 }

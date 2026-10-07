@@ -63,18 +63,3 @@ export function resumenMensaje(m) {
       return "";
   }
 }
-
-/* Marcas para el texto del requisito a partir del mensaje `filtrado` (y del Clasificador si ya habló) */
-export function marcasDesdeMensajes(mensajes) {
-  const filtrado = [...mensajes].reverse().find((m) => m.tipo === "filtrado");
-  if (!filtrado) return [];
-  const interp = [...mensajes].reverse().find((m) => m.tipo === "interpretaciones");
-  const tipoDe = new Map((interp?.payload?.resultados ?? []).map((r) => [r.termino, r.univoco ? null : r.tipo_ambiguedad]));
-  const DECISION = { vaguedad: "vaguedad", regional: "regional", resuelto_por_lel: "lel", alcance: "alcance", anafora: "anaforica" };
-  return (filtrado.payload.terminos ?? [])
-    .map((t) => {
-      const tipo = tipoDe.get(t.termino) ?? DECISION[t.decision_filtro] ?? null;
-      return tipo ? { inicio: t.posicion.inicio, fin: t.posicion.fin, tipo, detalle: t.detalle, termino: t.termino } : null;
-    })
-    .filter(Boolean);
-}

@@ -54,8 +54,20 @@ export default function Comparaciones() {
     return () => { activo = false; };
   }, [proyectoId]);
 
-  // Sin elegida: la más reciente
-  const id = elegida ?? lista?.[0]?.comparacion_id ?? null;
+  // Mientras alguna esté en cola o en proceso, la lista se vuelve a pedir: una
+  // corrida termina aunque se esté mirando otra
+  const algunaEnCurso = Boolean(lista?.some((c) => EN_CURSO.includes(c.estado)));
+  useEffect(() => {
+    if (!proyectoId || !algunaEnCurso) return undefined;
+    let activo = true;
+    const t = setTimeout(() => {
+      comparacionesDeProyecto(proyectoId).then((l) => { if (activo) setLista(l); }).catch(() => {});
+    }, SONDEO_MS);
+    return () => { activo = false; clearTimeout(t); };
+  }, [proyectoId, lista, algunaEnCurso]);
+
+  // Sin elegida (o de otro proyecto): la más reciente del proyecto
+  const id = lista ? (lista.some((c) => c.comparacion_id === elegida) ? elegida : lista[0]?.comparacion_id ?? null) : null;
 
   // Detalle, sondeado mientras está en curso
   useEffect(() => {
@@ -91,7 +103,7 @@ export default function Comparaciones() {
     }
   };
 
-  const enCurso = lista?.some((c) => EN_CURSO.includes(c.estado));
+  const enCurso = algunaEnCurso;
 
   return (
     <div className="space-y-7">
@@ -102,7 +114,7 @@ export default function Comparaciones() {
           Módulo exploratorio (ADR 0012). Amplía el alcance de la tesis, que deja fuera la contradicción entre requisitos (CONTEXTO §6), y está pendiente de revisión con la asesora, la Dra. Karla Olmos Sánchez. No modifica el debate, las trazas ni el LEL.
         </p>
         <div className="flex flex-wrap items-center gap-3">
-          <ElegirProyecto proyectoId={proyectoId} proyectos={proyectos} onCambio={(p) => { verComparacion(null); elegir(p); }} />
+          <ElegirProyecto proyectoId={proyectoId} proyectos={proyectos} onCambio={(p) => elegir(p, { quitar: ["c"] })} />
           <button className="pill" disabled={!proyectoId || pidiendo || enCurso} onClick={comparar}>
             {enCurso ? "Comparando…" : pidiendo ? "Encolando…" : "Comparar los requisitos"}
           </button>

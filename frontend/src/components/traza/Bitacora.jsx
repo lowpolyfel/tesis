@@ -1,17 +1,29 @@
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { obtenerTraza } from "../../services/backend";
 import { nodo } from "../../constants/agentes";
 import { resumenMensaje } from "../../escena/resumenMensaje";
 
-/* Todos los mensajes del protocolo (GET /traza): la reconstrucción completa del caso */
+/*
+ * Todos los mensajes del protocolo (GET /traza): la reconstrucción completa del
+ * caso. Abierta, se vuelve a pedir cuando la vista avisa de mensajes nuevos
+ * (`ultima`, la secuencia más reciente).
+ */
 const hora = (iso) => new Date(iso).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
-export default function Bitacora({ reqId, total }) {
+export default function Bitacora({ reqId, total, ultima }) {
   const [mensajes, setMensajes] = useState(null);
   const [error, setError] = useState(null);
   const [abierto, setAbierto] = useState(null);
 
-  const cargar = () => obtenerTraza(reqId).then((t) => setMensajes(t.mensajes)).catch(setError);
+  const cargada = useRef(null); // la `ultima` con la que se pidió
+  const cargar = () => {
+    cargada.current = ultima;
+    return obtenerTraza(reqId).then((t) => setMensajes(t.mensajes)).catch(setError);
+  };
+  useEffect(() => {
+    if (mensajes !== null && cargada.current !== ultima) cargar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mensajes !== null, ultima]);
 
   if (!mensajes) {
     return (

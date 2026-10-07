@@ -16,6 +16,14 @@ El backend debe estar corriendo (por omisión en `http://localhost:8000`; ver
 con `VITE_API_URL=http://otra-maquina:8000`. Si el backend no responde, cada
 pantalla lo dice.
 
+El navegador solo deja llamar al backend desde los orígenes que este permite
+(CORS). Por omisión acepta `localhost` y `127.0.0.1` en cualquier puerto
+(`CORS_ORIGENES_REGEX`), así que da igual si Vite arranca en 5173, 5174 o
+`npm run preview` en 4173. Si abres la interfaz desde otra máquina o dominio,
+agrega ese origen a `CORS_ORIGENES` en `backend/.env` (separados por coma); si
+no, todas las pantallas dirán «No hay conexión con el backend» aunque uvicorn
+esté corriendo.
+
 ## La esfera
 
 La esfera está montada una sola vez en `App.jsx` (`components/orb/OrbField.jsx`)
@@ -35,18 +43,26 @@ y nunca se desmonta: cada pantalla solo le dice dónde estar y qué hacer
 - retirar una interpretación la devuelve al Clasificador; en el consenso se
   funden; en el arbitraje el Crítico absorbe las demás.
 
-La bitácora al lado resume cada mensaje. El ritmo se puede cambiar o acelerar
-sin perder mensajes, y «Ver la escena otra vez» la repite desde la traza.
+La bitácora al lado resume cada mensaje. El ritmo se puede cambiar, y
+«saltar» aplica los mensajes pendientes sin animarlos: la escena queda como
+dice la traza. «Ver la escena otra vez» la repite desde la traza. El texto del
+requisito se marca con las marcas de la vista del backend (`marcados`), al paso
+de la animación.
+
+Un requisito en `pendiente_validacion` no se sigue por SSE: nada cambia hasta
+que una persona valide, y el navegador solo abre seis conexiones por servidor
+(una por pestaña agotaría las demás). La traza y la validación vuelven a
+seguirlo al enviar la validación.
 
 ## Pantallas
 
 | Ruta | Qué hay |
 |---|---|
-| `/` | Presentación y entrada |
-| `/inicio` | Sube un PDF o .txt (el backend extrae el texto y separa los requisitos, con página y marca) o pega el texto; confirmas o editas la separación y eliges el proyecto |
+| `/` | Presentación y entrada (sin cuentas: el prototipo es de un solo usuario) |
+| `/inicio` | Sube un PDF o .txt (el backend extrae el texto y separa los requisitos, con página y marca) o pega el texto; confirmas o editas la separación (con los fragmentos descartados y lo que quitó la limpieza a la vista) y eliges el proyecto. Un documento subido queda en el proyecto elegido al subirlo. Hasta 200 requisitos por carga y 2000 caracteres por requisito |
 | `/analisis?proyecto=&ids=` | La escena en vivo del lote, la bitácora y los requisitos que esperan validación |
 | `/requisitos/:id` | Traza por fases KMoS-SSA: extracción, filtros, interpretaciones por término, matriz de similitud por pares, rondas del debate con las reglas del Crítico, arbitraje, validación y formalización (`?figura=1` versión clara para la tesis) |
-| `/requisitos/:id/validacion` | Validación por término: elegir, editar, aprobar o rechazar |
+| `/requisitos/:id/validacion` | Validación: por término se elige otra interpretación o se reescribe; la decisión (aprobar o rechazar) es una sola para todo el requisito |
 | `/proyectos`, `/proyectos/:id` | Proyectos con sus contadores; un proyecto agrupa requisitos por ciclo, sus documentos y su LEL |
 | `/historial` | Todos los requisitos, la cola de trabajo y filtros por proyecto y estado |
 | `/lel` | El LEL de cada proyecto |

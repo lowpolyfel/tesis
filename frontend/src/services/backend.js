@@ -38,7 +38,10 @@ export const separarRequisitos = (texto) => post("/requisitos/separar", { texto 
  * Los requisitos confirmados por el humano entran a la cola en un ciclo nuevo.
  * requisitos: [{ texto, origen?: {documento_id, archivo, pagina, indice, marca, texto_original, reproceso_de} }]
  * → { proyecto_id, ciclo, req_ids }
+ * Límites del contrato (EntradaRequisitos y RequisitoNuevo en app/api/routes/proyectos.py):
+ * la separación no los aplica, así que la confirmación los revisa antes de enviar.
  */
+export const LIMITES_CARGA = Object.freeze({ requisitos: 200, caracteres: 2000 });
 export const cargarRequisitos = (proyectoId, requisitos) => post(`/proyectos/${id(proyectoId)}/requisitos`, { requisitos });
 /** Un solo requisito (proyecto General si no se indica) → { req_id, estado } */
 export const procesarRequisito = (texto, proyectoId) => post("/procesar", { texto, ...(proyectoId ? { proyecto_id: proyectoId } : {}) });

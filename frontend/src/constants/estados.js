@@ -74,7 +74,7 @@ export const INFO_ESTADO = Object.freeze({
   },
   [E.ACEPTADO_DIRECTO]: {
     etiqueta: "Aceptado directo",
-    descripcion: "Las interpretaciones coinciden (similitud ≥ umbral); no hubo debate.",
+    descripcion: "Ningún término fue a debate: sus interpretaciones coinciden (similitud ≥ umbral) o no hubo interpretaciones que comparar.",
     clase: "bg-teal-50 text-teal-800 ring-teal-200",
     punto: "bg-teal-500",
   },
@@ -86,7 +86,7 @@ export const INFO_ESTADO = Object.freeze({
   },
   [E.CONSENSO]: {
     etiqueta: "Consenso",
-    descripcion: "El debate cerró con similitud ≥ umbral antes de agotar las rondas.",
+    descripcion: "El debate cerró sin arbitraje: en cada término la similitud llegó al umbral o quedó una sola interpretación (a más tardar en la última ronda).",
     clase: "bg-emerald-50 text-emerald-800 ring-emerald-200",
     punto: "bg-emerald-500",
   },
@@ -118,7 +118,7 @@ export const INFO_ESTADO = Object.freeze({
     etiqueta: "Formalizado",
     descripcion: "El Modelador formalizó: entradas del LEL (términos léxicos), requisito reescrito y metas.",
     clase: "bg-slate-800 text-sobre ring-slate-800",
-    punto: "bg-slate-800",
+    punto: "bg-[#efe9de]", // claro en todos los fondos: slate-800 se perdía sobre la escena oscura
   },
   [E.ERROR]: {
     etiqueta: "Error",

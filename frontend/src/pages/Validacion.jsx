@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { useRequisitoVivo } from "../hooks/useRequisitoVivo";
-import { requisitosDeProyecto, validarRequisito } from "../services/backend";
+import { reprocesarRequisito, requisitosDeProyecto, validarRequisito } from "../services/backend";
 import { ESTADOS as E, INFO_VIA, estaEnProceso } from "../constants/estados";
 import { REGLAS, colorInterpretacion, tipo } from "../constants/agentes";
 import EstadoBadge from "../components/EstadoBadge";
@@ -14,13 +14,14 @@ import EstadoBadge from "../components/EstadoBadge";
  * otra interpretación (incluso una retirada en el debate) o reescribirla.
  * Al aprobar, el Modelador formaliza: entradas del LEL para los términos
  * léxicos, el requisito reescrito y sus metas. Rechazar no formaliza nada.
+ * La decisión (aprobar o rechazar) es una sola para todo el requisito.
  */
 export default function Validacion() {
   const { id } = useParams();
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const volver = params.get("volver");
-  const { vista: v, error } = useRequisitoVivo(id);
+  const { vista: v, error, recargar } = useRequisitoVivo(id);
   const [elecciones, setElecciones] = useState({}); // termino -> { id, editar, significado, parafrasis }
   const [comentario, setComentario] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -58,6 +59,16 @@ export default function Validacion() {
 
   const pendiente = v.estado === E.PENDIENTE_VALIDACION;
 
+  const reprocesar = async () => {
+    setAviso(null);
+    try {
+      const r = await reprocesarRequisito(v);
+      navigate(`/analisis?proyecto=${r.proyecto_id}&ids=${r.req_ids.join(",")}`);
+    } catch (e) {
+      setAviso(`Error: ${e.message}`);
+    }
+  };
+
   const enviar = async (decision) => {
     setEnviando(true);
     setAviso(null);
@@ -77,6 +88,7 @@ export default function Validacion() {
       }
       await validarRequisito(id, { decision, interpretacionesEditadas: editadas, comentario });
       setAviso(decision === "aprobar" ? "Aprobado. El Modelador está formalizando…" : "Rechazado.");
+      recargar({ seguir: true }); // se sigue el requisito hasta que la cola procese la validación
     } catch (e) {
       setAviso(`Error: ${e.message}`);
     } finally {
@@ -137,7 +149,18 @@ export default function Validacion() {
         </>
       )}
 
+      {v.estado === E.ERROR && (
+        <section className="space-y-2 rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-900">
+          <p className="font-semibold">El caso terminó en error antes de llegar a validación: no hay nada que validar.</p>
+          <ul className="space-y-1">
+            {v.errores.map((e) => <li key={e.secuencia}>#{e.secuencia} · {e.nodo ?? "fuera de los nodos"} · {e.excepcion}: {e.mensaje}</li>)}
+          </ul>
+          <p className="text-xs">Reprocesar lo carga como un requisito nuevo del mismo proyecto; este queda en la historia.</p>
+        </section>
+      )}
+
       {!pendiente && !estaEnProceso(v.estado) && <Resultado v={v} />}
+      {aviso && !pendiente && <p className="text-sm text-slate-600">{aviso}</p>}
 
       <footer className="flex flex-wrap gap-3 text-sm">
         {siguiente && (
@@ -145,6 +168,9 @@ export default function Validacion() {
             onClick={() => navigate(`/requisitos/${siguiente.req_id}/validacion${volver ? `?volver=${encodeURIComponent(volver)}` : ""}`)}>
             Validar el siguiente ({siguiente.req_id})
           </button>
+        )}
+        {[E.ERROR, E.RECHAZADO].includes(v.estado) && (
+          <button onClick={reprocesar} className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50">Reprocesar</button>
         )}
         <Link to={`/requisitos/${id}`} className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50">Ver la traza completa</Link>
         <Link to={`/proyectos/${v.proyecto_id}`} className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50">Ir al proyecto</Link>
@@ -226,7 +252,7 @@ function TerminoAValidar({ t, eleccion, onCambio }) {
 function Contexto({ solicitud }) {
   if (!solicitud) return null;
   const bloques = [
-    solicitud.vaguedad?.length && { titulo: "Vaguedad (no se debate)", texto: `${solicitud.vaguedad.join(", ")}: límite impreciso. Considera pedir una métrica; el Modelador la tratará como meta blanda.`, clase: "bg-violet-50 text-violet-900" },
+    solicitud.vaguedad?.length && { titulo: "Vaguedad (no se debate)", texto: `${solicitud.vaguedad.join(", ")}: límite impreciso. Considera pedir una métrica; el Modelador puede recogerla como meta blanda, sin inventar la métrica.`, clase: "bg-violet-50 text-violet-900" },
     solicitud.estructuras?.length && { titulo: "Estructuras detectadas", texto: solicitud.estructuras.map((e) => `«${e.termino}» (${e.decision_filtro}${e.detalle ? `: ${e.detalle}` : ""})`).join(" · "), clase: "bg-indigo-50 text-indigo-900" },
     solicitud.univocos?.length && { titulo: "Unívocos", texto: `${solicitud.univocos.join(", ")}: una sola interpretación razonable; quedan en la traza y no entran al LEL.`, clase: "bg-slate-50 text-slate-700" },
     solicitud.resueltos_por_lel?.length && { titulo: "Resueltos por el LEL", texto: `${solicitud.resueltos_por_lel.join(", ")}: ya tienen noción validada en el proyecto.`, clase: "bg-emerald-50 text-emerald-900" },
