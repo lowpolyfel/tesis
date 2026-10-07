@@ -33,9 +33,10 @@ y que se **viera qué hace cada agente**.
    proyecto (ambigüedades, flujo KMoS-SSA) y para la calibración viene ya armado
    del backend (`app/analisis`, ADR 0015; `app/calibracion`, ADR 0013). La
    interfaz solo presenta.
-4. **Validación por término** contra `POST /validar/{req_id}`: la persona elige,
-   edita, aprueba o rechaza cada término; la reanudación pasa por la cola
-   (ADR 0008).
+4. **Validación por término** contra `POST /validar/{req_id}`: en cada término
+   la persona acepta la propuesta, elige otra de las interpretaciones o la
+   reescribe; aprobar o rechazar es una sola decisión por requisito
+   (`Validacion.decision`). La reanudación pasa por la cola (ADR 0008).
 5. **El proyecto vive en la URL** (`?proyecto=`) en las vistas de análisis, para
    que un enlace se pueda compartir y la recarga no lo pierda.
 6. **Configuración y catálogos de solo lectura** en la interfaz: se cambian en
