@@ -109,7 +109,7 @@ export default function Analisis() {
     }
     orb.setPose({ x: 0, y: -0.06, s: 0.9 });
     orb.setMood("idle");
-    orb.update("core", { label: "Dividiendo en agentes", sub: `${ids.length} ${ids.length === 1 ? "requisito" : "requisitos"}` });
+    orb.update("core", { label: "Sistema", sub: `${ids.length} ${ids.length === 1 ? "requisito" : "requisitos"}` });
     const t = setTimeout(() => { coreografia.montar(); setFase("trabajo"); }, 700);
     return () => clearTimeout(t);
   }, [lista, fase, todosEnReposo, repetir, orb, coreografia, ids.length]);
