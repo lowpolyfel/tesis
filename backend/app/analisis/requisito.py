@@ -100,12 +100,12 @@ class TerminoAnalizado:
         for n in sorted(self.debate):
             msgs = self.debate[n]
             obj = msgs.get(TipoMensaje.OBJECION, {})
-            ronda: dict[str, Any] = {"ronda": n, "evaluadas": evaluadas, "evaluaciones": obj.get("evaluaciones", []),
-                                     "objeciones": obj.get("objeciones", []), "refinamiento": None,
+            ronda: dict[str, Any] = {"ronda": n, "evaluadas": evaluadas, "evaluaciones": obj.get("evaluaciones") or [],
+                                     "objeciones": obj.get("objeciones") or [], "refinamiento": None,
                                      "similitud": None, "consenso": None}
             if (ref := msgs.get(TipoMensaje.REFINAMIENTO)) is not None:
-                vigentes = [_plana(i) for i in ref.get("interpretaciones", [])]
-                retiradas = ref.get("retiradas", [])
+                vigentes = [_plana(i) for i in ref.get("interpretaciones") or []]
+                retiradas = ref.get("retiradas") or []
                 ronda["refinamiento"] = {"interpretaciones": vigentes, "retiradas": retiradas, "nota": ref.get("nota")}
                 ids_vigentes = {i["id"] for i in vigentes}
                 for i in vigentes:
@@ -136,7 +136,7 @@ class TerminoAnalizado:
             r = {"via": Via.ARBITRAJE.value, "decision": Estado.ARBITRADO.value, "propuesta": todas.get(elegida),
                  "motivo": "rondas_agotadas", "similitud_final": medidas[-1],
                  "arbitraje": {"interpretacion_elegida": elegida,
-                               "justificacion_por_regla": self.arbitraje.get("justificacion_por_regla", [])}}
+                               "justificacion_por_regla": self.arbitraje.get("justificacion_por_regla") or []}}
         elif consenso is not None:
             r = {"via": Via.CONSENSO.value, "decision": Estado.CONSENSO.value,
                  "propuesta": todas.get(consenso["propuesta"]), "motivo": consenso["motivo"], "similitud_final": consenso["similitud"], "arbitraje": None}
@@ -197,6 +197,7 @@ class Analisis:
         iniciales = [s for t in self.ambiguos if t.divergencia_inicial
                      and isinstance(s := t.divergencia_inicial.get("similitud"), (int, float)) and math.isfinite(s)]
         formas = [t.forma() for t in self.ambiguos]
+        resoluciones = [f["resolucion"] for f in formas]
         return {
             "n_terminos": len(self.terminos), "n_ambiguos": len(self.ambiguos), "tipos": tipos,
             "vaguedad": self.decisiones(DecisionFiltro.VAGUEDAD),
@@ -204,7 +205,9 @@ class Analisis:
             "resueltos_por_lel": self.decisiones(DecisionFiltro.RESUELTO_POR_LEL),
             "estructuras": sum(1 for f in self.filtrado if f.get("decision_filtro") in ESTRUCTURAS),
             "similitud_minima": min(iniciales) if iniciales else None,
-            "via": via_mas_fuerte(f["resolucion"]["via"] for f in formas if f["resolucion"]),
+            # con un término aún en debate (o cortado por un error) la vía del requisito no se sabe:
+            # uno aceptado directo no dice cómo terminará el otro
+            "via": via_mas_fuerte(r["via"] for r in resoluciones) if all(resoluciones) else None,
             "rondas_max": max((len(f["rondas"]) for f in formas), default=0),
             "n_errores": len(self.errores),
         }
@@ -350,6 +353,9 @@ def vista_requisito(traza: Traza, formalizado: dict | None = None) -> dict:
          solicitud, validacion: {decision, comentario, terminos, timestamp} | null,
          formalizacion, errores: [{secuencia, nodo, excepcion, mensaje, prompt_version}],
          n_mensajes, n_repetidos, ultima_secuencia}
+
+    `resumen.via` es la vía más fuerte entre términos y `null` mientras alguno
+    siga sin `resolucion`.
     """
     a = analizar(traza)
     cabecera = traza.model_dump(mode="json", include=set(_CABECERA))

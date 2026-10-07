@@ -16,7 +16,7 @@ CATALOGOS = ("regionales", "vaguedad")
 
 
 class CatalogoInvalido(ValueError):
-    """Un archivo de catálogo que no es un objeto JSON."""
+    """Un archivo de catálogo que no se puede leer o no es un objeto JSON."""
 
 
 def configuracion_vigente(s: Settings, config_traza: dict) -> dict:
@@ -49,6 +49,8 @@ def _leer(ruta: Path) -> dict | None:
         return None
     try:
         datos = json.loads(ruta.read_text(encoding="utf-8"))
+    except OSError as e:  # un directorio con ese nombre, sin permiso de lectura
+        raise CatalogoInvalido(f"{ruta.name} no se puede leer: {e.strerror or e}") from e
     except (UnicodeDecodeError, json.JSONDecodeError) as e:
         raise CatalogoInvalido(f"{ruta.name} no es JSON válido: {e}") from e
     if not isinstance(datos, dict):
@@ -62,7 +64,7 @@ def leer_catalogos(directorio: Path) -> dict:
         {regionales: {...} | null, vaguedad: {...} | null,
          versiones: {regionales, vaguedad}, nota}
 
-    Lanza `CatalogoInvalido` si un archivo existe pero no es un objeto JSON.
+    Lanza `CatalogoInvalido` si un archivo existe pero no se puede leer o no es un objeto JSON.
     """
     salida: dict = {n: _leer(Path(directorio) / f"{n}.json") for n in CATALOGOS}
     salida["versiones"] = {n: (salida[n] or {}).get("version") for n in CATALOGOS}

@@ -66,8 +66,9 @@ catálogo y calibración necesitan agregados que no existen en ningún documento
      «no terminal y no `pendiente_validacion`».
    - `marcados.tipo` es el tipo de ambigüedad si el término tiene
      interpretaciones; si no, `vaguedad`, `lel` (resuelto por el LEL) o
-     `regional`; `null` para unívocos o candidatos aún sin clasificar. `texto` es
-     el tramo exacto del requisito.
+     `regional` (un regional unívoco o aún sin clasificar); `null` para los demás
+     unívocos y candidatos aún sin clasificar. `texto` es el tramo exacto del
+     requisito.
    - Una interpretación refinada **conserva su id** y la vista muestra su última
      versión; cada ronda lleva además `evaluadas` (lo que el Crítico evaluó en esa
      ronda), porque las evaluaciones solo citan ids.
@@ -77,21 +78,32 @@ catálogo y calibración necesitan agregados que no existen en ningún documento
      solicitud de validación, la `propuesta` es exactamente la que vio el humano.
      `null` mientras el término se debate.
    - `resumen.via` es la más fuerte entre términos (arbitraje > consenso >
-     aceptado directo), coherente con el estado del requisito (ADR 0002 §4), y
-     `similitud_minima` la mínima de las similitudes iniciales.
+     aceptado directo), coherente con el estado del requisito (ADR 0002 §4). Es
+     `null` si no hay términos con interpretaciones y también mientras alguno
+     no tenga `resolucion` (sigue en debate o un error cortó el debate): con un
+     término aceptado directo y otro en debate, la vía del requisito aún no se
+     sabe. `similitud_minima` es la mínima de las similitudes iniciales que son
+     un número finito.
 
 3. **Mensajes efectivos.** Un nodo que continúa tras un reinicio se reejecuta y
    repite sus mensajes (ADR 0008). Para la vista cuenta el **último** mensaje de
    cada clave (`tipo`, `ronda`, término normalizado; `extraccion`, `filtrado`,
    `interpretaciones`, `solicitud_validacion` y `validacion` son únicos por
-   requisito), que es el que quedó en el estado del grafo; las similitudes
-   iniciales anteriores a la última clasificación se descartan; los errores
-   nunca. La traza no se toca y `n_repetidos` dice cuántos se descartaron.
+   requisito), que es el que quedó en el estado del grafo. También se descarta
+   lo que una ejecución anterior emitió y la última no repitió: las similitudes
+   iniciales anteriores a la última clasificación y, en cada ronda, el
+   refinamiento, la similitud o el consenso de un término anteriores a su
+   última objeción en esa ronda (un consenso que la reejecución ya no
+   alcanzó, por ejemplo). Los errores nunca se descartan. La traza no se toca y
+   `n_repetidos` dice cuántos se descartaron.
 
 4. **Tolerancia.** Trazas en proceso (campos `null` o listas vacías), en error,
    anteriores al tipo de ambigüedad (se tratan como léxicas, ADR 0010 §5), con
    `formalizacion` sin `alcance` (anteriores al ADR 0010) y con configuración sin
-   catálogos ni persistencia.
+   catálogos ni persistencia. Una similitud `NaN` (embeddings degenerados) no
+   cuenta para `similitud_minima` y sale como `null` en el JSON; las listas de
+   un payload que vengan en `null` se tratan como vacías, para que una traza
+   rara no tumbe las vistas del proyecto, que recorren todas.
 
 5. **Resumen ligero** (`resumen_requisito`) para listas: `{req_id, proyecto_id,
    ciclo, texto, origen, estado, creado, actualizado, similitud_minima, via,
@@ -117,9 +129,14 @@ catálogo y calibración necesitan agregados que no existen en ningún documento
      | 4 Validación (humano) | `solicitud_validacion`, `validacion` | `pendiente_validacion` |
      | 5 Enriquecimiento, cierre (Modelador) | `formalizacion` | `formalizado` |
 
+     `requisitos_que_pasaron` cuenta los que llegaron a alguno de esos estados.
+     En las fases 1, 2 y 5 el estado se alcanza al terminar el trabajo (un
+     requisito cuyo Extractor falló no cuenta en la fase 1); en la 3 y la 4, al
+     entrar (uno que sigue en debate o esperando al humano ya cuenta).
      `debates`, `consensos`, `arbitrajes`, `directos`, `validados`, `rechazados` y
-     `formalizados` cuentan requisitos que pasaron por ese estado; los mensajes se
-     cuentan sin repetidos.
+     `formalizados` cuentan requisitos que pasaron por ese estado (un requisito
+     con un término en consenso y otro arbitrado cuenta solo como arbitraje); los
+     mensajes se cuentan sin repetidos.
 
 7. **Formas como contrato.** `app/analisis/formas.py` declara cada forma con
    Pydantic (`extra="forbid"`); las rutas las usan como `response_model` (quedan
@@ -131,9 +148,13 @@ catálogo y calibración necesitan agregados que no existen en ningún documento
    la configuración que copiaría una traza nueva (mismos nombres que
    `vista.config`) más el proveedor del Crítico, los modelos auxiliares, la
    rejilla de calibración y los umbrales de comparación, con la nota «se cambia
-   en .env; cada traza guarda la suya». `GET /catalogos` devuelve los JSON de
-   catálogos tal cual están en disco, con sus versiones. No se editan desde la
-   interfaz: cambiar un parámetro a mitad de un experimento rompería la
+   en .env; cada traza guarda la suya». La rejilla es la de `app.calibracion`
+   con los valores de `.env`; el informe de calibración le agrega además el
+   umbral configurado si no cae en ella. `GET /catalogos` devuelve los JSON de
+   catálogos tal cual están en disco, con su campo `version` tal cual (texto o
+   número); un catálogo que falta sale `null` y uno que no se puede leer o no es
+   un objeto JSON da un 500 que dice qué archivo y por qué. No se editan desde
+   la interfaz: cambiar un parámetro a mitad de un experimento rompería la
    reproducibilidad, y cada traza ya guarda lo que usó.
 
 ## Alternativas consideradas
@@ -161,7 +182,18 @@ catálogo y calibración necesitan agregados que no existen en ningún documento
   `duracion_s` de un ciclo incluye la espera de la validación humana.
 - La inconsistencia se juzga por comparación literal (minúsculas, sin acentos):
   «periodo de uso» y «periodo de uso del sistema» cuentan como distintos (falso
-  positivo posible); los símbolos se agrupan por forma normalizada, no por lema.
+  positivo posible); los enunciados de una noción del LEL se comparan sin
+  importar su orden, como en la comparación entre requisitos (ADR 0012); los
+  símbolos se agrupan por forma normalizada, no por lema.
+- Las vistas del proyecto no siguen los reprocesos (`origen.reproceso_de`),
+  a diferencia de la calibración y la comparación: cuentan todas las trazas.
+  Si un requisito aprobado falla en el Modelador y su reproceso se valida con
+  otro significado, el término sale inconsistente aunque el primero nunca
+  llegó al LEL. Se prefirió mostrarlo (el humano sí validó dos significados) a
+  esconder trazas en estas vistas.
+- `totales.inconsistentes` cuenta grupos, no conflictos: entradas del LEL del
+  símbolo «sesión» que vienen del término «sesiones» marcan los dos grupos
+  (por el símbolo y por el término).
 - El símbolo del LEL de un término `resuelto_por_lel` se toma del `detalle` que
   escriben los filtros («símbolo del LEL: …»); si ese texto cambia, se usa el
   propio término.

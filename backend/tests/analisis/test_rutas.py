@@ -158,3 +158,11 @@ def test_similitud_nan_en_la_traza_sale_como_null(proyecto):
     s = next(x for x in r.json()["terminos"] if x["termino"] == "sesión")
     assert s["divergencia_inicial"]["similitud"] is None and s["divergencia_inicial"]["pares"] == {"I1-I2": None}
     assert r.json()["resumen"]["similitud_minima"] is None
+
+
+def test_catalogo_ilegible_dice_cual_y_por_que(tmp_path):
+    """Un directorio con el nombre del catálogo (o un archivo sin permiso de lectura) era un 500 opaco."""
+    (tmp_path / "vaguedad.json").mkdir()
+    r = _app_con(_servicio_con_catalogos(tmp_path)).get("/catalogos")
+    assert r.status_code == 500
+    assert "vaguedad.json no se puede leer" in r.json()["detail"]
