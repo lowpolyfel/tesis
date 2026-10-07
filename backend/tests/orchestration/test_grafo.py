@@ -39,7 +39,7 @@ APROBAR = Validacion(decision="aprobar")
 def test_camino_aceptado_directo(tmp_path, analizador):
     srv, llm, repo = montar(tmp_path, analizador, {
         "extractor_v1": [EXTRACCION_SESION],
-        "clasificador_v1": [clasificacion(I1, interp("I2", "periodo de uso", P1_CERCANA))],
+        "clasificador_v2": [clasificacion(I1, interp("I2", "periodo de uso", P1_CERCANA))],
         "modelador_v1": [MODELADO],
     })
     req = srv.procesar(SESION)
@@ -61,7 +61,7 @@ def test_camino_aceptado_directo(tmp_path, analizador):
 def test_camino_consenso_en_ronda_1(tmp_path, analizador):
     srv, llm, repo = montar(tmp_path, analizador, {
         "extractor_v1": [EXTRACCION_SESION],
-        "clasificador_v1": [clasificacion(I1, I2)],
+        "clasificador_v2": [clasificacion(I1, I2)],
         "critico_v1": r3_todas(False),
         "clasificador_refinamiento_v1": [{"interpretaciones": [I1],
                                           "retiradas": [{"interpretacion_id": "I2", "motivo": "agrega servidor"}]}],
@@ -73,7 +73,11 @@ def test_camino_consenso_en_ronda_1(tmp_path, analizador):
     assert ruta(t) == ["cargado", "extraido", "interpretado", "en_debate", "consenso", "pendiente_validacion",
                        "validado", "formalizado"]
     assert tipos(t) == ["extraccion", "filtrado", "interpretaciones", "similitud", "objecion", "refinamiento",
-                        "consenso", "solicitud_validacion", "validacion", "formalizacion"]
+                        "consenso", "solicitud_validacion", "validacion", "formalizacion", "formalizacion"]
+    por_termino, por_requisito = [m.payload for m in t.mensajes if m.tipo == "formalizacion"]
+    assert por_termino["alcance"] == "termino" and por_termino["entrada_lel"]["simbolo"] == "sesión"
+    assert por_requisito["alcance"] == "requisito" and por_requisito["entradas_lel"] == ["sesión"]
+    assert por_requisito["resoluciones"][0]["tipo_ambiguedad"] == "lexica" and por_requisito["metas"]
     consenso = next(m for m in t.mensajes if m.tipo == "consenso")
     assert consenso.ronda == 1 and consenso.payload["motivo"] == "una_interpretacion"
     assert repo.listar_lel()[0].via == "consenso"
@@ -82,7 +86,7 @@ def test_camino_consenso_en_ronda_1(tmp_path, analizador):
 def test_camino_consenso_por_umbral_tras_refinar(tmp_path, analizador):
     srv, _, _ = montar(tmp_path, analizador, {
         "extractor_v1": [EXTRACCION_SESION],
-        "clasificador_v1": [clasificacion(I1, I2)],
+        "clasificador_v2": [clasificacion(I1, I2)],
         "critico_v1": r3_todas(False),
         "clasificador_refinamiento_v1": [{"interpretaciones": [I1, interp("I2", "periodo de uso", P1_CERCANA)]}],
     })
@@ -98,7 +102,7 @@ def test_camino_arbitraje_tras_2_rondas(tmp_path, analizador):
     sin_cambios = {"interpretaciones": [I1, I2]}
     srv, llm, repo = montar(tmp_path, analizador, {
         "extractor_v1": [EXTRACCION_SESION],
-        "clasificador_v1": [clasificacion(I1, I2)],
+        "clasificador_v2": [clasificacion(I1, I2)],
         "critico_v1": r3_todas(False),
         "clasificador_refinamiento_v1": [sin_cambios, sin_cambios],
         "critico_arbitraje_v1": [{"interpretacion_elegida": "I2", "justificacion_por_regla": [
@@ -126,14 +130,14 @@ def test_camino_vaguedad_sin_debate(tmp_path, analizador):
         "extractor_v1": [{"terminos": [{"termino": "sistema", "categoria_tentativa": "sujeto"},
                                        {"termino": "responder", "categoria_tentativa": "verbo"},
                                        {"termino": "ahorita", "categoria_tentativa": "estado"}]}],
-        "clasificador_v1": [{"resultados": [{"termino": "sistema", "univoco": True},
+        "clasificador_v2": [{"resultados": [{"termino": "sistema", "univoco": True},
                                             {"termino": "responder", "univoco": True}]}],
     })
     req = srv.procesar("El sistema debe responder ahorita.")
     t = srv.traza(req)
     filtrado = next(m for m in t.mensajes if m.tipo == "filtrado").payload["terminos"]
     assert {f["termino"]: f["decision_filtro"] for f in filtrado}["ahorita"] == "vaguedad"
-    candidatos = llm.llamadas["clasificador_v1"][0].usuario.split("Términos candidatos:")[1].split("LEL")[0]
+    candidatos = llm.llamadas["clasificador_v2"][0].usuario.split("Términos candidatos:")[1].split("LEL")[0]
     assert "sistema" in candidatos and "ahorita" not in candidatos
     assert "critico_v1" not in llm.llamadas
     sim = next(m for m in t.mensajes if m.tipo == "similitud").payload
@@ -144,7 +148,8 @@ def test_camino_vaguedad_sin_debate(tmp_path, analizador):
     t = srv.traza(req)
     assert ruta(t)[-4:] == ["aceptado_directo", "pendiente_validacion", "validado", "formalizado"]
     formalizacion = next(m for m in t.mensajes if m.tipo == "formalizacion").payload
-    assert formalizacion["entradas"] == [] and formalizacion["univocos"] == ["sistema", "responder"]
+    assert formalizacion["entradas_lel"] == [] and formalizacion["univocos"] == ["sistema", "responder"]
+    assert formalizacion["vaguedad"] == ["ahorita"] and formalizacion["requisito_reescrito"]
     assert repo.listar_lel() == []  # los unívocos no entran al LEL (ADR 0007)
 
 
@@ -153,7 +158,7 @@ def test_camino_vaguedad_sin_debate(tmp_path, analizador):
 def test_rechazo_termina_sin_formalizar(tmp_path, analizador):
     srv, llm, repo = montar(tmp_path, analizador, {
         "extractor_v1": [EXTRACCION_SESION],
-        "clasificador_v1": [clasificacion(I1, interp("I2", "periodo de uso", P1_CERCANA))],
+        "clasificador_v2": [clasificacion(I1, interp("I2", "periodo de uso", P1_CERCANA))],
     })
     req = srv.procesar(SESION)
     srv.validar(req, Validacion(decision="rechazar", comentario="no es lo que pedí"))
@@ -186,7 +191,7 @@ def test_el_humano_edita_la_interpretacion(tmp_path, analizador):
 def test_el_lel_es_memoria_el_termino_no_se_vuelve_a_debatir(tmp_path, analizador):
     guiones = guiones_sesion_cercana()
     guiones["extractor_v1"].append(EXTRACCION_SESION)
-    guiones["clasificador_v1"].append({"resultados": [{"termino": "sistema", "univoco": True},
+    guiones["clasificador_v2"].append({"resultados": [{"termino": "sistema", "univoco": True},
                                                       {"termino": "registrar", "univoco": True}]})
     srv, llm, _ = montar(tmp_path, analizador, guiones)
     srv.validar(srv.procesar(SESION), APROBAR)
@@ -195,14 +200,14 @@ def test_el_lel_es_memoria_el_termino_no_se_vuelve_a_debatir(tmp_path, analizado
     filtrado = next(m for m in t.mensajes if m.tipo == "filtrado").payload["terminos"]
     sesion = next(f for f in filtrado if f["termino"] == "sesión")
     assert sesion["decision_filtro"] == "resuelto_por_lel"
-    assert '"sesión"' in llm.llamadas["clasificador_v1"][1].usuario.split("LEL acumulado")[1]  # va como contexto
+    assert '"sesión"' in llm.llamadas["clasificador_v2"][1].usuario.split("LEL acumulado")[1]  # va como contexto
     assert ruta(t)[-2:] == ["aceptado_directo", "pendiente_validacion"]
 
 
 def test_validar_fuera_de_turno_o_con_termino_desconocido(tmp_path, analizador):
     srv, _, _ = montar(tmp_path, analizador, {
         "extractor_v1": [EXTRACCION_SESION],
-        "clasificador_v1": [clasificacion(I1, interp("I2", "periodo de uso", P1_CERCANA))],
+        "clasificador_v2": [clasificacion(I1, interp("I2", "periodo de uso", P1_CERCANA))],
         "modelador_v1": [MODELADO],
     })
     req = srv.procesar(SESION)
@@ -231,7 +236,7 @@ def test_salida_invalida_dos_veces_termina_en_error(tmp_path, analizador):
 def test_reintento_exitoso_queda_en_la_traza(tmp_path, analizador):
     srv, _, _ = montar(tmp_path, analizador, {
         "extractor_v1": ["{roto", EXTRACCION_SESION],
-        "clasificador_v1": [clasificacion(I1, interp("I2", "periodo de uso", P1_CERCANA))],
+        "clasificador_v2": [clasificacion(I1, interp("I2", "periodo de uso", P1_CERCANA))],
     })
     t = srv.traza(srv.procesar(SESION))
     ext = t.mensajes[0].payload
@@ -241,7 +246,7 @@ def test_reintento_exitoso_queda_en_la_traza(tmp_path, analizador):
 def test_reanuda_despues_de_reiniciar_con_sqlite(tmp_path, analizador):
     guiones = {
         "extractor_v1": [EXTRACCION_SESION],
-        "clasificador_v1": [clasificacion(I1, interp("I2", "periodo de uso", P1_CERCANA))],
+        "clasificador_v2": [clasificacion(I1, interp("I2", "periodo de uso", P1_CERCANA))],
         "modelador_v1": [MODELADO],
     }
     srv, _, _ = montar(tmp_path, analizador, guiones, checkpointer=checkpointer_sqlite(tmp_path / "cp.sqlite"))
@@ -257,7 +262,7 @@ def test_reanuda_despues_de_reiniciar_con_sqlite(tmp_path, analizador):
 def test_la_traza_se_reconstruye_desde_el_json(tmp_path, analizador):
     srv, _, repo = montar(tmp_path, analizador, {
         "extractor_v1": [EXTRACCION_SESION],
-        "clasificador_v1": [clasificacion(I1, I2)],
+        "clasificador_v2": [clasificacion(I1, I2)],
         "critico_v1": r3_todas(False),
         "clasificador_refinamiento_v1": [{"interpretaciones": [I1],
                                           "retiradas": [{"interpretacion_id": "I2", "motivo": "x"}]}],
@@ -283,3 +288,40 @@ def test_los_nodos_del_grafo_son_los_estados_mas_el_humano(tmp_path, analizador)
     srv, _, _ = montar(tmp_path, analizador, {})
     nodos = set(srv.grafo.get_graph().nodes) - {"__start__", "__end__"}
     assert nodos == {e.value for e in Estado} | {"humano"}
+
+
+def test_anafora_se_resuelve_en_el_requisito_y_no_entra_al_lel(tmp_path, analizador):
+    texto = "El administrador debe notificar al usuario cuando su cuenta expire."
+    pa = "El administrador debe notificar al usuario cuando la cuenta del administrador expire."
+    pu = "El administrador debe notificar al usuario cuando la cuenta del usuario expire."
+    # pa y pu no tienen vector propio: similitud 1.0 → aceptado directo, se propone I1
+    reescrito = {"requisito_reescrito": pa, "metas": [
+        {"id": "M1", "enunciado": "Notificar la expiración de la cuenta", "tipo": "meta", "actor": "administrador"}]}
+    srv, llm, repo = montar(tmp_path, analizador, {
+        "extractor_v1": [{"terminos": [{"termino": "administrador", "categoria_tentativa": "sujeto"},
+                                       {"termino": "usuario", "categoria_tentativa": "sujeto"}]}],
+        "clasificador_v2": [{"resultados": [
+            {"termino": "administrador", "univoco": True}, {"termino": "usuario", "univoco": True},
+            {"termino": "su cuenta", "tipo_ambiguedad": "anaforica", "interpretaciones": [
+                interp("I1", "la cuenta del administrador", pa), interp("I2", "la cuenta del usuario", pu)]}]}],
+        "modelador_requisito_v1": [reescrito],
+    })
+    req = srv.procesar(texto)
+    t = srv.traza(req)
+    filtrado = next(m for m in t.mensajes if m.tipo == "filtrado").payload["terminos"]
+    assert {"termino": "su cuenta", "decision_filtro": "anafora"}.items() <= next(
+        f for f in filtrado if f["termino"] == "su cuenta").items()
+    candidatos = llm.llamadas["clasificador_v2"][0].usuario.split("Términos candidatos:")[1].split("LEL")[0]
+    assert '"origen": "anafora"' in candidatos and "administrador, usuario" in candidatos
+    solicitud = next(m for m in t.mensajes if m.tipo == "solicitud_validacion").payload
+    assert solicitud["terminos"][0]["tipo_ambiguedad"] == "anaforica"
+    assert solicitud["estructuras"][0]["decision_filtro"] == "anafora"
+
+    srv.validar(req, Validacion(decision="aprobar"))
+    assert repo.listar_lel() == [] and "modelador_v1" not in llm.llamadas  # la anáfora no es vocabulario
+    final = [m.payload for m in srv.traza(req).mensajes if m.tipo == "formalizacion"]
+    assert len(final) == 1 and final[0]["requisito_reescrito"] == pa
+    assert final[0]["resoluciones"][0]["interpretacion"]["id"] == "I1"
+    assert "la cuenta del administrador" in llm.llamadas["modelador_requisito_v1"][0].usuario
+    assert final[0]["resoluciones"][0]["tipo_ambiguedad"] == "anaforica"
+    assert repo.obtener_doc("formalizados", req)["metas"][0]["actor"] == "administrador"

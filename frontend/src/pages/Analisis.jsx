@@ -2,377 +2,344 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { useOrb } from "../components/orb/useOrb";
 import { isMobile } from "../components/orb/poses";
-import { seguirLote } from "../services/polling";
-import { ESTADOS as E, VIAS_RESOLUCION as V, INFO_ESTADO, estaEnProceso } from "../constants/estados";
-import { AGENTES } from "../constants/agentes";
+import { obtenerCola, requisitosDeProyecto } from "../services/backend";
+import { ESTADOS as E, estaEnProceso, esTerminal, infoEstado } from "../constants/estados";
+import { nodo } from "../constants/agentes";
+import { crearCoreografia } from "../escena/coreografia";
+import { useEnVivo } from "../escena/useEnVivo";
+import { marcasDesdeMensajes, resumenMensaje } from "../escena/resumenMensaje";
 import TextoMarcado from "../components/TextoMarcado";
 
 /*
- * Analizar, paso 3. La esfera hace mitosis: se divide en los cuatro agentes
- * y el trabajo se ve en ellos.
- *   - el agente en turno crece y agita sus ondas; los demás se atenúan
- *   - si las lecturas divergen, el Clasificador se divide en Lectura A y B,
- *     que se acercan conforme sube la similitud en cada ronda
- *   - consenso: A y B se funden de vuelta; arbitraje: el Crítico las absorbe
- *   - al terminar, los agentes se funden en una sola esfera y aparecen los resultados
+ * Analizar, paso 3: la escena en vivo.
+ *
+ * La esfera se divide en los nodos reales del sistema (Extractor, Filtros,
+ * Clasificador, Divergencia, Crítico, Humano, Modelador). Cada mensaje del
+ * protocolo que llega por SSE viaja de su emisor a su receptor; las
+ * interpretaciones nacen del Clasificador y se acercan o alejan según la
+ * similitud. Lo que se ve es exactamente lo que dice la traza.
+ *
+ * El backend procesa un requisito a la vez (cola); la escena sigue al que está
+ * en proceso. Los que llegan a pendiente_validacion quedan en la bandeja
+ * "por validar": la validación es de una persona, uno por uno.
  */
 
-const ORDEN = ["extractor", "clasificador", "critico", "modelador"];
-const MOOD = { extractor: "extractor", clasificador: "clasificador", critico: "critico", modelador: "modelador" };
-
-const geo = () => {
-  const m = isMobile();
-  return {
-    fila: m ? -0.12 : -0.1,
-    x: m ? [-0.36, -0.12, 0.12, 0.36] : [-0.3, -0.1, 0.1, 0.3],
-    s: m ? 0.2 : 0.32,
-    sActivo: m ? 0.28 : 0.44,
-    par: m ? 0.12 : 0.17,
-    sPar: m ? 0.16 : 0.25,
-  };
-};
-
-const VIA = {
-  [V.DIRECTO]: { texto: "directo", tono: "#57f7a7" },
-  [V.CONSENSO]: { texto: "consenso", tono: "#a99bff" },
-  [V.ARBITRAJE]: { texto: "arbitraje", tono: "#ffc457" },
-};
-
-/* Quién trabaja en cada estado del requisito en foco */
-const TURNO = {
-  [E.CARGADO]: "extractor",
-  [E.EXTRAIDO]: "clasificador",
-  [E.INTERPRETADO]: "clasificador",
-  [E.EN_DEBATE]: "critico",
-  [E.ACEPTADO_DIRECTO]: "modelador",
-  [E.CONSENSO]: "modelador",
-  [E.ARBITRADO]: "modelador",
-};
-
-function subtitulo(agente, r) {
-  const t = r.traza;
-  switch (agente) {
-    case "extractor":
-      return t.extraccion ? `${t.extraccion.terminos.length} términos · ${t.extraccion.marcados.length} marcados` : "leyendo el requisito…";
-    case "clasificador":
-      if (t.clasificacion) return t.clasificacion.enDisputa.length ? `2 lecturas de ${t.clasificacion.enDisputa.map((x) => `«${x}»`).join(" y ")}` : "2 lecturas, sin disputa";
-      return t.extraccion ? "buscando otras lecturas…" : "en espera";
-    case "critico":
-      if (t.debate) {
-        if (t.debate.resultado === "consenso") return `consenso en la ronda ${t.debate.rondas.length}`;
-        if (t.debate.resultado === "agotado") return t.debate.arbitraje ? `arbitró: lectura ${t.debate.arbitraje.eleccion}` : "arbitrando…";
-        const n = t.debate.rondas.length;
-        return n < t.debate.maxRondas ? `conduciendo la ronda ${n + 1} de ${t.debate.maxRondas}` : "arbitrando…";
-      }
-      if (t.divergencia?.decision === "directo") return "sin debate";
-      return "en espera";
-    case "modelador":
-      if (t.artefactos) return "LEL, metas y Big Picture listos";
-      if (t.resolucion) return "generando artefactos…";
-      return "en espera";
-    default:
-      return "";
-  }
-}
+const RITMOS = [0.5, 1, 2, 4];
+const enReposo = (estado) => esTerminal(estado) || estado === E.PENDIENTE_VALIDACION;
 
 export default function Analisis() {
   const orb = useOrb();
   const navigate = useNavigate();
   const [params] = useSearchParams();
+  const proyecto = params.get("proyecto");
   const ids = useMemo(() => (params.get("ids") ?? "").split(",").filter(Boolean), [params]);
+
   const [lista, setLista] = useState(null);
+  const [colaFoco, setColaFoco] = useState(null);
+  const [errorCarga, setErrorCarga] = useState(null);
+  const [foco, setFoco] = useState(null);
+  const [vistos, setVistos] = useState([]); // requisitos cuya escena ya se mostró completa
+  const [repetir, setRepetir] = useState(params.get("escena") === "1");
   const [fase, setFase] = useState("division"); // division → trabajo → fusion → resultados
-  const arranco = useRef(false);
-  const rondasPrevias = useRef(0);
 
   useEffect(() => {
-    if (!ids.length) navigate("/inicio", { replace: true });
-  }, [ids, navigate]);
+    if (!ids.length || !proyecto) navigate("/inicio", { replace: true });
+  }, [ids, proyecto, navigate]);
 
-  useEffect(() => seguirLote(ids, setLista), [ids]);
-
-  const terminado = lista && lista.every((r) => !estaEnProceso(r.estado));
-  const foco = lista?.find((r) => estaEnProceso(r.estado)) ?? null;
-  const indiceFoco = foco ? lista.indexOf(foco) : -1;
-
-  /* ---- 1. mitosis inicial (o directo a resultados si ya estaba todo listo) ---- */
-  const cargado = Boolean(lista);
-  const terminadoRef = useRef(false);
-  terminadoRef.current = Boolean(terminado);
+  /* ---- estado del lote: sondeo ligero de la lista y de la cola ---- */
   useEffect(() => {
-    if (!cargado || fase !== "division") return;
-    if (terminadoRef.current && !arranco.current) {
+    if (!proyecto) return undefined;
+    let activo = true;
+    let t;
+    const tick = async () => {
+      try {
+        const [todos, cola] = await Promise.all([requisitosDeProyecto(proyecto), obtenerCola()]);
+        if (!activo) return;
+        const porId = new Map(todos.map((r) => [r.req_id, r]));
+        const nueva = ids.map((id) => porId.get(id)).filter(Boolean);
+        setLista(nueva);
+        setColaFoco(cola.en_proceso && ids.includes(cola.en_proceso.clave) ? cola.en_proceso.clave : null);
+        setErrorCarga(null);
+        if (nueva.some((r) => !enReposo(r.estado))) t = setTimeout(tick, 1500);
+        else t = setTimeout(tick, 5000); // ya nada corre; se sigue mirando por si valida alguien
+      } catch (e) {
+        if (!activo) return;
+        setErrorCarga(e);
+        t = setTimeout(tick, 3000);
+      }
+    };
+    tick();
+    return () => { activo = false; clearTimeout(t); };
+  }, [proyecto, ids]);
+
+  const coreografia = useMemo(() => crearCoreografia(orb), [orb]);
+  const vivo = useEnVivo(fase === "trabajo" ? foco : null, { coreografia });
+  const alDia = vivo.animados >= vivo.mensajes.length;
+
+  /*
+   * A quién seguir: cada requisito del lote se muestra completo y en orden
+   * (la cola también procesa en orden). El siguiente entra cuando el actual
+   * llegó a reposo y su escena terminó; si aún no empieza (cargado), se espera.
+   */
+  const siguiente = lista?.find((r) => !vistos.includes(r.req_id) && r.req_id !== foco) ?? null;
+  const listoParaVer = siguiente && (siguiente.estado !== E.CARGADO || siguiente.req_id === colaFoco);
+  useEffect(() => {
+    if (fase !== "trabajo") return undefined;
+    if (!foco) {
+      if (listoParaVer) setFoco(siguiente.req_id);
+      return undefined;
+    }
+    if (enReposo(vivo.estado) && alDia && listoParaVer) {
+      const t = setTimeout(() => { setVistos((v) => [...v, foco]); setFoco(siguiente.req_id); }, 1400);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [fase, foco, siguiente, listoParaVer, vivo.estado, alDia]);
+
+  const todosEnReposo = Boolean(lista?.length) && lista.length === ids.length && lista.every((r) => enReposo(r.estado));
+  const todosVistos = Boolean(lista) && lista.every((r) => vistos.includes(r.req_id) || r.req_id === foco);
+
+  /* ---- 1. mitosis inicial (si todo ya estaba listo, directo a resultados salvo que se pida la escena) ---- */
+  useEffect(() => {
+    if (!lista || fase !== "division") return undefined;
+    if (todosEnReposo && !repetir) {
       orb.setPose(isMobile() ? { x: 0, y: -0.33, s: 0.45 } : { x: -0.3, y: 0, s: 0.8 });
       setFase("resultados");
-      return;
+      return undefined;
     }
-    arranco.current = true;
     orb.setPose({ x: 0, y: -0.06, s: 0.9 });
     orb.setMood("idle");
     orb.update("core", { label: "Dividiendo en agentes", sub: `${ids.length} ${ids.length === 1 ? "requisito" : "requisitos"}` });
-    const t = setTimeout(() => {
-      const g = geo();
-      orb.update("core", { label: null, sub: null });
-      orb.setPose({ x: 0, y: g.fila, s: 0 });
-      orb.divide(
-        "core",
-        ORDEN.map((a, i) => ({
-          id: a,
-          mood: MOOD[a],
-          x: g.x[i],
-          y: g.fila,
-          s: g.s,
-          label: AGENTES[a].nombre,
-          sub: "en espera",
-        }))
-      );
-      setFase("trabajo");
-    }, 650);
+    const t = setTimeout(() => { coreografia.montar(); setFase("trabajo"); }, 700);
     return () => clearTimeout(t);
-  }, [cargado, fase, orb, ids.length]);
+  }, [lista, fase, todosEnReposo, repetir, orb, coreografia, ids.length]);
 
-  /* ---- 2. coreografía del requisito en foco ---- */
+  /* ---- 2. todo en reposo y visto: los nodos se funden ---- */
   useEffect(() => {
-    if (fase !== "trabajo" || !foco) return;
-    const g = geo();
-    const turno = TURNO[foco.estado];
-    ORDEN.forEach((a, i) => {
-      orb.update(a, {
-        active: a === turno,
-        dim: Boolean(turno) && a !== turno,
-        x: g.x[i],
-        y: g.fila,
-        s: a === turno ? g.sActivo : g.s,
-        sub: subtitulo(a, foco),
-      });
-    });
-    if (turno) orb.setAmbient(MOOD[turno]);
-
-    // Lecturas A y B: nacen del Clasificador cuando hay debate
-    const debate = foco.traza.debate;
-    const enDebate = foco.estado === E.EN_DEBATE;
-    if (enDebate && !orb.has("lecA")) {
-      const lect = foco.traza.clasificacion.interpretaciones;
-      const resumen = (k) => lect[k].lecturas.map((l) => `«${l.termino}» = ${l.significado}`).join(" · ");
-      orb.divide("clasificador", [
-        { id: "lecA", mood: "lecturaA", x: g.x[2] - 0.2, y: g.par, s: g.sPar, label: "Lectura A", sub: resumen("A") },
-        { id: "lecB", mood: "lecturaB", x: g.x[2] + 0.2, y: g.par, s: g.sPar, label: "Lectura B", sub: resumen("B") },
-      ]);
-      rondasPrevias.current = 0;
-    }
-    if (enDebate && orb.has("lecA")) {
-      // Se acercan conforme convergen
-      const sim = debate?.rondas.at(-1)?.similitudCierre ?? foco.traza.divergencia.similitud;
-      const gap = 0.05 + (1 - sim) * 0.26;
-      orb.update("lecA", { x: g.x[2] - gap, active: true });
-      orb.update("lecB", { x: g.x[2] + gap, active: true });
-      const n = debate?.rondas.length ?? 0;
-      if (n > rondasPrevias.current) {
-        rondasPrevias.current = n;
-        orb.poke(0.8, "lecA");
-        orb.poke(0.8, "lecB");
-        orb.poke(0.6, "critico");
-      }
-    }
-    if (!enDebate && orb.has("lecA")) {
-      const destino = foco.estado === E.ARBITRADO ? "critico" : "clasificador";
-      orb.fuse(["lecA", "lecB"], destino);
-    }
-  }, [fase, foco, orb]);
-
-  /* ---- 3. todo listo: los agentes se funden en una sola esfera ---- */
-  useEffect(() => {
-    if (fase !== "trabajo" || !terminado) return;
-    orb.fuse(["lecA", "lecB", ...ORDEN], "core");
-    orb.setPose({ x: 0, y: -0.06, s: 0.95 });
-    orb.setMood("success");
-    setFase("fusion");
-  }, [fase, terminado, orb]);
+    if (fase !== "trabajo" || !todosEnReposo || !todosVistos || !alDia || !enReposo(vivo.estado ?? E.CARGADO)) return undefined;
+    const t = setTimeout(() => {
+      coreografia.desmontar();
+      orb.setPose({ x: 0, y: -0.06, s: 0.95 });
+      orb.setMood("success");
+      setFase("fusion");
+    }, 1600);
+    return () => clearTimeout(t);
+  }, [fase, todosEnReposo, todosVistos, alDia, vivo.estado, coreografia, orb]);
 
   useEffect(() => {
-    if (fase !== "fusion") return;
+    if (fase !== "fusion") return undefined;
     const t = setTimeout(() => {
       orb.setPose(isMobile() ? { x: 0, y: -0.33, s: 0.45 } : { x: -0.3, y: 0, s: 0.8 });
+      orb.update("core", { label: "Análisis completo", sub: null });
+      orb.setMood("idle");
       setFase("resultados");
-    }, 1600);
+    }, 1500);
     return () => clearTimeout(t);
   }, [fase, orb]);
 
+  useEffect(() => {
+    const alCambiar = () => coreografia.reacomodar();
+    addEventListener("resize", alCambiar);
+    return () => removeEventListener("resize", alCambiar);
+  }, [coreografia]);
+
   /* Al salir, la esfera vuelve a ser una */
   useEffect(() => () => {
-    orb.fuse(["lecA", "lecB", ...ORDEN], "core");
+    coreografia.desmontar();
     orb.update("core", { label: null, sub: null });
     orb.setMood("idle");
-  }, [orb]);
+  }, [orb, coreografia]);
 
-  useEffect(() => {
-    if (fase === "resultados" && lista) {
-      orb.update("core", { label: "Análisis completo", sub: null });
-      orb.setMood("idle");
-    }
-  }, [fase, lista, orb]);
-
+  if (errorCarga && !lista) {
+    return (
+      <main className="relative z-10 mx-auto max-w-xl px-6 pt-[30vh] text-center">
+        <p className="serif text-3xl">No pude seguir el análisis.</p>
+        <p className="mt-3 text-sm text-[var(--bone-dim)]">{errorCarga.message}</p>
+        <Link to="/inicio" className="pill ghost mt-6">Volver</Link>
+      </main>
+    );
+  }
   if (!lista) return null;
+
+  const focoInfo = lista.find((r) => r.req_id === foco);
+  const pendientes = lista.filter((r) => r.estado === E.PENDIENTE_VALIDACION);
 
   return (
     <main className="relative z-10 min-h-screen">
-      {(fase === "trabajo" || fase === "division") && foco && <Foco r={foco} i={indiceFoco} total={lista.length} />}
-      {fase === "trabajo" && foco && <Lectura r={foco} />}
-      {fase === "trabajo" && <Lote lista={lista} foco={foco} />}
+      {fase === "trabajo" && focoInfo && (
+        <Foco r={focoInfo} i={lista.indexOf(focoInfo)} total={lista.length} mensajes={vivo.mensajes} estado={vivo.estado ?? focoInfo.estado} />
+      )}
+      {fase === "trabajo" && (
+        <Panel
+          vivo={vivo} lista={lista} foco={foco} pendientes={pendientes} proyecto={proyecto}
+          onSeguir={(id) => setFoco(id)}
+        />
+      )}
       {fase === "fusion" && (
         <p className="mono sube fixed inset-x-0 bottom-[18vh] text-center text-[10px] text-[var(--bone-dim)]">Reuniendo a los agentes…</p>
       )}
-      {fase === "resultados" && <Resultados lista={lista} ids={ids} />}
+      {fase === "resultados" && (
+        <Resultados lista={lista} proyecto={proyecto}
+          onRepetir={() => { setRepetir(true); setVistos([]); setFoco(null); setFase("division"); }} />
+      )}
     </main>
   );
 }
 
 /* ---------------------------------------------------------------- */
 
-function Foco({ r, i, total }) {
-  // Requisitos largos bajan de tamaño para no invadir a los agentes
+function Foco({ r, i, total, mensajes, estado }) {
+  const marcas = marcasDesdeMensajes(mensajes);
   const largo = r.texto.length > 110;
   return (
-    <section key={r.id} className="pointer-events-none fixed inset-x-0 top-[12vh] z-10 px-6 text-center">
+    <section key={r.req_id} className="pointer-events-none fixed inset-x-0 top-[9vh] z-10 px-6 text-center">
       <p className="mono sube text-[10px] text-[var(--bone-faint)]">
-        Requisito {i + 1} de {total} · {r.id} · <span className="text-[var(--bone-dim)]">{INFO_ESTADO[r.estado].etiqueta}</span>
+        Requisito {i + 1} de {total} · {r.req_id} · ciclo {r.ciclo ?? 1} · <span className="text-[var(--bone-dim)]">{infoEstado(estado).etiqueta}</span>
       </p>
       <p
-        className={`serif sube mx-auto mt-3 line-clamp-3 max-w-4xl leading-tight ${largo ? "text-[clamp(18px,1.8vw,24px)]" : "text-[clamp(22px,2.4vw,34px)]"}`}
+        className={`serif sube mx-auto mt-2 line-clamp-2 max-w-4xl leading-tight ${largo ? "text-[clamp(16px,1.5vw,21px)]" : "text-[clamp(19px,2vw,28px)]"}`}
         style={{ "--i": 1 }}
       >
-        «<TextoMarcado texto={r.texto} marcados={r.traza.extraccion?.marcados ?? []} />»
+        «<TextoMarcado texto={r.texto} marcados={marcas} />»
       </p>
     </section>
   );
 }
 
-/* Similitud entre las lecturas, entre el Crítico y el par A/B */
-function Lectura({ r }) {
-  const d = r.traza.divergencia;
-  if (!d) return null;
-  const debate = r.traza.debate;
-  const ultima = debate?.rondas.at(-1);
-  const sim = ultima?.similitudCierre ?? d.similitud;
-  const arriba = sim >= d.umbral;
-  const nota = ultima?.intervenciones.find((x) => x.postura === "moderador")?.argumento;
-  const g = geo();
-  const top = `calc(50% + ${((g.fila + g.par) / 2 + 0.06) * 100}vh)`;
-  return (
-    <div key={`${r.id}-${debate?.rondas.length ?? 0}`} className="pointer-events-none fixed z-10 w-[min(440px,90vw)] -translate-x-1/2 -translate-y-1/2 text-center" style={{ left: `calc(50% + ${g.x[2] * 100}vw)`, top }}>
-      <p className="sube font-mono text-[28px] leading-none" style={{ color: arriba ? "#57f7a7" : "#ffc457" }}>
-        {sim.toFixed(2)}
-        <span className="ml-2 text-[13px] text-[var(--bone-faint)]">{arriba ? "≥" : "<"} {d.umbral.toFixed(2)}</span>
-      </p>
-      <p className="mono sube mt-1.5 text-[9.5px] text-[var(--bone-faint)]" style={{ "--i": 1 }}>
-        {!debate && (arriba ? "similitud por arriba del umbral · sin debate" : "similitud por debajo del umbral · debate")}
-        {debate && (ultima ? `similitud al cerrar la ronda ${ultima.numero}` : "similitud inicial · empieza el debate")}
-      </p>
-      {nota && <p className="sube mx-auto mt-2 max-w-sm text-[12px] leading-snug text-[var(--bone-dim)] italic" style={{ "--i": 2 }}>{nota}</p>}
-    </div>
-  );
-}
+function Panel({ vivo, lista, foco, pendientes, proyecto, onSeguir }) {
+  const [abierta, setAbierta] = useState(!isMobile());
+  const lineas = useRef(null);
+  const visibles = vivo.mensajes.slice(0, Math.max(vivo.animados, 0));
+  const actual = vivo.mensajes[vivo.animados - 1];
 
-/*
- * Progreso del lote: una marca por requisito, siempre en una sola línea por
- * muchos que sean. La lista completa se abre a demanda.
- */
-function Lote({ lista, foco }) {
-  const [abierta, setAbierta] = useState(false);
-  const listos = lista.filter((r) => !estaEnProceso(r.estado)).length;
+  useEffect(() => {
+    lineas.current?.scrollTo({ top: lineas.current.scrollHeight, behavior: "smooth" });
+  }, [visibles.length]);
+
   return (
-    <div className="fixed inset-x-0 bottom-[3vh] z-10 mx-auto flex max-w-3xl flex-col items-center gap-3 px-6">
-      {abierta && (
-        <ol className="sube max-h-[30vh] w-full overflow-y-auto rounded-2xl border border-[var(--line)] bg-[color-mix(in_oklab,var(--bg)_86%,transparent)] p-3 backdrop-blur-xl">
-          {lista.map((r) => {
-            const actual = r.id === foco?.id;
-            const listo = !estaEnProceso(r.estado);
-            const via = VIA[r.via];
-            return (
-              <li key={r.id} className={`flex items-center gap-4 py-1 text-[12.5px] ${actual ? "" : listo ? "opacity-60" : "opacity-35"}`}>
-                <span className="mono w-16 shrink-0 text-[9.5px] text-[var(--bone-faint)]">{r.id}</span>
-                <span className="min-w-0 flex-1 truncate">{r.texto}</span>
-                <span className="mono flex w-32 shrink-0 items-center justify-end gap-2 text-[9.5px]">
-                  {actual && <><span className="gira" />{INFO_ESTADO[r.estado].etiqueta}</>}
-                  {listo && via && <><span className="punto" style={{ background: via.tono }} />{via.texto}</>}
-                  {!listo && !actual && "en cola"}
-                </span>
+    <div className="fixed inset-x-0 bottom-0 z-10 px-4 pb-4 md:px-8">
+      <div className="mx-auto grid max-w-6xl gap-3 md:grid-cols-[1fr_300px]">
+        {/* Bitácora: un renglón por mensaje del protocolo */}
+        <section className="rounded-2xl border border-[var(--line)] bg-[color-mix(in_oklab,var(--bg)_82%,transparent)] backdrop-blur-xl">
+          <header className="flex items-center gap-3 border-b border-[var(--line)] px-4 py-2">
+            <button className="mono text-[9.5px] text-[var(--bone-dim)] hover:text-[var(--bone)]" onClick={() => setAbierta((x) => !x)}>
+              Bitácora · {visibles.length}/{vivo.mensajes.length} {abierta ? "▾" : "▸"}
+            </button>
+            {actual && (
+              <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--bone-dim)]">
+                <b className="text-[var(--bone)]">{nodo(actual.emisor).nombre}</b> → {nodo(actual.receptor).nombre}: {resumenMensaje(actual)}
+              </span>
+            )}
+            <span className="ml-auto flex items-center gap-1">
+              {RITMOS.map((x) => (
+                <button key={x} onClick={() => vivo.setRitmo(x)}
+                  className={`mono rounded-full px-2 py-0.5 text-[9px] ${vivo.ritmo === x ? "bg-[var(--bone)] text-[#16130f]" : "text-[var(--bone-faint)] hover:text-[var(--bone)]"}`}>
+                  {x}×
+                </button>
+              ))}
+              {!(vivo.animados >= vivo.mensajes.length) && (
+                <button onClick={vivo.acelerar} className="mono ml-1 text-[9px] text-[var(--bone-faint)] hover:text-[var(--bone)]">saltar</button>
+              )}
+            </span>
+          </header>
+          {abierta && (
+            <ol ref={lineas} className="max-h-[24vh] overflow-y-auto px-4 py-2 font-mono text-[11.5px] leading-relaxed">
+              {visibles.map((m, i) => (
+                <li key={m.secuencia} className={`flex gap-3 py-0.5 ${i === visibles.length - 1 ? "text-[var(--bone)]" : "text-[var(--bone-dim)]"}`}>
+                  <span className="w-7 shrink-0 text-right text-[var(--bone-faint)]">{m.secuencia}</span>
+                  <span className="w-5 shrink-0 text-[var(--bone-faint)]">{m.ronda ? `r${m.ronda}` : ""}</span>
+                  <span className="w-48 shrink-0 truncate">
+                    <span style={{ color: nodo(m.emisor).tono }}>{m.emisor}</span>
+                    <span className="text-[var(--bone-faint)]"> → </span>
+                    <span style={{ color: nodo(m.receptor).tono }}>{m.receptor}</span>
+                  </span>
+                  <span className="w-36 shrink-0 text-[var(--bone-faint)]">{m.tipo}</span>
+                  <span className="min-w-0 flex-1 break-words font-sans">{resumenMensaje(m)}</span>
+                </li>
+              ))}
+              {!visibles.length && <li className="py-1 text-[var(--bone-faint)]">Esperando el primer mensaje…</li>}
+              {vivo.error && <li className="py-1 text-rose-300">{vivo.error.message}</li>}
+            </ol>
+          )}
+        </section>
+
+        {/* Lote: quién está en proceso, quién espera validación */}
+        <section className="rounded-2xl border border-[var(--line)] bg-[color-mix(in_oklab,var(--bg)_82%,transparent)] p-3 backdrop-blur-xl">
+          <p className="mono text-[9.5px] text-[var(--bone-faint)]">
+            Lote · {lista.filter((r) => enReposo(r.estado)).length} de {lista.length} listos
+          </p>
+          <ol className="mt-2 max-h-[16vh] space-y-0.5 overflow-y-auto">
+            {lista.map((r) => (
+              <li key={r.req_id}>
+                <button onClick={() => onSeguir(r.req_id)} title={r.texto}
+                  className={`flex w-full items-center gap-2 rounded px-1 py-0.5 text-left text-[12px] hover:bg-white/5 ${r.req_id === foco ? "text-[var(--bone)]" : "text-[var(--bone-dim)]"}`}>
+                  <span className="mono w-9 shrink-0 text-[9px]">{r.req_id}</span>
+                  <span className="min-w-0 flex-1 truncate">{r.texto}</span>
+                  {estaEnProceso(r.estado) && r.estado !== E.CARGADO ? <span className="gira" /> : <span className={`punto ${infoEstado(r.estado).punto}`} />}
+                </button>
               </li>
-            );
-          })}
-        </ol>
-      )}
-      <button onClick={() => setAbierta((x) => !x)} className="flex max-w-full flex-col items-center gap-2" title="Ver la lista de requisitos">
-        <span className="flex max-w-full flex-wrap justify-center gap-1.5">
-          {lista.map((r) => {
-            const actual = r.id === foco?.id;
-            const via = VIA[r.via];
-            return (
-              <span
-                key={r.id}
-                title={`${r.id} · ${r.texto}`}
-                className={`h-1.5 rounded-full transition-all duration-500 ${actual ? "w-6" : "w-1.5"}`}
-                style={{ background: actual ? "var(--c1)" : via ? via.tono : "rgba(239,233,222,.18)" }}
-              />
-            );
-          })}
-        </span>
-        <span className="mono text-[9.5px] text-[var(--bone-faint)] hover:text-[var(--bone)]">
-          {listos} de {lista.length} listos · {abierta ? "ocultar lista" : "ver lista"}
-        </span>
-      </button>
+            ))}
+          </ol>
+          {pendientes.length > 0 && (
+            <div className="mt-3 border-t border-[var(--line)] pt-2">
+              <p className="mono text-[9.5px] text-pink-200">Por validar · {pendientes.length}</p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {pendientes.map((r) => (
+                  <Link key={r.req_id} to={`/requisitos/${r.req_id}/validacion?volver=${encodeURIComponent(`/analisis?proyecto=${proyecto}&ids=${lista.map((x) => x.req_id).join(",")}`)}`}
+                    className="mono rounded-full border border-pink-300/40 px-2.5 py-1 text-[9.5px] text-pink-100 hover:bg-pink-300/10">
+                    Validar {r.req_id}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+      </div>
     </div>
   );
 }
 
-function Resultados({ lista, ids }) {
-  const navigate = useNavigate();
-  const cuenta = (v) => lista.filter((r) => r.via === v).length;
-  const q = ids.join(",");
+function Resultados({ lista, proyecto, onRepetir }) {
+  const cuenta = (estado) => lista.filter((r) => r.estado === estado).length;
+  const pendientes = lista.filter((r) => r.estado === E.PENDIENTE_VALIDACION);
   return (
     <section className="mx-auto flex min-h-screen max-w-2xl flex-col gap-5 px-6 pt-[36vh] pb-14 md:mr-[7vw] md:pt-28">
-      <p className="mono sube text-[10px] text-[var(--bone-faint)]">Análisis completo</p>
-      <h1 className="serif sube text-[clamp(44px,4.6vw,72px)] leading-[.95]" style={{ "--i": 1 }}>
-        Listo. <em>{lista.length}</em> {lista.length === 1 ? "requisito" : "requisitos"}.
+      <p className="mono sube text-[10px] text-[var(--bone-faint)]">Análisis del lote</p>
+      <h1 className="serif sube text-[clamp(40px,4.4vw,68px)] leading-[.95]" style={{ "--i": 1 }}>
+        <em>{lista.length}</em> {lista.length === 1 ? "requisito" : "requisitos"} procesados.
       </h1>
       <p className="sube text-sm text-[var(--bone-dim)]" style={{ "--i": 2 }}>
-        {cuenta(V.DIRECTO)} sin debate · {cuenta(V.CONSENSO)} por consenso · {cuenta(V.ARBITRAJE)} por arbitraje del Crítico.
+        {cuenta(E.PENDIENTE_VALIDACION)} esperan tu validación · {cuenta(E.FORMALIZADO)} formalizados · {cuenta(E.RECHAZADO)} rechazados
+        {cuenta(E.ERROR) ? ` · ${cuenta(E.ERROR)} con error` : ""}.
       </p>
 
-      {/* Lo siguiente, siempre a la vista aunque la lista sea larga */}
       <div className="sube sticky top-20 z-10 -mx-3 flex flex-wrap items-center gap-3 rounded-full px-3 py-2 backdrop-blur-xl" style={{ "--i": 3 }}>
-        <button className="pill" onClick={() => navigate(`/lel/generar?ids=${q}`)}>Generar LEL</button>
-        <button className="pill ghost" onClick={() => navigate(`/big-picture?ids=${q}`)}>Big Picture</button>
-        <button className="pill ghost" onClick={() => navigate(`/big-picture?ids=${q}&vista=modelo`)}>Modelo UML</button>
-        {lista[0]?.proyectoId && (
-          <Link to={`/proyectos/${lista[0].proyectoId}`} className="mono px-2 text-[10px] text-[var(--bone-faint)] hover:text-[var(--bone)]">Ver el proyecto</Link>
-        )}
+        {pendientes[0] && <Link className="pill" to={`/requisitos/${pendientes[0].req_id}/validacion`}>Validar el siguiente</Link>}
+        <Link className="pill ghost" to={`/proyectos/${proyecto}`}>Ver el proyecto</Link>
+        <Link className="pill ghost" to={`/ambiguedades?proyecto=${proyecto}`}>Ambigüedades</Link>
+        <Link className="pill ghost" to={`/big-picture?proyecto=${proyecto}`}>Big Picture</Link>
+        <button className="mono px-2 text-[10px] text-[var(--bone-faint)] hover:text-[var(--bone)]" onClick={onRepetir}>
+          Ver la escena otra vez
+        </button>
       </div>
 
       <p className="mono text-[9.5px] text-[var(--bone-faint)]">Toca un requisito para ver cómo lo decidieron los agentes</p>
       <ol className="border-t border-[var(--line)]">
-        {lista.map((r, i) => {
-          const via = VIA[r.via];
-          return (
-            <li key={r.id} className="sube" style={{ "--i": 4 + Math.min(i, 8) }}>
-              <Link to={`/requisitos/${r.id}`} className="group flex items-baseline gap-4 border-b border-[var(--line)] py-3 transition-colors hover:bg-white/[0.025]">
-                <span className="mono w-16 shrink-0 text-[9.5px] text-[var(--bone-faint)]">{r.id}</span>
-                <span className="min-w-0 flex-1 text-[15px] leading-relaxed">
-                  <TextoMarcado texto={r.texto} marcados={r.traza.extraccion?.marcados ?? []} />
-                </span>
-                <span className="mono flex w-28 shrink-0 items-center justify-end gap-2 text-[9.5px] text-[var(--bone-dim)]">
-                  {via && <span className="punto" style={{ background: via.tono }} />}
-                  {via?.texto ?? INFO_ESTADO[r.estado].etiqueta}
-                  {r.similitud != null && <span className="text-[var(--bone-faint)]">{r.similitud.toFixed(2)}</span>}
-                </span>
-              </Link>
-            </li>
-          );
-        })}
+        {lista.map((r, i) => (
+          <li key={r.req_id} className="sube" style={{ "--i": 4 + Math.min(i, 8) }}>
+            <Link to={r.estado === E.PENDIENTE_VALIDACION ? `/requisitos/${r.req_id}/validacion` : `/requisitos/${r.req_id}`}
+              className="group flex items-baseline gap-4 border-b border-[var(--line)] py-3 transition-colors hover:bg-white/[0.025]">
+              <span className="mono w-12 shrink-0 text-[9.5px] text-[var(--bone-faint)]">{r.req_id}</span>
+              <span className="min-w-0 flex-1 text-[15px] leading-relaxed">{r.texto}</span>
+              <span className="mono flex w-36 shrink-0 items-center justify-end gap-2 text-[9.5px] text-[var(--bone-dim)]">
+                <span className={`punto ${infoEstado(r.estado).punto}`} />
+                {infoEstado(r.estado).etiqueta}
+              </span>
+            </Link>
+          </li>
+        ))}
       </ol>
       <Link to="/inicio" className="mono self-start text-[10px] text-[var(--bone-faint)] hover:text-[var(--bone)]">Analizar otro documento</Link>
     </section>
   );
 }
-
-export { VIA };

@@ -15,8 +15,10 @@ class TerminoEnProceso(TypedDict, total=False):
 
     termino: str
     categoria_tentativa: str
-    origen: str  # extractor | regional
+    origen: str  # extractor | regional | alcance | anafora
+    detalle: str | None  # por qué es candidato (catálogo, antecedentes, patrón)
     univoco: bool
+    tipo_ambiguedad: str | None  # TipoAmbiguedad; None si es unívoco
     interpretaciones: list[dict]  # vigentes (Interpretacion)
     todas: dict[str, dict]  # id → última versión de cada interpretación generada, incluidas las retiradas
     retiradas: list[dict]  # Retiro + ronda
@@ -32,6 +34,7 @@ class TerminoEnProceso(TypedDict, total=False):
 
 class EstadoGrafo(TypedDict, total=False):
     req_id: str
+    proyecto_id: str
     texto: str
     estado: str  # Estado
     ronda: int

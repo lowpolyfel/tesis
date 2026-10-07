@@ -1,7 +1,8 @@
 """Punto de entrada de la orquestación para la API (y para scripts).
 
 `thread_id` del checkpointer = `req_id`: el grafo de cada requisito se reanuda
-por su identificador.
+por su identificador. La API encola el trabajo (ADR 0008); los scripts y las
+pruebas pueden correrlo en el mismo hilo con `procesar` y `validar`.
 """
 from __future__ import annotations
 
@@ -12,8 +13,10 @@ from pathlib import Path
 
 from langgraph.types import Command
 
-from app.models import ESTADOS_TERMINALES, Estado, Nodo, TipoMensaje, Traza, Validacion
+from app.db.proyectos import Proyectos
+from app.models import PROYECTO_GENERAL, ESTADOS_TERMINALES, Estado, Nodo, Origen, TipoMensaje, Traza, Validacion
 
+from .cola import Cola
 from .dependencias import Dependencias
 from .estado import con_interpretaciones
 from .grafo import construir_grafo
@@ -41,8 +44,42 @@ class Servicio:
         if checkpointer is None:
             checkpointer = checkpointer_sqlite(deps.settings.ruta(deps.settings.checkpoint_path))
         self.grafo = construir_grafo(deps, checkpointer)
+        self.proyectos = Proyectos(self.repo)
+        self.proyectos.asegurar_general()
+        self.cola = Cola()
         self._ocupados: set[str] = set()
         self._candado = threading.Lock()
+
+    # ------------------------------------------------------------ ciclo de vida
+
+    def iniciar(self) -> None:
+        """Arranca el trabajador de la cola y retoma lo que quedó a medias."""
+        self.cola.iniciar()
+        self.recuperar()
+
+    def detener(self) -> None:
+        self.cola.detener()
+
+    def recuperar(self) -> list[str]:
+        """Tras un reinicio: los requisitos en `cargado` se vuelven a encolar, los
+        que quedaron a mitad del grafo continúan desde su último checkpoint y los
+        que esperan validación siguen esperando. Devuelve los req_id retomados."""
+        retomados = []
+        for r in self.repo.listar_trazas():
+            req_id, estado = r["req_id"], Estado(r["estado"])
+            if estado in ESTADOS_TERMINALES or estado == Estado.PENDIENTE_VALIDACION or req_id in self._ocupados:
+                continue
+            snapshot = self.grafo.get_state(self._config(req_id))
+            self._reservar(req_id)
+            if not snapshot.values:
+                self.cola.encolar("ejecutar", req_id, lambda r=req_id: self.ejecutar(r))
+            elif snapshot.next and snapshot.next != ("humano",):
+                self.cola.encolar("continuar", req_id, lambda r=req_id: self._correr(r, None))
+            else:
+                self._liberar(req_id)
+                continue
+            retomados.append(req_id)
+        return retomados
 
     @staticmethod
     def _config(req_id: str) -> dict:
@@ -60,11 +97,32 @@ class Servicio:
 
     # ------------------------------------------------------------ operaciones
 
-    def registrar(self, texto: str) -> str:
-        """Crea la traza en `cargado` y reserva el requisito para ejecutarlo."""
-        traza = self.repo.crear_traza(texto, self.deps.config_traza())
+    def siguiente_ciclo(self, proyecto_id: str) -> int:
+        return max((t.get("ciclo") or 1 for t in self.repo.listar_trazas(proyecto_id)), default=0) + 1
+
+    def registrar(self, texto: str, proyecto_id: str = PROYECTO_GENERAL, origen: Origen | None = None,
+                  ciclo: int | None = None) -> str:
+        """Crea la traza en `cargado` y reserva el requisito para ejecutarlo. Sin `ciclo`, abre uno nuevo."""
+        if self.proyectos.obtener(proyecto_id) is None:
+            raise KeyError(proyecto_id)
+        ciclo = ciclo or self.siguiente_ciclo(proyecto_id)
+        traza = self.repo.crear_traza(texto, self.deps.config_traza(), proyecto_id=proyecto_id, origen=origen, ciclo=ciclo)
         self._reservar(traza.req_id)
         return traza.req_id
+
+    def solicitar(self, texto: str, proyecto_id: str = PROYECTO_GENERAL, origen: Origen | None = None,
+                  ciclo: int | None = None) -> str:
+        """Registrar y encolar (API)."""
+        req_id = self.registrar(texto, proyecto_id, origen, ciclo)
+        self.cola.encolar("ejecutar", req_id, lambda: self.ejecutar(req_id))
+        return req_id
+
+    def solicitar_lote(self, requisitos: list[tuple[str, Origen | None]], proyecto_id: str) -> tuple[int, list[str]]:
+        """Una carga de varios requisitos abre un solo ciclo nuevo; se encolan en orden."""
+        if self.proyectos.obtener(proyecto_id) is None:
+            raise KeyError(proyecto_id)
+        ciclo = self.siguiente_ciclo(proyecto_id)
+        return ciclo, [self.solicitar(texto, proyecto_id, origen, ciclo) for texto, origen in requisitos]
 
     def _correr(self, req_id: str, entrada) -> None:
         """Invoca el grafo. Los nodos ya registran sus fallas; esto cubre lo que
@@ -83,11 +141,12 @@ class Servicio:
     def ejecutar(self, req_id: str) -> None:
         """Corre el grafo hasta la pausa de validación (o hasta el final)."""
         traza = self.repo.obtener_traza(req_id)
-        self._correr(req_id, {"req_id": req_id, "texto": traza.texto})
+        self._correr(req_id, {"req_id": req_id, "proyecto_id": traza.proyecto_id, "texto": traza.texto})
 
-    def procesar(self, texto: str) -> str:
+    def procesar(self, texto: str, proyecto_id: str = PROYECTO_GENERAL, origen: Origen | None = None,
+                 ciclo: int | None = None) -> str:
         """Registrar y ejecutar en el mismo hilo (scripts y pruebas)."""
-        req_id = self.registrar(texto)
+        req_id = self.registrar(texto, proyecto_id, origen, ciclo)
         self.ejecutar(req_id)
         return req_id
 
@@ -115,11 +174,16 @@ class Servicio:
         self.preparar_validacion(req_id, validacion)
         self.reanudar(req_id, validacion)
 
+    def solicitar_validacion(self, req_id: str, validacion: Validacion) -> None:
+        """Preparar y encolar la reanudación (API). Va antes que los requisitos nuevos."""
+        self.preparar_validacion(req_id, validacion)
+        self.cola.encolar("reanudar", req_id, lambda: self.reanudar(req_id, validacion))
+
     def traza(self, req_id: str) -> Traza | None:
         return self.repo.obtener_traza(req_id)
 
-    def trazas(self) -> list[dict]:
-        return self.repo.listar_trazas()
+    def trazas(self, proyecto_id: str | None = None) -> list[dict]:
+        return self.repo.listar_trazas(proyecto_id)
 
     @staticmethod
     def terminado(traza: Traza) -> bool:

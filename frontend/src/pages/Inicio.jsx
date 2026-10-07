@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useOrb, usePoseEsfera } from "../components/orb/useOrb";
-import { crearRequisitos, extraerTextoDeArchivo, separarRequisitos } from "../services/api";
+import { cargarRequisitos, separarRequisitos, subirDocumento } from "../services/backend";
 import { documentoEjemplo } from "../fixtures/documentoEjemplo";
 import SelectorProyecto, { proyectoRecordado } from "../components/SelectorProyecto";
 
@@ -11,6 +11,10 @@ import SelectorProyecto, { proyectoRecordado } from "../components/SelectorProye
  *   pegar     → la esfera se hace a un lado; aparece el texto
  *   leyendo   → la esfera "lee" (piensa) en el centro
  *   confirmar → la esfera a la izquierda; a la derecha, los requisitos detectados
+ *
+ * El backend lee el PDF (texto extraíble; sin OCR por alcance) y lo separa en
+ * requisitos candidatos con su página y numeración original. Lo que descarta
+ * se muestra: nada se pierde en silencio. La persona confirma antes de analizar.
  */
 const POSES = {
   inicio: { d: { x: 0, y: -0.08, s: 1.05 }, m: { x: 0, y: -0.16, s: 0.8 } },
@@ -31,6 +35,8 @@ export default function Inicio() {
   const [texto, setTexto] = useState("");
   const [origen, setOrigen] = useState("texto pegado");
   const [piezas, setPiezas] = useState([]);
+  const [documento, setDocumento] = useState(null); // { documento_id, archivo, paginas } si vino de un archivo
+  const [descartados, setDescartados] = useState({ lista: [], total: 0 });
   const [error, setError] = useState(null);
   const [saliendo, setSaliendo] = useState(false);
   const archivo = useRef(null);
@@ -73,28 +79,42 @@ export default function Inicio() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fase]);
 
-  const detectar = async (contenido, nombre) => {
-    setError(null);
-    setFase("leyendo");
-    const [lista] = await Promise.all([separarRequisitos(contenido), new Promise((r) => setTimeout(r, MIN_LECTURA_MS))]);
-    if (!lista.length) {
+  const mostrar = (propuestos, descartes, total, volverA) => {
+    setDescartados({ lista: descartes ?? [], total: total ?? 0 });
+    if (!propuestos.length) {
       orb.setMood("error", { revertAfter: 1600 });
-      setError("No encontré requisitos en ese texto. Cada uno debería decir qué «debe» o «podrá» hacer el sistema.");
-      setFase(nombre === "texto pegado" ? "pegar" : "inicio");
+      setError("No encontré requisitos. Cada uno debería decir qué «debe», «podrá» o «permitirá» hacer el sistema.");
+      setFase(volverA);
       return;
     }
     orb.poke(1.2);
-    setPiezas(lista.map((p, i) => ({ ...p, clave: `${Date.now()}-${i}` })));
+    setPiezas(propuestos.map((p, i) => ({ ...p, clave: `${Date.now()}-${i}` })));
     setFase("confirmar");
   };
 
-  const leerArchivo = async (f) => {
-    setOrigen(f.name);
+  const detectar = async (contenido) => {
+    setError(null);
+    setDocumento(null);
     setFase("leyendo");
     try {
-      const contenido = await extraerTextoDeArchivo(f);
-      setTexto(contenido);
-      await detectar(contenido, f.name);
+      const [r] = await Promise.all([separarRequisitos(contenido), new Promise((ok) => setTimeout(ok, MIN_LECTURA_MS))]);
+      mostrar(r.requisitos_propuestos, r.fragmentos_descartados, r.total_descartados, "pegar");
+    } catch (e) {
+      orb.setMood("error", { revertAfter: 1600 });
+      setError(e.message);
+      setFase("pegar");
+    }
+  };
+
+  const leerArchivo = async (f) => {
+    if (!proyectoId) { setError("Elige o crea un proyecto antes de subir el documento."); return; }
+    setOrigen(f.name);
+    setError(null);
+    setFase("leyendo");
+    try {
+      const [doc] = await Promise.all([subirDocumento(proyectoId, f), new Promise((ok) => setTimeout(ok, MIN_LECTURA_MS))]);
+      setDocumento({ documento_id: doc.documento_id, archivo: doc.archivo, paginas: doc.paginas, advertencias: doc.advertencias ?? [] });
+      mostrar(doc.requisitos_propuestos, doc.fragmentos_descartados, doc.total_descartados, "inicio");
     } catch (e) {
       orb.setMood("error", { revertAfter: 1600 });
       setError(e.message);
@@ -110,8 +130,25 @@ export default function Inicio() {
   const analizar = async () => {
     setSaliendo(true);
     orb.poke(1.4);
-    const { ids } = await crearRequisitos(validas.map((p) => ({ texto: p.texto, origen })), proyectoId);
-    navigate(`/analisis?ids=${ids.join(",")}`);
+    try {
+      const requisitos = validas.map((p) => ({
+        texto: p.texto.trim(),
+        origen: {
+          documento_id: documento?.documento_id ?? null,
+          archivo: documento?.archivo ?? "texto pegado",
+          pagina: p.pagina ?? null,
+          indice: p.indice ?? null,
+          marca: p.marca ?? null,
+          texto_original: p.texto_original ?? null,
+        },
+      }));
+      const { req_ids: ids } = await cargarRequisitos(proyectoId, requisitos);
+      navigate(`/analisis?proyecto=${proyectoId}&ids=${ids.join(",")}`);
+    } catch (e) {
+      setSaliendo(false);
+      orb.setMood("error", { revertAfter: 1600 });
+      setError(e.message);
+    }
   };
 
   return (
@@ -154,7 +191,7 @@ export default function Inicio() {
           />
           {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
           <div className="sube flex flex-wrap items-center gap-3" style={{ "--i": 3 }}>
-            <button className="pill" disabled={!texto.trim()} onClick={() => { setOrigen("texto pegado"); detectar(texto, "texto pegado"); }}>Detectar requisitos</button>
+            <button className="pill" disabled={!texto.trim()} onClick={() => { setOrigen("texto pegado"); detectar(texto); }}>Detectar requisitos</button>
             <button className="pill ghost" onClick={() => setFase("inicio")}>Volver</button>
             <button className="mono text-[10px] text-[var(--bone-faint)] underline underline-offset-4 hover:text-[var(--bone)]" onClick={() => setTexto(documentoEjemplo)}>
               Usar ejemplo
@@ -171,16 +208,28 @@ export default function Inicio() {
 
       {fase === "confirmar" && (
         <section key="confirmar" className={`mx-auto flex min-h-screen max-w-2xl flex-col justify-center gap-5 px-6 pt-[34vh] pb-12 md:mr-[6vw] md:pt-28 ${saliendo ? "sale" : ""}`}>
-          <p className="mono sube text-[10px] text-[var(--bone-faint)]" style={{ "--i": 0 }}>Paso 2 · confirma la separación · {origen}</p>
+          <p className="mono sube text-[10px] text-[var(--bone-faint)]" style={{ "--i": 0 }}>
+            Paso 2 · confirma la separación · {origen}{documento ? ` · ${documento.paginas} pág. · ${documento.documento_id}` : ""}
+          </p>
           <div className="sube -mt-2 [&>div]:justify-start" style={{ "--i": 0 }}><SelectorProyecto valor={proyectoId} onCambio={setProyectoId} /></div>
           <h1 className="serif sube text-[clamp(40px,4vw,64px)] leading-[.95]" style={{ "--i": 1 }}>
             Encontré <em>{validas.length}</em> {validas.length === 1 ? "requisito" : "requisitos"}.
           </h1>
           <p className="sube text-sm text-[var(--bone-dim)]" style={{ "--i": 2 }}>Corrige el texto, une los que se partieron mal o quita los que sobran.</p>
+          {documento?.advertencias?.length > 0 && (
+            <ul className="sube text-[12px] text-amber-200/80" style={{ "--i": 2 }}>
+              {documento.advertencias.map((a) => <li key={a}>⚠ {a}</li>)}
+            </ul>
+          )}
           <ol className="space-y-1">
             {piezas.map((p, i) => (
               <li key={p.clave} className="sube group flex items-start gap-4 border-b border-[var(--line)] py-2" style={{ "--i": 3 + Math.min(i, 8) }}>
-                <span className="mono pt-2.5 text-[10px] text-[var(--bone-faint)]">{String(i + 1).padStart(2, "0")}</span>
+                <span className="mono flex w-16 shrink-0 flex-col pt-2.5 text-[10px] text-[var(--bone-faint)]">
+                  {String(i + 1).padStart(2, "0")}
+                  {p.marca && <span className="text-[var(--bone-dim)] normal-case tracking-normal">{p.marca}</span>}
+                  {p.pagina && <span>p. {p.pagina}</span>}
+                </span>
+                <span className="flex min-w-0 flex-1 flex-col">
                 <textarea
                   value={p.texto}
                   rows={Math.max(1, Math.ceil(p.texto.length / 70))}
@@ -189,6 +238,10 @@ export default function Inicio() {
                   onBlur={() => orb.setMood("idle")}
                   className="min-w-0 flex-1 resize-none bg-transparent py-1.5 [field-sizing:content] text-[15px] leading-relaxed text-[var(--bone)] outline-none"
                 />
+                {p.advertencias?.length > 0 && (
+                  <span className="text-[11.5px] text-amber-200/70">{p.advertencias.join(" · ")}</span>
+                )}
+                </span>
                 <span className="flex gap-3 pt-2.5 opacity-40 transition-opacity group-hover:opacity-100">
                   {i < piezas.length - 1 && (
                     <button title="Unir con el siguiente" className="mono text-[10px] hover:text-[var(--c1)]" onClick={() => unir(i)}>unir ↓</button>
@@ -205,6 +258,26 @@ export default function Inicio() {
           >
             + agregar requisito
           </button>
+          {descartados.total > 0 && (
+            <details className="sube text-[12.5px] text-[var(--bone-dim)]" style={{ "--i": 4 + piezas.length }}>
+              <summary className="mono cursor-pointer text-[10px] text-[var(--bone-faint)] hover:text-[var(--bone)]">
+                {descartados.total} fragmento{descartados.total === 1 ? "" : "s"} no parece{descartados.total === 1 ? "" : "n"} requisito · ver
+              </summary>
+              <ul className="mt-2 space-y-1 border-l border-[var(--line)] pl-3">
+                {descartados.lista.map((d, i) => (
+                  <li key={i}>
+                    <span className="mono mr-2 text-[9.5px] text-[var(--bone-faint)]">{d.pagina ? `p. ${d.pagina}` : ""} {d.motivo}</span>
+                    {d.texto}
+                    <button className="mono ml-2 text-[9.5px] text-[var(--c1)]"
+                      onClick={() => setPiezas((ps) => [...ps, { texto: d.texto, pagina: d.pagina, clave: `d-${Date.now()}-${i}` }])}>
+                      + usar
+                    </button>
+                  </li>
+                ))}
+                {descartados.total > descartados.lista.length && <li className="text-[var(--bone-faint)]">… y {descartados.total - descartados.lista.length} más</li>}
+              </ul>
+            </details>
+          )}
           {/* Fija abajo: con muchos requisitos el botón no se pierde */}
           <div className="sube sticky bottom-4 z-10 -mx-3 flex flex-wrap gap-3 rounded-full px-3 py-2 backdrop-blur-xl" style={{ "--i": 5 + Math.min(piezas.length, 8) }}>
             <button className="pill" disabled={!validas.length || saliendo || !proyectoId} onClick={analizar} onPointerEnter={() => orb.poke(0.3)}>

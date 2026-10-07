@@ -1,331 +1,226 @@
-import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { useEffect, useState } from "react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { useOrb } from "../components/orb/useOrb";
-import { useRequisito } from "../hooks/useRequisito";
-import { reprocesarRequisito } from "../services/api";
-import { ESTADOS as E, INFO_ESTADO, VIAS_RESOLUCION as V, estaEnProceso } from "../constants/estados";
-import { AGENTES } from "../constants/agentes";
+import { useRequisitoVivo } from "../hooks/useRequisitoVivo";
+import { reprocesarRequisito } from "../services/backend";
+import { ESTADOS as E, INFO_VIA } from "../constants/estados";
+import { TIPOS } from "../constants/agentes";
 import EstadoBadge from "../components/EstadoBadge";
-import LineaEstados from "../components/LineaEstados";
-import TextoResaltado from "../components/TextoResaltado";
-import Etapa from "../components/Etapa";
-import MedidorSimilitud from "../components/MedidorSimilitud";
-import InterpretacionCard from "../components/InterpretacionCard";
-import PanelDebate from "../components/debate/PanelDebate";
+import TextoMarcado, { TONO_AMBIGUEDAD } from "../components/TextoMarcado";
+import RutaEstados from "../components/traza/RutaEstados";
+import TerminoTraza from "../components/traza/TerminoTraza";
+import Bitacora from "../components/traza/Bitacora";
 
 /*
- * Pantalla 3: traza completa de un requisito, por etapas y en orden.
- * Pensada para leerse en una captura (también con ?figura=1).
+ * Traza completa de un requisito (la figura de la tesis, CONTEXTO §11),
+ * organizada por las fases de KMoS-SSA. Todo sale de la vista por término del
+ * backend (GET /requisitos/{id}) y se actualiza sola mientras los agentes
+ * trabajan. Con ?figura=1 se muestra clara y a ancho fijo para capturas.
  */
-
-const CATEGORIAS = [
-  ["sujeto", "Sujetos"],
-  ["verbo", "Verbos"],
-  ["objeto", "Objetos"],
-  ["estado", "Estados"],
-  ["restriccion", "Restricciones"],
-];
-
-const segundos = (ms) => `${(ms / 1000).toFixed(1)} s`;
+const CATEGORIAS = [["sujeto", "Sujetos"], ["verbo", "Verbos"], ["objeto", "Objetos"], ["estado", "Estados"]];
+const DECISION = {
+  resuelto_por_lel: "resuelto por el LEL", vaguedad: "vaguedad (no se debate)", regional: "regional → Clasificador",
+  alcance: "estructura de alcance → Clasificador", anafora: "anáfora → Clasificador", candidato: "candidato → Clasificador",
+};
 const hora = (iso) => new Date(iso).toLocaleString("es-MX", { dateStyle: "short", timeStyle: "medium" });
+
+function Fase({ n, titulo, quien, children, vacia }) {
+  return (
+    <section className="space-y-3">
+      <header className="flex flex-wrap items-baseline gap-3 border-b border-slate-200 pb-1">
+        <span className="font-mono text-xs text-slate-400">{n}</span>
+        <h2 className="text-sm font-semibold uppercase tracking-wide">{titulo}</h2>
+        <span className="text-xs text-slate-500">{quien}</span>
+      </header>
+      {vacia ? <p className="text-sm text-slate-500">{vacia}</p> : children}
+    </section>
+  );
+}
 
 export default function DetalleRequisito() {
   const { id } = useParams();
   const [params] = useSearchParams();
   const figura = params.get("figura") === "1";
-  const { requisito: r, recargar } = useRequisito(id);
-  const orb = useOrb();
-
-  // La esfera toma el tono de cómo se resolvió (o de quién trabaja ahora)
-  const tono = !r ? "idle"
-    : r.via === V.ARBITRAJE ? "critico"
-    : r.via === V.CONSENSO ? "clasificador"
-    : r.via === V.DIRECTO ? "modelador"
-    : estaEnProceso(r.estado) ? "thinking" : "idle";
-  useEffect(() => {
-    orb.setMood(tono);
-    orb.update("core", { sub: r ? r.id : null, active: r ? estaEnProceso(r.estado) : false });
-  }, [orb, tono, r]);
-  useEffect(() => () => { orb.setMood("idle"); orb.update("core", { active: false }); }, [orb]);
-
-  if (!r) return <p className="text-sm text-slate-500">Cargando {id}…</p>;
-
-  const t = r.traza;
-  const enProceso = estaEnProceso(r.estado);
-  // La primera etapa sin datos es la que los agentes están trabajando
-  const orden = ["extraccion", "clasificacion", "divergencia", "debate", "resolucion", "artefactos"];
-  const falta = (k) =>
-    k === "debate"
-      ? t.divergencia?.decision !== "directo" && (!t.debate || t.debate.resultado === "en_curso")
-      : !t[k];
-  const faltantes = orden.filter(falta);
-  const enCurso = enProceso ? faltantes[0] : null;
-  const estadoEtapa = (k) => (t[k] ? "hecho" : enCurso === k ? "curso" : "pendiente");
-
-  return (
-    <div className="space-y-5">
-      <Encabezado r={r} figura={figura} recargar={recargar} />
-
-      <section className="rounded-lg border border-slate-200 bg-white px-4 py-3">
-        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Camino en la máquina de estados</p>
-        <LineaEstados historial={r.historial} estado={r.estado} />
-      </section>
-
-      {/* 1 */}
-      <Etapa numero={1} titulo="Requisito original" meta={`${r.origen}`}>
-        <TextoResaltado texto={r.texto} marcados={t.extraccion?.marcados ?? []} conLeyenda={Boolean(t.extraccion)} />
-        {!t.extraccion && <p className="mt-2 text-sm text-slate-500">Los términos ambiguos se marcarán al terminar la extracción.</p>}
-      </Etapa>
-
-      {/* 2 */}
-      <Etapa
-        numero={2}
-        titulo="Extracción"
-        agente={`${AGENTES.extractor.nombre} — ${AGENTES.extractor.rol.toLowerCase()}`}
-        meta={t.extraccion && `${t.extraccion.modelo} · ${segundos(t.extraccion.duracionMs)}`}
-        estado={estadoEtapa("extraccion")}
-      >
-        {t.extraccion && (
-          <dl className="grid gap-3 sm:grid-cols-5">
-            {CATEGORIAS.map(([cat, nombre]) => {
-              const terminos = t.extraccion.terminos.filter((x) => x.categoria === cat);
-              return (
-                <div key={cat}>
-                  <dt className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{nombre}</dt>
-                  <dd className="flex flex-wrap gap-1">
-                    {terminos.length ? terminos.map((x) => (
-                      <span key={x.texto} title={`lema: ${x.lema}`} className="rounded bg-slate-100 px-1.5 py-0.5 text-sm">{x.texto}</span>
-                    )) : <span className="text-sm text-slate-400">—</span>}
-                  </dd>
-                </div>
-              );
-            })}
-          </dl>
-        )}
-      </Etapa>
-
-      {/* 3 */}
-      <Etapa
-        numero={3}
-        titulo="Interpretaciones candidatas"
-        agente={`${AGENTES.clasificador.nombre} — ${AGENTES.clasificador.rol.toLowerCase()}`}
-        meta={t.clasificacion && `${t.clasificacion.modelo} · ${segundos(t.clasificacion.duracionMs)}`}
-        estado={estadoEtapa("clasificacion")}
-      >
-        {t.clasificacion && (
-          <>
-            <p className="mb-3 text-sm text-slate-600">
-              Términos en disputa:{" "}
-              {t.clasificacion.enDisputa.length
-                ? t.clasificacion.enDisputa.map((x) => `«${x}»`).join(", ")
-                : "ninguno (las lecturas solo difieren en la redacción)"}
-            </p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {["A", "B"].map((k) => (
-                <InterpretacionCard
-                  key={k}
-                  clave={k}
-                  interpretacion={t.clasificacion.interpretaciones[k]}
-                  destacada={t.resolucion?.via === V.ARBITRAJE && t.resolucion.eleccion === k}
-                />
-              ))}
-            </div>
-          </>
-        )}
-      </Etapa>
-
-      {/* 4 */}
-      <Etapa
-        numero={4}
-        titulo="Divergencia: similitud coseno"
-        agente="Mecanismo de divergencia (no es un agente)"
-        estado={t.divergencia ? "hecho" : enCurso === "divergencia" ? "curso" : "pendiente"}
-      >
-        {t.divergencia && (
-          <MedidorSimilitud similitud={t.divergencia.similitud} umbral={t.divergencia.umbral} modelo={t.divergencia.modeloEmbeddings} />
-        )}
-      </Etapa>
-
-      {/* 5 */}
-      <Etapa
-        id="debate"
-        numero={5}
-        titulo="Debate"
-        agente={`Clasificador defiende cada lectura; ${AGENTES.critico.nombre} conduce y arbitra`}
-        meta={t.debate?.arbitraje?.modelo && `árbitro: ${t.debate.arbitraje.modelo}`}
-        estado={
-          t.divergencia?.decision === "directo" ? "omitida"
-            : t.debate ? "hecho"
-            : enCurso === "debate" ? "curso" : "pendiente"
-        }
-      >
-        {t.divergencia?.decision === "directo" ? (
-          <p className="text-sm text-slate-600">
-            No hubo debate: la similitud inicial ({t.divergencia.similitud.toFixed(2)}) quedó por arriba del umbral ({t.divergencia.umbral.toFixed(2)}).
-          </p>
-        ) : t.debate && (
-          <PanelDebate debate={t.debate} similitudInicial={t.divergencia.similitud} />
-        )}
-      </Etapa>
-
-      {/* 6 */}
-      <Etapa numero={6} titulo="Resolución" estado={estadoEtapa("resolucion")}>
-        {t.resolucion && <Resolucion resolucion={t.resolucion} />}
-      </Etapa>
-
-      {/* 7 */}
-      <Etapa
-        numero={7}
-        titulo="Artefactos y validación humana"
-        agente={`${AGENTES.modelador.nombre} — ${AGENTES.modelador.rol.toLowerCase()}`}
-        meta={t.artefactos?.modelo}
-        estado={estadoEtapa("artefactos")}
-      >
-        {t.artefactos && <Validacion r={r} figura={figura} />}
-      </Etapa>
-
-      {!figura && <Historial historial={r.historial} />}
-    </div>
-  );
-}
-
-/* ---------------------------------------------------------------- */
-
-function Encabezado({ r, figura, recargar }) {
   const navigate = useNavigate();
-  const [ocupado, setOcupado] = useState(false);
-  const cfg = r.configUsada;
+  const orb = useOrb();
+  const { vista: v, error } = useRequisitoVivo(id);
+  const [aviso, setAviso] = useState(null);
+
+  // La esfera toma el tono de cómo se resolvió (o piensa mientras los agentes trabajan)
+  useEffect(() => {
+    if (!v) return;
+    const tono = v.estado === E.ERROR ? "error" : v.en_proceso ? "thinking"
+      : v.resumen.via === "arbitraje" ? "critico" : v.resumen.via === "consenso" ? "clasificador" : v.resumen.via ? "modelador" : "idle";
+    orb.setMood(tono);
+    orb.update("core", { sub: v.req_id, active: v.en_proceso });
+  }, [orb, v]);
+  useEffect(() => () => { orb.setMood("idle"); orb.update("core", { active: false, sub: null }); }, [orb]);
+
+  if (error) return <p className="text-sm text-rose-600">No pude cargar {id}: {error.message}</p>;
+  if (!v) return <p className="text-sm text-slate-500">Cargando {id}…</p>;
+
+  const ambiguos = v.terminos.filter((t) => !t.univoco);
+  const univocos = v.terminos.filter((t) => t.univoco);
+  const tiposPresentes = [...new Set(v.marcados.map((m) => m.tipo).filter(Boolean))];
+  const via = v.resumen.via ? INFO_VIA[v.resumen.via] : null;
 
   const reprocesar = async () => {
-    setOcupado(true);
     try {
-      await reprocesarRequisito(r.id);
-      recargar();
-    } finally {
-      setOcupado(false);
+      const r = await reprocesarRequisito(v);
+      navigate(`/analisis?proyecto=${r.proyecto_id}&ids=${r.req_ids.join(",")}`);
+    } catch (e) {
+      setAviso(e.message);
     }
   };
 
   return (
-    <header className="space-y-3">
-      {!figura && (
-        <nav className="text-sm text-slate-500">
-          <Link to="/historial" className="hover:underline">Historial</Link> / {r.id}
-        </nav>
-      )}
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-semibold">{r.id}</h1>
-        <EstadoBadge estado={r.estado} className="text-sm" />
-        {estaEnProceso(r.estado) && (
-          <span className="flex items-center gap-1.5 text-sm text-amber-700">
-            <span className="h-3 w-3 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
-            procesando (se actualiza solo)
-          </span>
-        )}
+    <div className="space-y-8 pb-16">
+      {/* ---------------------------------------------------------------- encabezado */}
+      <header className="space-y-3">
         {!figura && (
-          <div className="ml-auto flex flex-wrap gap-2">
-            {r.estado === E.PENDIENTE_VALIDACION && (
-              <button onClick={() => navigate(`/requisitos/${r.id}/validacion`)} className="rounded bg-violet-600 px-3 py-1.5 text-sm font-medium text-sobre hover:bg-violet-700">
-                Validar artefactos
-              </button>
-            )}
-            {r.estado === E.RECHAZADO && (
-              <button onClick={reprocesar} disabled={ocupado} className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-sobre hover:bg-slate-700 disabled:opacity-50">
-                Reprocesar con la configuración actual
-              </button>
-            )}
-            <Link to={`/requisitos/${r.id}?figura=1`} target="_blank" className="rounded border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50">
-              Vista para captura ↗
-            </Link>
+          <nav className="text-sm text-slate-500">
+            <Link to={`/proyectos/${v.proyecto_id}`} className="hover:underline">{v.proyecto_id}</Link> / ciclo {v.ciclo} / {v.req_id}
+          </nav>
+        )}
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-2xl font-semibold">{v.req_id}</h1>
+          <EstadoBadge estado={v.estado} className="text-sm" />
+          <span className="text-xs text-slate-500">
+            {v.origen?.archivo && <>{v.origen.archivo}{v.origen.pagina ? `, p. ${v.origen.pagina}` : ""}{v.origen.marca ? ` · ${v.origen.marca}` : ""} · </>}
+            creado {hora(v.creado)}
+            {v.origen?.reproceso_de && <> · reprocesa <Link className="underline" to={`/requisitos/${v.origen.reproceso_de}`}>{v.origen.reproceso_de}</Link></>}
+          </span>
+          {!figura && (
+            <span className="ml-auto flex flex-wrap gap-2 text-sm">
+              {v.estado === E.PENDIENTE_VALIDACION && (
+                <Link to={`/requisitos/${id}/validacion`} className="rounded-md bg-violet-600 px-3 py-1.5 text-sobre hover:bg-violet-500">Validar</Link>
+              )}
+              <Link to={`/analisis?proyecto=${v.proyecto_id}&ids=${id}&escena=1`} className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50">Ver en la escena</Link>
+              {[E.RECHAZADO, E.ERROR].includes(v.estado) && (
+                <button onClick={reprocesar} className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50">Reprocesar</button>
+              )}
+              <Link to={`/requisitos/${id}?figura=1`} className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50">Vista para figura</Link>
+            </span>
+          )}
+        </div>
+        <p className="font-serif text-2xl leading-snug">«<TextoMarcado texto={v.texto} marcados={v.marcados} />»</p>
+        {tiposPresentes.length > 0 && (
+          <p className="flex flex-wrap gap-3 text-xs text-slate-600">
+            {tiposPresentes.map((k) => (
+              <span key={k} className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full" style={{ background: TONO_AMBIGUEDAD[k] }} />{TIPOS[k]?.etiqueta ?? k}
+              </span>
+            ))}
+          </p>
+        )}
+        <RutaEstados transiciones={v.transiciones} enProceso={v.en_proceso} />
+        <dl className="grid grid-cols-2 gap-3 rounded-xl border border-slate-200 p-3 text-sm md:grid-cols-6">
+          <div><dt className="text-xs text-slate-500">ambiguos</dt><dd className="font-semibold">{v.resumen.n_ambiguos} de {v.resumen.n_terminos}</dd></div>
+          <div><dt className="text-xs text-slate-500">vía</dt><dd className="flex items-center gap-1.5 font-semibold">{via && <span className="punto" style={{ background: via.tono }} />}{via?.etiqueta ?? "—"}</dd></div>
+          <div><dt className="text-xs text-slate-500">similitud mínima</dt><dd className="font-semibold">{v.resumen.similitud_minima?.toFixed(2) ?? "—"} <span className="text-xs font-normal text-slate-500">umbral {v.config.umbral}</span></dd></div>
+          <div><dt className="text-xs text-slate-500">rondas</dt><dd className="font-semibold">{v.resumen.rondas_max} de {v.config.max_rondas}</dd></div>
+          <div><dt className="text-xs text-slate-500">mensajes</dt><dd className="font-semibold">{v.n_mensajes}{v.n_repetidos ? ` (${v.n_repetidos} repetidos)` : ""}</dd></div>
+          <div><dt className="text-xs text-slate-500">modelos</dt><dd className="truncate text-xs" title={JSON.stringify(v.config.modelos)}>{v.config.modelos.clasificador} · crítico {v.config.modelos.critico}</dd></div>
+        </dl>
+        {aviso && <p className="text-sm text-rose-600">{aviso}</p>}
+      </header>
+
+      {v.errores.length > 0 && (
+        <section className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-900">
+          <p className="font-semibold">El caso terminó en error</p>
+          <ul className="mt-1 space-y-1">
+            {v.errores.map((e) => <li key={e.secuencia}>#{e.secuencia} · {e.nodo ?? "fuera de los nodos"} · {e.excepcion}: {e.mensaje} {e.prompt_version && <span className="font-mono text-xs">({e.prompt_version})</span>}</li>)}
+          </ul>
+          <p className="mt-1 text-xs">Las salidas crudas de cada intento están en la bitácora (mensaje error).</p>
+        </section>
+      )}
+
+      {/* ---------------------------------------------------------------- fase 1 */}
+      <Fase n="1" titulo="Enriquecimiento de conocimiento" quien="Extractor + filtros deterministas"
+        vacia={!v.extraccion && "El Extractor aún no termina."}>
+        {v.extraccion && (
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2 text-sm">
+              {CATEGORIAS.map(([k, nombre]) => {
+                const ts = v.extraccion.terminos.filter((t) => t.categoria_tentativa === k);
+                return ts.length ? <p key={k}><span className="text-slate-500">{nombre}: </span>{ts.map((t) => t.termino).join(", ")}</p> : null;
+              })}
+              {v.extraccion.descartados?.length > 0 && <p className="text-xs text-slate-500">Descartados por no estar en el texto: {v.extraccion.descartados.join(", ")}</p>}
+              <p className="text-xs text-slate-500">
+                {v.extraccion.modelo} · {v.extraccion.prompt_version}{v.extraccion.intentos > 1 ? ` · ${v.extraccion.intentos} intentos` : ""}
+                {v.extraccion.duracion_ms != null && ` · ${(v.extraccion.duracion_ms / 1000).toFixed(1)} s`}
+              </p>
+            </div>
+            <ul className="space-y-1 text-sm">
+              {v.marcados.map((m, i) => (
+                <li key={i} className="flex flex-wrap gap-2">
+                  <b>«{m.texto}»</b>
+                  <span className="text-slate-500">{DECISION[m.decision_filtro] ?? m.decision_filtro}</span>
+                  {m.detalle && <span className="text-xs text-slate-500">· {m.detalle}</span>}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
-      </div>
-      <p className="text-sm text-slate-500">
-        {INFO_ESTADO[r.estado].descripcion}{" "}
-        Procesado con umbral <span className="font-mono">{cfg.umbral.toFixed(2)}</span>, máximo{" "}
-        <span className="font-mono">{cfg.maxRondas}</span> {cfg.maxRondas === 1 ? "ronda" : "rondas"}.
-      </p>
-      {r.simulado && !figura && (
-        <p className="rounded bg-slate-100 px-3 py-1.5 text-xs text-slate-600">
-          Traza generada por el simulador (texto sin fixture escrito a mano): los argumentos son de relleno.
-        </p>
-      )}
-    </header>
-  );
-}
+      </Fase>
 
-function Resolucion({ resolucion }) {
-  const titulo = {
-    [V.DIRECTO]: "Aceptación directa",
-    [V.CONSENSO]: `Consenso en la ronda ${resolucion.ronda}`,
-    [V.ARBITRAJE]: "Arbitraje del Crítico",
-  }[resolucion.via];
-  const color = {
-    [V.DIRECTO]: "border-teal-500",
-    [V.CONSENSO]: "border-emerald-500",
-    [V.ARBITRAJE]: "border-orange-500",
-  }[resolucion.via];
+      {/* ---------------------------------------------------------------- fases 2 y 3 */}
+      <Fase n="2–3" titulo="Generación y discusión del modelo" quien="Clasificador · Divergencia · Crítico"
+        vacia={!v.terminos.length && (v.en_proceso ? "Esperando al Clasificador…" : "Sin términos candidatos.")}>
+        <div className="space-y-4">
+          {ambiguos.map((t) => <TerminoTraza key={t.termino} t={t} umbral={v.config.umbral} />)}
+          {univocos.length > 0 && (
+            <ul className="space-y-1 rounded-xl border border-slate-200 p-3">
+              {univocos.map((t) => <TerminoTraza key={t.termino} t={t} umbral={v.config.umbral} />)}
+            </ul>
+          )}
+          {v.resumen.vaguedad.length > 0 && (
+            <p className="rounded-lg bg-violet-50 p-3 text-sm text-violet-900">
+              Vaguedad (catálogo, sin debate): {v.resumen.vaguedad.join(", ")}. No produce interpretaciones discretas: se marca y llega al humano.
+            </p>
+          )}
+        </div>
+      </Fase>
 
-  return (
-    <div className="space-y-2">
-      <p className="text-sm">
-        <span className="text-slate-500">Cómo se llegó: </span>
-        <strong>{titulo}</strong>
-      </p>
-      <blockquote className={`border-l-4 ${color} bg-slate-50 px-3 py-2 text-base text-slate-900`}>
-        {resolucion.interpretacion}
-      </blockquote>
-      <p className="text-sm text-slate-600">{resolucion.explicacion}</p>
-    </div>
-  );
-}
+      {/* ---------------------------------------------------------------- fase 4 */}
+      <Fase n="4" titulo="Validación del modelo" quien="Humano"
+        vacia={!v.validacion && (v.estado === E.PENDIENTE_VALIDACION ? "Esperando la validación de una persona." : "Aún no llega a validación.")}>
+        {v.validacion && (
+          <div className="space-y-1 text-sm">
+            <p><b>{v.validacion.decision === "aprobar" ? "Aprobado" : "Rechazado"}</b> · {hora(v.validacion.timestamp)}{v.validacion.comentario && <> · «{v.validacion.comentario}»</>}</p>
+            <ul>
+              {v.validacion.terminos.map((t) => (
+                <li key={t.termino}>«{t.termino}»: {t.propuesta} → {t.final?.id ?? "—"} <span className="text-slate-500">({t.cambio})</span></li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </Fase>
 
-function Validacion({ r, figura }) {
-  const ultimo = r.historial.at(-1);
-  const lel = (r.artefactos.validados ?? r.artefactos.propuesta).lel;
+      {/* ---------------------------------------------------------------- fase 5 */}
+      <Fase n="5" titulo="Enriquecimiento (cierre)" quien="Modelador"
+        vacia={!v.formalizacion && (v.estado === E.VALIDADO ? "El Modelador está formalizando…" : "Se formaliza al aprobar.")}>
+        {v.formalizacion && (
+          <div className="space-y-3 text-sm">
+            <p className="font-serif text-lg">«{v.formalizacion.requisito_reescrito}»</p>
+            <p><span className="text-slate-500">Entradas nuevas del LEL: </span>{v.formalizacion.entradas_lel?.length ? v.formalizacion.entradas_lel.join(", ") : "ninguna"}</p>
+            {v.formalizacion.metas?.length > 0 && (
+              <ul className="space-y-0.5">
+                {v.formalizacion.metas.map((m) => (
+                  <li key={m.id}><b>{m.id}</b> <span className="text-slate-500">{m.tipo.replace("_", " ")}</span> · {m.enunciado}{m.actor ? ` · ${m.actor}` : ""}{m.contribuye_a ? ` → ${m.contribuye_a}` : ""}</li>
+                ))}
+              </ul>
+            )}
+            {v.formalizacion.univocos?.length > 0 && <p className="text-xs text-slate-500">Unívocos (no entran al LEL, ADR 0007): {v.formalizacion.univocos.join(", ")}</p>}
+          </div>
+        )}
+      </Fase>
 
-  return (
-    <div className="space-y-3 text-sm">
-      <p>
-        Entrada del LEL propuesta: <strong>«{lel.simbolo}»</strong> ({lel.tipo}). También se generaron el modelo de metas y el Big Picture.
-      </p>
-      {r.estado === E.PENDIENTE_VALIDACION && (
-        <p className="rounded bg-violet-50 px-3 py-2 text-violet-900">
-          Esperando revisión humana.{" "}
-          {!figura && <Link className="font-medium underline" to={`/requisitos/${r.id}/validacion`}>Revisar y editar los artefactos →</Link>}
-        </p>
-      )}
-      {[E.VALIDADO, E.FORMALIZADO].includes(r.estado) && (
-        <p className="rounded bg-green-50 px-3 py-2 text-green-900">
-          Validado {r.historial.find((h) => h.estado === E.VALIDADO)?.editado ? "con ediciones de la persona revisora" : "sin cambios"}.
-          {r.estado === E.FORMALIZADO && " Incorporado al LEL acumulado."}{" "}
-          {!figura && <Link className="font-medium underline" to={`/requisitos/${r.id}/validacion`}>Ver artefactos</Link>}
-        </p>
-      )}
-      {r.estado === E.RECHAZADO && (
-        <p className="rounded bg-red-50 px-3 py-2 text-red-900">
-          Rechazado: {ultimo.comentario || "sin comentario."}
-        </p>
+      {!figura && (
+        <Fase n="·" titulo="Bitácora del protocolo" quien={`${v.n_mensajes} mensajes`}>
+          <Bitacora reqId={id} total={v.n_mensajes} />
+        </Fase>
       )}
     </div>
-  );
-}
-
-function Historial({ historial }) {
-  return (
-    <details className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm">
-      <summary className="cursor-pointer py-1 font-medium">Historial de estados ({historial.length})</summary>
-      <table className="mt-2 w-full text-left">
-        <tbody>
-          {historial.map((h, i) => (
-            <tr key={i} className="border-t border-slate-100">
-              <td className="py-1 pr-4 font-mono text-xs text-slate-500">{hora(h.en)}</td>
-              <td className="py-1 pr-4"><EstadoBadge estado={h.estado} /></td>
-              <td className="py-1 text-slate-600">{h.comentario}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </details>
   );
 }

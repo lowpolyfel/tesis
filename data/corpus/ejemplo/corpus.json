@@ -1,0 +1,6 @@
+{
+  "descripcion": "EJEMPLO del formato de corpus. NO es el corpus de la tesis: siete requisitos escritos para mostrar cada tipo de caso (sin ambigüedad, léxica, regional con vaguedad, anafórica, alcance y vaguedad sola). Sus resultados no se reportan.",
+  "ejemplo": true,
+  "autoria": "Asistente de código, como muestra del formato. El ground truth no fue construido por la tesista ni validado.",
+  "validado_por": null
+}

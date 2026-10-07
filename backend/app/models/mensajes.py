@@ -43,13 +43,47 @@ class Transicion(BaseModel):
     timestamp: datetime = Field(default_factory=ahora)
 
 
+PROYECTO_GENERAL = "P00"
+
+
+class Proyecto(BaseModel):
+    """Agrupa requisitos de un mismo dominio. Cada proyecto tiene su propio LEL
+    (la memoria no se mezcla entre dominios, ADR 0008). `evaluacion` marca los
+    proyectos que crea una corrida contra el corpus."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    proyecto_id: str
+    nombre: str = Field(min_length=1)
+    descripcion: str | None = None
+    tipo: Literal["normal", "evaluacion"] = "normal"
+    creado: datetime = Field(default_factory=ahora)
+
+
+class Origen(BaseModel):
+    """De dónde salió el texto del requisito (trazabilidad hacia el documento)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    documento_id: str | None = None
+    archivo: str | None = None
+    pagina: int | None = None
+    indice: int | None = None  # posición del requisito dentro del documento
+    marca: str | None = None  # numeración original del documento (RF-01, 3.2…)
+    texto_original: str | None = None  # como venía en el documento, antes de que el humano lo editara
+    reproceso_de: str | None = None  # req_id del requisito que este vuelve a procesar
+
+
 class Traza(BaseModel):
     """Documento por requisito: con esto se reconstruye todo el proceso."""
 
     model_config = ConfigDict(extra="forbid")
 
     req_id: str
+    proyecto_id: str = PROYECTO_GENERAL
+    ciclo: int = Field(1, ge=1)  # ciclo KMoS-SSA: cada carga de requisitos a un proyecto abre uno nuevo
     texto: str
+    origen: Origen | None = None
     estado: Estado
     config: dict[str, Any]
     creado: datetime = Field(default_factory=ahora)

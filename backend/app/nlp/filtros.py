@@ -9,12 +9,17 @@ Precedencia por término:
 Los catálogos se buscan en el texto completo, no solo entre los términos que
 devolvió el Extractor: si el LLM omite *jalar* o *ahorita*, el catálogo los
 recupera igual.
+
+Además, los detectores estructurales (ADR 0010) agregan candidatos de
+ambigüedad de alcance (`alcance`) y anafórica (`anafora`), que no son
+vocabulario y por eso el Extractor no devuelve. Siempre pasan al Clasificador.
 """
 from __future__ import annotations
 
 from app.models import Categoria, DecisionFiltro, EntradaLEL, Posicion, TerminoExtraido, TerminoFiltrado
 
 from .catalogos import Catalogos, Coincidencia
+from .detectores import Detectores
 from .spacy_es import Analizador, normalizar
 
 _CATEGORIA_POR_POS = {"VERB": Categoria.VERBO, "AUX": Categoria.VERBO, "NOUN": Categoria.OBJETO,
@@ -29,6 +34,7 @@ class Filtros:
     def __init__(self, catalogos: Catalogos, analizador: Analizador):
         self.catalogos = catalogos
         self.analizador = analizador
+        self.detectores = Detectores(analizador)
 
     def _claves_lel(self, lel: list[EntradaLEL]) -> dict[str, str]:
         """Símbolos del LEL por forma normalizada y por secuencia de lemas."""
@@ -84,7 +90,14 @@ class Filtros:
                 else:
                     salida.append(self._de_catalogo(c, categoria, decision, nombre, extra=" (detectado por catálogo, no por el Extractor)"))
 
-        return sorted(salida, key=lambda s: s.posicion.inicio)
+        # Estructuras de alcance y anáfora: no compiten con el vocabulario, se agregan aparte
+        tramos = {(s.posicion.inicio, s.posicion.fin) for s in salida}
+        for d in self.detectores.buscar(texto):
+            if (d.inicio, d.fin) not in tramos:
+                decision = DecisionFiltro.ALCANCE if d.tipo == "alcance" else DecisionFiltro.ANAFORA
+                salida.append(self._filtrado(d.texto, d.inicio, d.fin, d.categoria, decision, f"{d.patron}: {d.detalle}"))
+
+        return sorted(salida, key=lambda s: (s.posicion.inicio, s.posicion.fin))
 
     @staticmethod
     def _filtrado(termino, ini, fin, categoria, decision, detalle) -> TerminoFiltrado:

@@ -51,7 +51,8 @@ def test_contratos_rechazan_campos_extra():
 
 # ---------- Clasificador
 def test_clasificador_dos_interpretaciones():
-    s = SalidaClasificador.model_validate({"resultados": [{"termino": "sesión", "interpretaciones": [I1, I2]}]})
+    s = SalidaClasificador.model_validate({"resultados": [{"termino": "sesión", "tipo_ambiguedad": "lexica",
+                                                          "interpretaciones": [I1, I2]}]})
     assert not s.resultados[0].univoco
 
 
@@ -115,9 +116,32 @@ def test_arbitraje_justifica_cada_regla():
 # ---------- Modelador
 def test_modelador_entrada_lel_completa():
     lel = {"simbolo": "sesión", "tipo": "objeto", "nocion": ["periodo de uso"], "impacto": ["se registra"]}
-    assert SalidaModelador.model_validate({"entrada_lel": lel, "metas": {"estado": "stub"}, "big_picture": {"estado": "stub"}})
+    assert SalidaModelador.model_validate({"entrada_lel": lel})
     with pytest.raises(ValidationError):
         EntradaLEL.model_validate({**lel, "nocion": []})
+
+
+def test_metas_del_requisito():
+    from app.models import SalidaModeladorRequisito
+
+    meta = {"id": "M1", "enunciado": "Registrar la sesión", "tipo": "meta"}
+    assert SalidaModeladorRequisito.model_validate({"requisito_reescrito": "r", "metas": [meta]})
+    for malo in ({"requisito_reescrito": "r", "metas": []},
+                 {"requisito_reescrito": "r", "metas": [{**meta, "tipo": "deseo"}]},
+                 {"requisito_reescrito": "r", "metas": [meta, meta]},
+                 {"requisito_reescrito": "r", "metas": [{**meta, "contribuye_a": "M1"}]}):
+        with pytest.raises(ValidationError):
+            SalidaModeladorRequisito.model_validate(malo)
+
+
+def test_tipo_de_ambiguedad_obligatorio_si_no_es_univoco():
+    with pytest.raises(ValidationError, match="tipo_ambiguedad"):
+        SalidaClasificador.model_validate({"resultados": [{"termino": "sesión", "interpretaciones": [I1, I2]}]})
+    with pytest.raises(ValidationError):
+        SalidaClasificador.model_validate({"resultados": [{"termino": "x", "univoco": True, "tipo_ambiguedad": "lexica"}]})
+    r = SalidaClasificador.model_validate({"resultados": [{"termino": "su cuenta", "tipo_ambiguedad": "anaforica",
+                                                          "interpretaciones": [I1, I2]}]})
+    assert r.resultados[0].tipo_ambiguedad == "anaforica"
 
 
 # ---------- Mensajes

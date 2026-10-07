@@ -9,7 +9,10 @@
  *                                                       -> arbitrado
  *      v
  *   pendiente_validacion -> validado -> formalizado
- *                        -> rechazado  (terminal; "reprocesar" vuelve a cargado)
+ *                        -> rechazado  (terminal; "reprocesar" crea un requisito nuevo)
+ *   cualquier estado no terminal -> error (un agente no produjo salida válida tras el reintento)
+ *
+ * Es la misma máquina del backend (app/models/comunes.py, ADR 0005).
  */
 
 export const ESTADOS = Object.freeze({
@@ -24,6 +27,7 @@ export const ESTADOS = Object.freeze({
   VALIDADO: "validado",
   RECHAZADO: "rechazado",
   FORMALIZADO: "formalizado",
+  ERROR: "error",
 });
 
 const E = ESTADOS;
@@ -38,8 +42,9 @@ export const TRANSICIONES = Object.freeze({
   [E.ARBITRADO]: [E.PENDIENTE_VALIDACION],
   [E.PENDIENTE_VALIDACION]: [E.VALIDADO, E.RECHAZADO],
   [E.VALIDADO]: [E.FORMALIZADO],
-  [E.RECHAZADO]: [E.CARGADO], // reprocesar
+  [E.RECHAZADO]: [],
   [E.FORMALIZADO]: [],
+  [E.ERROR]: [],
 });
 
 export const puedeTransicionar = (desde, hacia) => TRANSICIONES[desde]?.includes(hacia) ?? false;
@@ -93,68 +98,70 @@ export const INFO_ESTADO = Object.freeze({
   },
   [E.PENDIENTE_VALIDACION]: {
     etiqueta: "Pendiente de validación",
-    descripcion: "Artefactos generados; esperan revisión humana.",
+    descripcion: "Interpretaciones propuestas; esperan la validación de una persona.",
     clase: "bg-violet-50 text-violet-800 ring-violet-300",
     punto: "bg-violet-500",
   },
   [E.VALIDADO]: {
     etiqueta: "Validado",
-    descripcion: "Una persona aprobó los artefactos (con o sin edición).",
+    descripcion: "Una persona aprobó las interpretaciones (con o sin edición); el Modelador formaliza.",
     clase: "bg-green-50 text-green-800 ring-green-300",
     punto: "bg-green-600",
   },
   [E.RECHAZADO]: {
     etiqueta: "Rechazado",
-    descripcion: "Una persona rechazó los artefactos. Puede reprocesarse.",
+    descripcion: "Una persona rechazó la propuesta. Puede reprocesarse como requisito nuevo.",
     clase: "bg-red-50 text-red-800 ring-red-300",
     punto: "bg-red-500",
   },
   [E.FORMALIZADO]: {
     etiqueta: "Formalizado",
-    descripcion: "La entrada se incorporó al LEL acumulado.",
-    clase: "bg-slate-800 text-white ring-slate-800",
+    descripcion: "El Modelador formalizó: entradas del LEL (términos léxicos), requisito reescrito y metas.",
+    clase: "bg-slate-800 text-sobre ring-slate-800",
     punto: "bg-slate-800",
   },
+  [E.ERROR]: {
+    etiqueta: "Error",
+    descripcion: "Un agente no produjo una salida válida tras el reintento; la traza registra el fallo.",
+    clase: "bg-rose-100 text-rose-900 ring-rose-400",
+    punto: "bg-rose-600",
+  },
 });
+
+/* Etiqueta segura aunque llegue un estado desconocido */
+export const infoEstado = (estado) =>
+  INFO_ESTADO[estado] ?? { etiqueta: estado ?? "—", descripcion: "", clase: "bg-slate-100 text-slate-700 ring-slate-300", punto: "bg-slate-400" };
 
 /* Orden de presentación (filtros, leyendas) */
 export const ORDEN_ESTADOS = [
   E.CARGADO, E.EXTRAIDO, E.INTERPRETADO,
   E.ACEPTADO_DIRECTO, E.EN_DEBATE, E.CONSENSO, E.ARBITRADO,
-  E.PENDIENTE_VALIDACION, E.VALIDADO, E.RECHAZADO, E.FORMALIZADO,
+  E.PENDIENTE_VALIDACION, E.VALIDADO, E.RECHAZADO, E.FORMALIZADO, E.ERROR,
 ];
 
-/* Estados en los que los agentes siguen trabajando: la UI los sondea */
-export const ESTADOS_EN_PROCESO = [E.CARGADO, E.EXTRAIDO, E.INTERPRETADO, E.EN_DEBATE];
+/* Terminales: el grafo ya no avanza */
+export const ESTADOS_TERMINALES = [E.RECHAZADO, E.FORMALIZADO, E.ERROR];
+export const esTerminal = (estado) => ESTADOS_TERMINALES.includes(estado);
+
+/*
+ * En proceso: los agentes siguen trabajando sin esperar a nadie. Incluye los
+ * estados de paso (aceptado_directo, consenso, arbitrado van solos a
+ * pendiente_validacion; validado va solo a formalizado).
+ */
+export const ESTADOS_EN_PROCESO = [
+  E.CARGADO, E.EXTRAIDO, E.INTERPRETADO, E.ACEPTADO_DIRECTO, E.EN_DEBATE, E.CONSENSO, E.ARBITRADO, E.VALIDADO,
+];
 export const estaEnProceso = (estado) => ESTADOS_EN_PROCESO.includes(estado);
 
-/* Cómo se resolvió la interpretación final */
+/* Cómo se resolvió un término con interpretaciones (mismos valores que el backend) */
 export const VIAS_RESOLUCION = Object.freeze({
-  DIRECTO: "directo",
+  DIRECTO: "aceptado_directo",
   CONSENSO: "consenso",
   ARBITRAJE: "arbitraje",
 });
 
-export const ESTADO_DE_VIA = Object.freeze({
-  [VIAS_RESOLUCION.DIRECTO]: E.ACEPTADO_DIRECTO,
-  [VIAS_RESOLUCION.CONSENSO]: E.CONSENSO,
-  [VIAS_RESOLUCION.ARBITRAJE]: E.ARBITRADO,
+export const INFO_VIA = Object.freeze({
+  aceptado_directo: { etiqueta: "aceptado directo", tono: "#57f7a7" },
+  consenso: { etiqueta: "consenso", tono: "#a99bff" },
+  arbitraje: { etiqueta: "arbitraje", tono: "#ffc457" },
 });
-
-/* ¿El requisito ya pasó por `estado`? Se responde con su historial. */
-export const alcanzo = (historial, estado) => historial?.some((h) => h.estado === estado) ?? false;
-
-/*
- * Disposición del diagrama de la máquina de estados (LineaEstados):
- * columnas de izquierda a derecha; las ramas alternativas comparten columna.
- */
-export const DIAGRAMA = [
-  [E.CARGADO],
-  [E.EXTRAIDO],
-  [E.INTERPRETADO],
-  [E.ACEPTADO_DIRECTO, E.EN_DEBATE],
-  [E.CONSENSO, E.ARBITRADO],
-  [E.PENDIENTE_VALIDACION],
-  [E.VALIDADO, E.RECHAZADO],
-  [E.FORMALIZADO],
-];

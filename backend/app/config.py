@@ -8,7 +8,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 RAIZ_REPO = Path(__file__).resolve().parents[2]
@@ -58,6 +58,33 @@ class Settings(BaseSettings):
 
     # API: cada cuánto la sandbox recibe mensajes nuevos por SSE (no afecta resultados)
     sse_intervalo_s: float = Field(0.3, gt=0)
+    # Orígenes permitidos para el frontend (Vite en desarrollo), separados por coma
+    cors_origenes: str = "http://localhost:5173,http://127.0.0.1:5173"
+
+    # Documentos (PDF con texto extraíble o texto plano)
+    documento_max_mb: float = Field(10, gt=0)
+
+    # Comparación entre requisitos (módulo exploratorio, ADR 0012)
+    comparador_model: str = "qwen2.5:7b"
+    comparacion_relacion_umbral: float = Field(0.60, ge=0.0, le=1.0)  # similitud mínima para comparar un par con el LLM
+    comparacion_duplicado_umbral: float = Field(0.92, ge=0.0, le=1.0)  # similitud desde la que un par se marca casi duplicado
+    comparacion_max_pares: int = Field(60, ge=1)
+
+    # Evaluación contra el corpus (ADR 0014): línea base de un solo agente
+    agente_unico_model: str = "qwen2.5:7b"
+    corpus_dir: str = "data/corpus"
+
+    # Calibración (ADR 0013): rejilla de umbrales para el análisis de sensibilidad
+    calibracion_desde: float = Field(0.50, ge=0.0, le=1.0)
+    calibracion_hasta: float = Field(0.95, ge=0.0, le=1.0)
+    calibracion_paso: float = Field(0.05, gt=0.0, le=0.5)
+
+    @model_validator(mode="after")
+    def _rejilla_valida(self) -> "Settings":
+        if self.calibracion_desde >= self.calibracion_hasta:
+            raise ValueError(f"CALIBRACION_DESDE ({self.calibracion_desde}) debe ser menor que "
+                             f"CALIBRACION_HASTA ({self.calibracion_hasta})")
+        return self
 
     def ruta(self, relativa: str) -> Path:
         """Rutas relativas se resuelven contra la raíz del repositorio."""
@@ -81,6 +108,9 @@ class Settings(BaseSettings):
             "significado_max_palabras": self.significado_max_palabras,
             "spacy_model": self.spacy_model,
         }
+
+    def origenes_cors(self) -> list[str]:
+        return [o.strip() for o in self.cors_origenes.split(",") if o.strip()]
 
 
 @lru_cache

@@ -1,69 +1,68 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { Link } from "react-router";
 import { useOrb } from "../components/orb/useOrb";
 import { isMobile } from "../components/orb/poses";
-import { listarProyectos, obtenerFlujo } from "../services/api";
+import { flujoDeProyecto } from "../services/backend";
+import ElegirProyecto, { useProyectoElegido } from "../components/ElegirProyecto";
+import { nodo } from "../constants/agentes";
 
 /*
  * Flujo de conocimiento continuo, adaptado del modelo en espiral de KMoS-SSA /
  * SysM2 (Jiménez-Galina, Maldonado-Macías y Olmos-Sánchez, 2025).
  *   - la esfera es el centro: de ella parte cada ciclo
- *   - cada anillo es un ciclo (un lote analizado); el más externo es el más reciente
- *   - cada sector es una fase, con el agente que la realiza
- *   - un punto por fase en cada anillo: su tamaño es cuánto trabajo hubo
+ *   - cada anillo es un ciclo (un lote cargado al proyecto); el más externo es el más reciente
+ *   - cada sector es una de las cinco fases (CONTEXTO §5), con los agentes que la realizan
+ *   - un punto por fase en cada anillo: su tamaño es cuántos mensajes produjo esa fase
  *   - el ciclo elegido muestra sus números; los demás solo sus puntos
- * Así la figura no se satura por muchos ciclos que haya.
+ * Las cifras vienen de GET /proyectos/{id}/flujo (app/analisis/proyecto.py):
+ * mensajes sin repetidos y requisitos que pasaron por cada estado.
  */
+
+const tipo = (c, t) => c.mensajes_por_tipo?.[t] ?? 0;
+const fase = (c, n) => c.fases.find((f) => f.fase === n) ?? { mensajes: 0, requisitos_que_pasaron: 0 };
 
 const FASES = [
   {
-    id: "elicitacion", nombre: "Elicitación", rol: "Extractor", tono: "#41efff", desde: -90,
-    peso: (m) => m.requisitos + m.marcados,
-    cifra: (m) => m.requisitos, unidad: "req",
-    chip: (m) => `${m.requisitos} req · ${m.marcados} marcas`,
-    detalle: (m) => `${m.requisitos} requisitos, ${m.terminos} términos extraídos, ${m.marcados} ambiguos`,
+    id: "enriquecimiento", n: 1, nombre: "Enriquecimiento", rol: "Extractor · filtros", tono: "#41efff", desde: -90,
+    cifra: (c) => c.requisitos, unidad: "req",
+    detalle: (c) => `${c.requisitos} requisitos; ${fase(c, 1).requisitos_que_pasaron} extraídos; ${tipo(c, "extraccion")} extracciones y ${tipo(c, "filtrado")} filtrados (vaguedad, regionalismos, alcance, anáfora, LEL)`,
   },
   {
-    id: "estructuracion", nombre: "Estructuración", rol: "Clasificador · similitud", tono: "#a99bff", desde: -18,
-    peso: (m) => m.interpretaciones,
-    cifra: (m) => m.interpretaciones, unidad: "lect",
-    chip: (m) => `${m.interpretaciones} lecturas`,
-    detalle: (m) => `${m.interpretaciones} interpretaciones, ${m.similitudes} comparaciones, ${m.directos} sin debate`,
+    id: "generacion", n: 2, nombre: "Generación", rol: "Clasificador", tono: "#a99bff", desde: -18,
+    cifra: (c) => fase(c, 2).requisitos_que_pasaron, unidad: "req",
+    detalle: (c) => `${fase(c, 2).requisitos_que_pasaron} requisitos con interpretaciones por término (${tipo(c, "interpretaciones")} mensajes)`,
   },
   {
-    id: "enriquecimiento", nombre: "Enriquecimiento", rol: "Crítico · lecturas A y B", tono: "#ffc457", desde: 54,
-    peso: (m) => m.debates + m.rondas,
-    cifra: (m) => m.rondas, unidad: "R",
-    chip: (m) => `${m.debates} debates · ${m.rondas} R`,
-    detalle: (m) => `${m.debates} debates, ${m.rondas} rondas, ${m.consensos} consensos, ${m.arbitrajes} arbitrajes`,
+    id: "discusion", n: 3, nombre: "Discusión", rol: "Similitud · Crítico · Clasificador", tono: "#ffc457", desde: 54,
+    cifra: (c) => c.rondas_totales, unidad: "R",
+    detalle: (c) => `${c.directos} aceptados directo, ${c.debates} con debate, ${c.rondas_totales} rondas, ${tipo(c, "objecion")} objeciones, ${c.consensos} consensos, ${c.arbitrajes} arbitrajes`,
   },
   {
-    id: "generacion", nombre: "Generación", rol: "Modelador", tono: "#57f7a7", desde: 126,
-    peso: (m) => m.lel,
-    cifra: (m) => m.lel, unidad: "LEL",
-    chip: (m) => `${m.lel} LEL`,
-    detalle: (m) => `${m.artefactos} artefactos (LEL, metas y Big Picture) de ${m.lel} requisitos`,
+    id: "validacion", n: 4, nombre: "Validación", rol: "Analista humano", tono: "#efe9de", desde: 126,
+    cifra: (c) => c.validados, unidad: "✓",
+    detalle: (c) => `${fase(c, 4).requisitos_que_pasaron} llegaron a validación; ${c.validados} aprobados, ${c.rechazados} rechazados`,
   },
   {
-    id: "validacion", nombre: "Validación", rol: "Analista humano", tono: "#efe9de", desde: 198,
-    peso: (m) => m.validados + m.rechazados + m.formalizados,
-    cifra: (m) => m.validados, unidad: "✓",
-    chip: (m) => `${m.validados} ✓ · ${m.rechazados} ✗`,
-    detalle: (m) => `${m.validados} validados, ${m.rechazados} rechazados, ${m.formalizados} formalizados, ${m.reprocesos} reprocesos`,
+    id: "cierre", n: 5, nombre: "Cierre", rol: "Modelador", tono: "#57f7a7", desde: 198,
+    cifra: (c) => c.lel_nuevas, unidad: "LEL",
+    detalle: (c) => `${c.formalizados} formalizados; ${c.lel_nuevas} entradas nuevas del LEL que el ciclo siguiente ya no debate`,
   },
 ];
+for (const f of FASES) f.peso = (c) => fase(c, f.n).mensajes;
 
 /* Pregunta de decisión al cruzar hacia cada fase, y el nombre de esa frontera */
 const FRONTERAS = {
-  elicitacion: { pregunta: "¿Suficiente?", nombre: "Retroalimentación: nuevo ciclo" },
-  estructuracion: { pregunta: "¿Ambiguo?", nombre: "Verificación de términos" },
-  enriquecimiento: { pregunta: "¿Sim ≥ umbral?", nombre: "Similitud contra umbral" },
-  generacion: { pregunta: "¿Consenso?", nombre: "Discusión y arbitraje" },
-  validacion: { pregunta: "¿Válido?", nombre: "Verificación y reflexión" },
+  enriquecimiento: { pregunta: "¿Suficiente?", nombre: "Retroalimentación: nuevo ciclo con el LEL enriquecido" },
+  generacion: { pregunta: "¿Ambiguo?", nombre: "Verificación de términos (unívocos no se debaten)" },
+  discusion: { pregunta: "¿Sim ≥ umbral?", nombre: "Similitud contra umbral" },
+  validacion: { pregunta: "¿Consenso?", nombre: "Discusión y arbitraje" },
+  cierre: { pregunta: "¿Válido?", nombre: "Verificación y reflexión" },
 };
 
 const MAX_ANILLOS = 7;
 const rad = (g) => (g * Math.PI) / 180;
+const SONDEO_MS = 4000;
+const ORDEN_EMISORES = ["extractor", "filtros", "clasificador", "divergencia", "critico", "humano", "modelador"];
 
 /* Caja del área de la espiral en coordenadas de pantalla */
 function useCaja(ref) {
@@ -84,24 +83,26 @@ function useCaja(ref) {
 
 export default function Flujo() {
   const orb = useOrb();
-  const [params, setParams] = useSearchParams();
-  const proyecto = params.get("proyecto") ?? "";
+  const { proyectoId, proyecto, proyectos, elegir } = useProyectoElegido();
   const [datos, setDatos] = useState(null);
-  const [proyectos, setProyectos] = useState([]);
+  const [error, setError] = useState(null);
   const [elegido, setElegido] = useState(null); // número de ciclo
   const area = useRef(null);
   const caja = useCaja(area);
   const movil = isMobile();
 
-  useEffect(() => { listarProyectos().then(setProyectos); }, []);
   useEffect(() => {
+    if (!proyectoId) return undefined;
     let activo = true;
     setElegido(null);
-    const cargar = () => obtenerFlujo(proyecto || undefined).then((d) => activo && setDatos(d));
+    setDatos(null);
+    const cargar = () => flujoDeProyecto(proyectoId)
+      .then((d) => { if (activo) { setDatos(d); setError(null); } })
+      .catch((e) => activo && setError(e));
     cargar();
-    const t = setInterval(cargar, 4000); // sigue vivo mientras los agentes trabajan
+    const t = setInterval(cargar, SONDEO_MS); // sigue vivo mientras los agentes trabajan
     return () => { activo = false; clearInterval(t); };
-  }, [proyecto]);
+  }, [proyectoId]);
 
   // La esfera se coloca exactamente en el centro de la espiral
   useEffect(() => {
@@ -114,8 +115,9 @@ export default function Flujo() {
 
   const ciclos = datos?.ciclos.slice(-MAX_ANILLOS) ?? [];
   const actual = ciclos.find((c) => c.ciclo === elegido) ?? ciclos.at(-1);
-  const nombreProyecto = proyectos.find((p) => p.id === proyecto)?.nombre ?? "Todos los proyectos";
-  const maxPeso = Math.max(1, ...ciclos.flatMap((c) => FASES.map((f) => f.peso(c[f.id]))));
+  const maxPeso = Math.max(1, ...ciclos.flatMap((c) => FASES.map((f) => f.peso(c))));
+  const total = datos?.total;
+  const interacciones = total ? Object.values(total.mensajes_por_agente).reduce((a, b) => a + b, 0) : 0;
 
   return (
     <main className="relative z-10 flex min-h-screen flex-col gap-6 px-5 pt-24 pb-8 md:h-screen md:flex-row md:overflow-hidden md:px-10">
@@ -140,35 +142,28 @@ export default function Flujo() {
           <p className="mono text-[10px] text-[var(--bone-faint)]">Flujo de conocimiento continuo</p>
           <h1 className="serif mt-2 text-[38px] leading-[.95]">Cada <em>ciclo</em> aprende del anterior.</h1>
         </div>
-        <select
-          value={proyecto}
-          onChange={(e) => setParams(e.target.value ? { proyecto: e.target.value } : {}, { replace: true })}
-          className="w-fit rounded-full border border-[var(--line)] bg-transparent px-3 py-1.5 text-[12px] text-[var(--bone)] outline-none"
-        >
-          <option value="" className="bg-[#16130f]">Todos los proyectos</option>
-          {proyectos.map((p) => <option key={p.id} value={p.id} className="bg-[#16130f]">{p.nombre}</option>)}
-        </select>
+        <ElegirProyecto proyectoId={proyectoId} proyectos={proyectos} onCambio={elegir} />
+        {error && <p className="text-sm text-[var(--danger)]">{error.message}</p>}
 
-        {datos && (
+        {total && total.requisitos === 0 && (
+          <p className="text-sm text-[var(--bone-dim)]">Este proyecto aún no tiene requisitos. Cada carga de requisitos abre un ciclo nuevo.</p>
+        )}
+
+        {total && total.requisitos > 0 && (
           <>
             <div>
-              <p className="font-mono text-[44px] leading-none">{datos.interacciones}</p>
-              <p className="mono mt-1.5 text-[9.5px] text-[var(--bone-faint)]">interacciones · {datos.ciclos.length} {datos.ciclos.length === 1 ? "ciclo" : "ciclos"} · {nombreProyecto}</p>
+              <p className="font-mono text-[44px] leading-none">{interacciones}</p>
+              <p className="mono mt-1.5 text-[9.5px] text-[var(--bone-faint)]">
+                mensajes · {datos.ciclos.length} {datos.ciclos.length === 1 ? "ciclo" : "ciclos"} · {total.requisitos} requisitos · {proyecto?.nombre ?? proyectoId}
+              </p>
             </div>
 
             <dl className="grid grid-cols-[auto_auto_1fr] items-baseline gap-x-3 gap-y-1.5 text-sm">
-              {[
-                ["Extractor", "#41efff", datos.agentes.extractor, "extracciones"],
-                ["Clasificador", "#a99bff", datos.agentes.clasificador, "lecturas y defensas"],
-                ["Similitud", "#8f8bff", datos.total.estructuracion.similitudes, "comparaciones"],
-                ["Crítico", "#ffc457", datos.agentes.critico, "rondas y arbitrajes"],
-                ["Modelador", "#57f7a7", datos.agentes.modelador, "artefactos"],
-                ["Analista", "#efe9de", datos.agentes.humano, "decisiones"],
-              ].map(([k, tono, v, d]) => (
+              {ORDEN_EMISORES.map((k) => (
                 <div key={k} className="contents">
-                  <dt className="flex items-center gap-2"><span className="punto" style={{ background: tono }} />{k}</dt>
-                  <dd className="text-right font-mono">{v}</dd>
-                  <span className="text-[11px] text-[var(--bone-faint)]">{d}</span>
+                  <dt className="flex items-center gap-2"><span className="punto" style={{ background: nodo(k).tono }} />{nodo(k).nombre}</dt>
+                  <dd className="text-right font-mono">{total.mensajes_por_agente[k] ?? 0}</dd>
+                  <span className="truncate text-[11px] text-[var(--bone-faint)]" title={nodo(k).rol}>{nodo(k).rol}</span>
                 </div>
               ))}
             </dl>
@@ -190,11 +185,14 @@ export default function Flujo() {
                 <ul className="space-y-2 text-[12.5px] leading-snug">
                   {FASES.map((f) => (
                     <li key={f.id}>
-                      <span style={{ color: f.tono }}>{f.nombre}</span>
-                      <span className="text-[var(--bone-dim)]"> — {f.detalle(actual[f.id])}</span>
+                      <span style={{ color: f.tono }}>{f.n}. {f.nombre}</span>
+                      <span className="text-[var(--bone-dim)]"> — {f.detalle(actual)}</span>
                     </li>
                   ))}
                 </ul>
+                {actual.duracion_s != null && (
+                  <p className="mono mt-3 text-[9.5px] text-[var(--bone-faint)]">duración {formatoDuracion(actual.duracion_s)} (incluye la espera del analista)</p>
+                )}
               </section>
             )}
 
@@ -206,19 +204,27 @@ export default function Flujo() {
                 </p>
               ))}
             </section>
-
-            <div className="flex flex-wrap gap-2">
-              <Link to={proyecto ? `/inicio?proyecto=${proyecto}` : "/inicio"} className="pill">Nuevo ciclo</Link>
-              {proyecto && <Link to={`/proyectos/${proyecto}`} className="pill ghost">Proyecto</Link>}
-            </div>
-            <p className="text-[10.5px] leading-snug text-[var(--bone-faint)]">
-              Adaptado del modelo en espiral de KMoS-SSA / SysM2. Jiménez-Galina, A. M., Maldonado-Macías, A. A. y Olmos-Sánchez, K. M. (2025).
-            </p>
           </>
         )}
+
+        {proyectoId && (
+          <div className="flex flex-wrap gap-2">
+            <Link to={`/inicio?proyecto=${proyectoId}`} className="pill">Nuevo ciclo</Link>
+            <Link to={`/proyectos/${proyectoId}`} className="pill ghost">Proyecto</Link>
+          </div>
+        )}
+        <p className="text-[10.5px] leading-snug text-[var(--bone-faint)]">
+          Adaptado del modelo en espiral de KMoS-SSA / SysM2. Jiménez-Galina, A. M., Maldonado-Macías, A. A. y Olmos-Sánchez, K. M. (2025).
+        </p>
       </aside>
     </main>
   );
+}
+
+function formatoDuracion(s) {
+  if (s < 90) return `${Math.round(s)} s`;
+  if (s < 5400) return `${Math.round(s / 60)} min`;
+  return `${(s / 3600).toFixed(1)} h`;
 }
 
 /* ---------------------------------------------------------------- */
@@ -273,7 +279,7 @@ function Espiral({ w, h, ciclos, actual, maxPeso, movil, onElegir }) {
       {ciclos.map((c, i) =>
         FASES.map((f) => {
           const [x, y] = punto(radio(i), f.desde + 36);
-          const peso = f.peso(c[f.id]);
+          const peso = f.peso(c);
           const r = peso ? 3 + Math.sqrt(peso / maxPeso) * (movil ? 6 : 9) : 2;
           const sel = c.ciclo === actual?.ciclo;
           return (
@@ -287,7 +293,7 @@ function Espiral({ w, h, ciclos, actual, maxPeso, movil, onElegir }) {
               className="cursor-pointer"
               onClick={() => onElegir(c.ciclo)}
             >
-              <title>{`C${c.ciclo} · ${f.nombre}: ${f.detalle(c[f.id])}`}</title>
+              <title>{`C${c.ciclo} · ${f.nombre}: ${f.detalle(c)}`}</title>
             </circle>
           );
         })
@@ -300,7 +306,7 @@ function Espiral({ w, h, ciclos, actual, maxPeso, movil, onElegir }) {
         const [x, y] = punto(radio(i) - (movil ? 16 : 24), medio);
         return (
           <text key={f.id} x={x} y={y + 3.5} textAnchor="middle" fontSize={movil ? 9 : 11} fill={f.tono} className="pointer-events-none" style={{ fontFamily: "var(--mono)" }}>
-            {f.cifra(actual[f.id])} {f.unidad}
+            {f.cifra(actual)} {f.unidad}
           </text>
         );
       })}

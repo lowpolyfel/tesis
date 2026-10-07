@@ -48,6 +48,34 @@ export const MOODS = {
     scale: 1, fog: 1.05, glow: 0.55,
     amp: 0.9, speed: 1, turbulence: 0, pulse: 0, breathe: 0.03, wobble: 0,
   },
+  /* ---- nodos que no son agentes LLM: filtros, divergencia, humano, sistema ---- */
+  filtros: {
+    c1: "#7dd3fc", c2: "#38bdf8", bg: "#02080d",
+    scale: 1, fog: 1.05, glow: 0.5,
+    amp: 0.8, speed: 0.9, turbulence: 0, pulse: 0.4, breathe: 0.025, wobble: 0,
+  },
+  divergencia: {
+    c1: "#f8fafc", c2: "#94a3b8", bg: "#07080a",
+    scale: 1, fog: 1.05, glow: 0.62,
+    amp: 0.9, speed: 1.1, turbulence: 0.05, pulse: 0.8, breathe: 0.03, wobble: 0,
+  },
+  humano: {
+    c1: "#f9a8d4", c2: "#ec4899", bg: "#0e0309",
+    scale: 1, fog: 1.08, glow: 0.58,
+    amp: 1, speed: 0.9, turbulence: 0.05, pulse: 0.5, breathe: 0.04, wobble: 0,
+  },
+  sistema: {
+    c1: "#cbd5e1", c2: "#64748b", bg: "#06070a",
+    scale: 1, fog: 1, glow: 0.45,
+    amp: 0.7, speed: 0.8, turbulence: 0, pulse: 0, breathe: 0.02, wobble: 0,
+  },
+  /* ---- interpretaciones I1…I6 (mismos colores que colorInterpretacion) ---- */
+  interp1: { c1: "#7dd3fc", c2: "#0ea5e9", bg: "#030812", scale: 1, fog: 1.1, glow: 0.6, amp: 1.3, speed: 1.6, turbulence: 0.25, pulse: 0, breathe: 0.04, wobble: 0 },
+  interp2: { c1: "#fcd34d", c2: "#f59e0b", bg: "#100602", scale: 1, fog: 1.1, glow: 0.6, amp: 1.3, speed: 1.6, turbulence: 0.25, pulse: 0, breathe: 0.04, wobble: 0 },
+  interp3: { c1: "#c4b5fd", c2: "#8b5cf6", bg: "#0a0612", scale: 1, fog: 1.1, glow: 0.6, amp: 1.3, speed: 1.6, turbulence: 0.25, pulse: 0, breathe: 0.04, wobble: 0 },
+  interp4: { c1: "#6ee7b7", c2: "#10b981", bg: "#020b07", scale: 1, fog: 1.1, glow: 0.6, amp: 1.3, speed: 1.6, turbulence: 0.25, pulse: 0, breathe: 0.04, wobble: 0 },
+  interp5: { c1: "#f9a8d4", c2: "#ec4899", bg: "#0e0309", scale: 1, fog: 1.1, glow: 0.6, amp: 1.3, speed: 1.6, turbulence: 0.25, pulse: 0, breathe: 0.04, wobble: 0 },
+  interp6: { c1: "#fda4af", c2: "#f43f5e", bg: "#100205", scale: 1, fog: 1.1, glow: 0.6, amp: 1.3, speed: 1.6, turbulence: 0.25, pulse: 0, breathe: 0.04, wobble: 0 },
   lecturaA: {
     c1: "#5cc8ff", c2: "#3b82f6", bg: "#030812",
     scale: 1, fog: 1.1, glow: 0.6,

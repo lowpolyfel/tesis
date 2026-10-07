@@ -1,90 +1,88 @@
 import { Link, useSearchParams } from "react-router";
 import { useApi } from "../hooks/useApi";
-import { listarProyectos, obtenerLel } from "../services/api";
+import { listarProyectos, obtenerLel } from "../services/backend";
 import { TIPOS_LEL } from "../constants/agentes";
+import { EntradaLel } from "./Proyecto";
 
 const normalizar = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
-/* Pantalla 6: léxico acumulado, con búsqueda por símbolo y filtro por tipo */
+/*
+ * El LEL de cada proyecto (ADR 0008: la memoria no se mezcla entre dominios).
+ * Solo entran términos léxicos resueltos y validados por una persona; los
+ * unívocos no entran. Búsqueda por símbolo o término y filtro por tipo.
+ */
 export default function Lel() {
-  const { datos: entradas, cargando } = useApi(obtenerLel);
-  const { datos: proyectos } = useApi(listarProyectos);
   const [params, setParams] = useSearchParams();
   const q = params.get("q") ?? "";
   const tipo = params.get("tipo") ?? "";
   const proyecto = params.get("proyecto") ?? "";
+  const { datos: entradas, error, cargando } = useApi(() => obtenerLel(proyecto || undefined), [proyecto]);
+  const { datos: proyectos } = useApi(listarProyectos);
   const actualizar = (cambios) => {
     const p = Object.fromEntries(params);
     setParams(Object.fromEntries(Object.entries({ ...p, ...cambios }).filter(([, v]) => v)), { replace: true });
   };
+  const nombreDe = (pid) => (proyectos ?? []).find((p) => p.proyecto_id === pid)?.nombre ?? pid;
 
-  if (cargando) return <p className="text-sm text-slate-500">Cargando el LEL…</p>;
+  if (error) return <p className="text-sm text-[var(--danger)]">{error.message}</p>;
+  if (cargando && !entradas) return <p className="text-sm text-[var(--bone-dim)]">Cargando el LEL…</p>;
 
-  const visibles = entradas
-    .filter((e) => !proyecto || e.proyectoId === proyecto)
+  const lista = entradas ?? [];
+  const visibles = lista
     .filter((e) => !tipo || e.tipo === tipo)
-    .filter((e) => !q || [e.simbolo, ...(e.sinonimos ?? [])].some((s) => normalizar(s).includes(normalizar(q))))
+    .filter((e) => !q || [e.simbolo, e.termino].some((s) => normalizar(s ?? "").includes(normalizar(q))))
     .sort((a, b) => a.simbolo.localeCompare(b.simbolo, "es"));
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <header>
-        <h1 className="text-2xl font-semibold">LEL acumulado</h1>
-        <p className="text-sm text-slate-500">{entradas.length} símbolos formalizados. Cada entrada enlaza al requisito donde se resolvió.</p>
+        <p className="mono mb-3 text-[10px] text-[var(--bone-faint)]">{lista.length} símbolos{proyecto ? ` en ${nombreDe(proyecto)}` : " en todos los proyectos"}</p>
+        <h1>Léxico.</h1>
+        <p className="mt-2 text-sm text-[var(--bone-dim)]">Cada entrada enlaza al requisito donde se resolvió y dice si llegó por aceptación directa, consenso o arbitraje.</p>
       </header>
 
       <div className="flex flex-wrap items-center gap-3">
         <input
           value={q}
           onChange={(e) => actualizar({ q: e.target.value })}
-          placeholder="Buscar símbolo o sinónimo…"
-          className="w-64 rounded border border-slate-300 px-3 py-1.5 text-sm"
+          placeholder="Buscar símbolo o término…"
+          className="linea w-64 py-1.5 text-sm"
         />
         <select
           value={proyecto}
           onChange={(e) => actualizar({ proyecto: e.target.value })}
-          className="rounded-full border border-slate-300 bg-transparent px-3 py-1.5 text-sm"
+          className="rounded-full border border-[var(--line)] bg-transparent px-3 py-1.5 text-sm"
         >
           <option value="">Todos los proyectos</option>
-          {(proyectos ?? []).map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+          {(proyectos ?? []).map((p) => <option key={p.proyecto_id} value={p.proyecto_id}>{p.nombre}</option>)}
         </select>
-        <div className="flex gap-1.5">
+        <div className="mono flex flex-wrap gap-1.5 text-[10px]">
           {["", ...TIPOS_LEL].map((t) => (
             <button
               key={t || "todos"}
               onClick={() => actualizar({ tipo: t })}
-              className={`rounded-full px-2.5 py-0.5 text-xs ring-1 ring-inset ${tipo === t ? "bg-slate-900 text-sobre ring-slate-900" : "bg-white ring-slate-300"}`}
+              className={`rounded-full border px-2.5 py-0.5 ${tipo === t ? "border-[var(--c1)] text-[var(--bone)]" : "border-[var(--line)] text-[var(--bone-faint)] hover:text-[var(--bone)]"}`}
             >
-              {t || "todos"} ({t ? entradas.filter((e) => e.tipo === t).length : entradas.length})
+              {t || "todos"} ({t ? lista.filter((e) => e.tipo === t).length : lista.length})
             </button>
           ))}
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <ol className="grid gap-3 md:grid-cols-2">
         {visibles.map((e) => (
-          <article key={e.id} className="rounded-lg border border-slate-200 bg-white p-4 text-sm">
-            <header className="mb-2 flex flex-wrap items-baseline gap-2">
-              <h2 className="text-base font-semibold">{e.simbolo}</h2>
-              <span className="rounded bg-slate-100 px-1.5 text-xs text-slate-600">{e.tipo}</span>
-              <Link to={`/requisitos/${e.requisitoId}`} className="ml-auto font-mono text-xs text-indigo-700 hover:underline">
-                resuelto en {e.requisitoId} →
-              </Link>
-              {e.proyectoId && (
-                <Link to={`/proyectos/${e.proyectoId}`} className="w-full text-xs text-slate-500 hover:underline">
-                  {(proyectos ?? []).find((p) => p.id === e.proyectoId)?.nombre ?? e.proyectoId}
-                </Link>
-              )}
-            </header>
-            {e.sinonimos?.length > 0 && <p className="mb-2 text-xs text-slate-500">Sinónimos: {e.sinonimos.join(", ")}</p>}
-            <p className="text-xs font-medium text-slate-500">Noción</p>
-            <ul className="mb-2 list-disc pl-5">{e.nocion.map((x, i) => <li key={i}>{x}</li>)}</ul>
-            <p className="text-xs font-medium text-slate-500">Impacto</p>
-            <ul className="list-disc pl-5">{e.impacto.map((x, i) => <li key={i}>{x}</li>)}</ul>
-          </article>
+          <EntradaLel
+            key={`${e.proyecto_id}-${e.req_id}-${e.simbolo}`}
+            e={e}
+            conProyecto={!proyecto && <Link to={`/proyectos/${e.proyecto_id}?vista=lel`} className="hover:text-[var(--bone)]">{nombreDe(e.proyecto_id)}</Link>}
+          />
         ))}
-        {visibles.length === 0 && <p className="text-sm text-slate-500">Ningún símbolo coincide.</p>}
-      </div>
+      </ol>
+      {visibles.length === 0 && (
+        <p className="text-sm text-[var(--bone-dim)]">
+          {lista.length ? "Ningún símbolo coincide." : "Aún no hay entradas: se crean al validar un término léxico."}
+        </p>
+      )}
     </div>
   );
 }
