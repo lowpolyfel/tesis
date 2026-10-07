@@ -64,7 +64,19 @@ def test_clasificador_univoco_sin_interpretaciones():
 
 def test_clasificador_no_univoco_exige_dos_o_mas():
     with pytest.raises(ValidationError):
-        ResultadoTermino(termino="sesión", interpretaciones=[I1])
+        ResultadoTermino(termino="sesión", tipo_ambiguedad="lexica", interpretaciones=[])
+
+
+def test_una_sola_interpretacion_es_univoca():
+    # con el contexto, el Clasificador deja un solo significado sin marcar `univoco` (ADR 0017)
+    for datos in ({"termino": "checar", "univoco": False, "tipo_ambiguedad": "lexica", "interpretaciones": [I1]},
+                  {"termino": "checar", "univoco": True, "interpretaciones": [I1]}):
+        r = ResultadoTermino.model_validate(datos)
+        assert (r.univoco, r.tipo_ambiguedad, r.interpretaciones) == (True, None, [])
+        assert r.nota and "una sola interpretación" in r.nota
+    assert ResultadoTermino(termino="sistema", univoco=True).nota is None
+    # la nota la escribe el código: no forma parte del esquema que se le pide al LLM
+    assert "nota" not in SalidaClasificador.model_json_schema()["$defs"]["ResultadoTermino"]["properties"]
 
 
 def test_clasificador_ids_unicos():

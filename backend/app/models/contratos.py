@@ -6,9 +6,10 @@ resto lo completa el código de forma determinista.
 """
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
+from pydantic.json_schema import SkipJsonSchema
 
 from .comunes import Categoria, CategoriaNoFuncional, DecisionFiltro, Regla, TipoAmbiguedad, TipoRequisito, Via
 
@@ -115,11 +116,27 @@ def _ids_unicos(interpretaciones: list[Interpretacion]) -> None:
         raise ValueError(f"ids de interpretación repetidos: {ids}")
 
 
+NOTA_UNA_INTERPRETACION = "el Clasificador dio una sola interpretación: en este requisito y su contexto es unívoco"
+
+
 class ResultadoTermino(Contrato):
     termino: str = Field(min_length=1)
     univoco: bool = False
     tipo_ambiguedad: TipoAmbiguedad | None = None
     interpretaciones: list[Interpretacion] = []
+    # La escribe el código, no el LLM (no aparece en el esquema que se le pide al modelo)
+    nota: SkipJsonSchema[str | None] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _una_sola_es_univoca(cls, datos: Any) -> Any:
+        """Una sola interpretación es, por definición, un término unívoco: no hay otra con
+        qué compararla (ADR 0017). Con el contexto del proyecto el Clasificador a veces deja
+        una y no marca `univoco`; en lugar de rechazarlo, se registra como unívoco con una nota."""
+        if isinstance(datos, dict) and len(datos.get("interpretaciones") or []) == 1:
+            return {**datos, "univoco": True, "tipo_ambiguedad": None, "interpretaciones": [],
+                    "nota": NOTA_UNA_INTERPRETACION}
+        return datos
 
     @model_validator(mode="after")
     def _coherencia(self) -> "ResultadoTermino":

@@ -35,7 +35,8 @@ export const ANCHO_CONTENIDO = 860;
  */
 export function poseSeccion(id, ancho = ANCHO_CONTENIDO) {
   const s = seccion(id);
-  if (isMobile()) return { x: s.lado * 0.52, y: 0.5, s: 1.25, deriva: 0 };
+  // en móvil apenas se asoma por la esquina inferior, para no quedar detrás del texto
+  if (isMobile()) return { x: s.lado * 0.6, y: 0.52, s: 1.05, deriva: 0 };
   const escala = Math.min(2.6, Math.max(1.6, innerHeight / 350));
   const radio = 150 * escala; // las ondas más externas, con su vaivén, a esa escala
   const margen = Math.max(0, (innerWidth - ancho) / 2);
