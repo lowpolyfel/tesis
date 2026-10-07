@@ -10,6 +10,8 @@
  *      v
  *   pendiente_validacion -> validado -> formalizado
  *                        -> rechazado  (terminal; "reprocesar" crea un requisito nuevo)
+ *   aceptado_directo | consenso | arbitrado -> validado  (validación automática, ADR 0017:
+ *      no hace falta una persona; con VALIDACION_HUMANA=si_hay_arbitraje solo espera el arbitrado)
  *   cualquier estado no terminal -> error (un agente no produjo salida válida tras el reintento)
  *
  * Es la misma máquina del backend (app/models/comunes.py, ADR 0005).
@@ -37,9 +39,9 @@ export const TRANSICIONES = Object.freeze({
   [E.EXTRAIDO]: [E.INTERPRETADO],
   [E.INTERPRETADO]: [E.ACEPTADO_DIRECTO, E.EN_DEBATE],
   [E.EN_DEBATE]: [E.CONSENSO, E.ARBITRADO],
-  [E.ACEPTADO_DIRECTO]: [E.PENDIENTE_VALIDACION],
-  [E.CONSENSO]: [E.PENDIENTE_VALIDACION],
-  [E.ARBITRADO]: [E.PENDIENTE_VALIDACION],
+  [E.ACEPTADO_DIRECTO]: [E.PENDIENTE_VALIDACION, E.VALIDADO],
+  [E.CONSENSO]: [E.PENDIENTE_VALIDACION, E.VALIDADO],
+  [E.ARBITRADO]: [E.PENDIENTE_VALIDACION, E.VALIDADO],
   [E.PENDIENTE_VALIDACION]: [E.VALIDADO, E.RECHAZADO],
   [E.VALIDADO]: [E.FORMALIZADO],
   [E.RECHAZADO]: [],
@@ -161,7 +163,31 @@ export const VIAS_RESOLUCION = Object.freeze({
 });
 
 export const INFO_VIA = Object.freeze({
-  aceptado_directo: { etiqueta: "aceptado directo", tono: "#57f7a7" },
-  consenso: { etiqueta: "consenso", tono: "#a99bff" },
-  arbitraje: { etiqueta: "arbitraje", tono: "#ffc457" },
+  aceptado_directo: { etiqueta: "aceptado directo", tono: "#57f7a7", simple: "Los agentes coincidieron" },
+  consenso: { etiqueta: "consenso", tono: "#a99bff", simple: "Acordado tras debatir" },
+  arbitraje: { etiqueta: "arbitraje", tono: "#ffc457", simple: "Lo decidió el Crítico" },
 });
+
+/*
+ * Lo que ve la persona: cinco estados en lenguaje claro. Los doce estados de la
+ * máquina siguen en la traza (detalles técnicos).
+ */
+export const SIMPLE = Object.freeze({
+  cola: { texto: "En cola", tono: "#94a3b8", descripcion: "Espera su turno." },
+  analizando: { texto: "Analizando", tono: "#fbbf24", descripcion: "Los agentes están trabajando en él." },
+  revisar: { texto: "Por revisar", tono: "#f9a8d4", descripcion: "Los agentes no se pusieron de acuerdo: elige tú." },
+  listo: { texto: "Listo", tono: "#57f7a7", descripcion: "Reescrito sin ambigüedad y en la especificación." },
+  descartado: { texto: "Descartado", tono: "#94a3b8", descripcion: "Lo descartaste; puedes volver a analizarlo." },
+  error: { texto: "Error", tono: "#ff7b88", descripcion: "Un agente falló; puedes volver a analizarlo." },
+});
+export const estadoSimple = (estado) => {
+  if (estado === E.CARGADO) return { id: "cola", ...SIMPLE.cola };
+  if (estado === E.PENDIENTE_VALIDACION) return { id: "revisar", ...SIMPLE.revisar };
+  if (estado === E.FORMALIZADO) return { id: "listo", ...SIMPLE.listo };
+  if (estado === E.RECHAZADO) return { id: "descartado", ...SIMPLE.descartado };
+  if (estado === E.ERROR) return { id: "error", ...SIMPLE.error };
+  return { id: "analizando", ...SIMPLE.analizando };
+};
+
+/* Tono de la esfera para cada estado simple */
+export const MOOD_SIMPLE = { cola: "sistema", analizando: "thinking", revisar: "humano", listo: "success", descartado: "sistema", error: "error" };

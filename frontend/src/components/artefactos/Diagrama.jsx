@@ -52,33 +52,38 @@ export default function Diagrama({ mermaid, plantuml, nombre }) {
 
   return (
     <div className="space-y-3">
-      <div className="mono flex flex-wrap gap-4 text-[9.5px]">
-        {[["diagrama", "Diagrama"], ["mermaid", "Código Mermaid"], ["plantuml", "Código PlantUML"]].map(([k, t]) => (
-          <button key={k} onClick={() => setVista(k)} className={vista === k ? "text-[var(--bone)] underline decoration-[var(--c1)] underline-offset-4" : "text-[var(--bone-faint)] hover:text-[var(--bone)]"}>{t}</button>
-        ))}
+      <div className="overflow-x-auto rounded-2xl border border-[var(--line)] bg-[#ffffff] p-4">
+        {error && <p className="text-sm text-[#b42318]">No se pudo dibujar: {error}</p>}
+        {!svg && !error && <p className="mono flex items-center gap-2 text-[10px] text-[#6b6255]"><span className="gira" /> Dibujando…</p>}
+        {svg && <div className="modelo-svg mx-auto min-w-[560px]" dangerouslySetInnerHTML={{ __html: svg }} />}
       </div>
-      {vista === "diagrama" ? (
-        <div className="overflow-x-auto rounded-2xl border border-[var(--line)] bg-[#ffffff] p-4">
-          {error && <p className="text-sm text-[#b42318]">No se pudo dibujar: {error}</p>}
-          {!svg && !error && <p className="mono flex items-center gap-2 text-[10px] text-[#6b6255]"><span className="gira" /> Dibujando…</p>}
-          {svg && <div className="modelo-svg mx-auto min-w-[640px]" dangerouslySetInnerHTML={{ __html: svg }} />}
+      <div className="mono flex flex-wrap items-center gap-x-4 gap-y-2 text-[10px] text-[var(--bone-faint)]">
+        <span>Descargar</span>
+        <button className="hover:text-[var(--bone)] disabled:opacity-40" disabled={!svg} onClick={async () => descargar(`${nombre}.png`, await svgAPng(svg))}>PNG</button>
+        <button className="hover:text-[var(--bone)] disabled:opacity-40" disabled={!svg} onClick={() => descargar(`${nombre}.svg`, svg, "image/svg+xml")}>SVG</button>
+        <button className="hover:text-[var(--bone)]" onClick={() => descargar(`${nombre}.mmd`, mermaid, "text/plain")}>Mermaid</button>
+        <button className="hover:text-[var(--bone)]" onClick={() => descargar(`${nombre}.puml`, plantuml, "text/plain")}>PlantUML</button>
+        <button className="ml-auto hover:text-[var(--bone)]" onClick={() => setVista((v) => (v === "diagrama" ? "mermaid" : "diagrama"))}>
+          {vista === "diagrama" ? "ver código" : "ocultar código"}
+        </button>
+      </div>
+      {vista !== "diagrama" && (
+        <div className="space-y-2">
+          <div className="mono flex flex-wrap gap-4 text-[10px]">
+            {[["mermaid", "Mermaid"], ["plantuml", "PlantUML"]].map(([k, t]) => (
+              <button key={k} onClick={() => setVista(k)} className={vista === k ? "text-[var(--bone)]" : "text-[var(--bone-faint)] hover:text-[var(--bone)]"}>{t}</button>
+            ))}
+            <button className="text-[var(--bone-faint)] hover:text-[var(--bone)]" onClick={() => copiar(vista === "plantuml" ? plantuml : mermaid)}>copiar</button>
+            {vista === "plantuml" && (
+              <button className="text-[var(--bone-faint)] hover:text-[var(--bone)]" onClick={async () => window.open(await urlPlantUML(plantuml), "_blank", "noopener")}>abrir en PlantUML ↗</button>
+            )}
+            {aviso && <span className="text-[var(--bone-dim)]">{aviso}</span>}
+          </div>
+          <pre className="max-h-[50vh] overflow-auto rounded-2xl border border-[var(--line)] bg-white/[0.02] p-4 font-mono text-[11.5px] leading-relaxed text-[var(--bone-dim)]">
+            {vista === "mermaid" ? mermaid : plantuml}
+          </pre>
         </div>
-      ) : (
-        <pre className="max-h-[60vh] overflow-auto rounded-2xl border border-[var(--line)] bg-white/[0.02] p-4 font-mono text-[11.5px] leading-relaxed text-[var(--bone-dim)]">
-          {vista === "mermaid" ? mermaid : plantuml}
-        </pre>
       )}
-      <div className="flex flex-wrap items-center gap-2">
-        <button className="pill" disabled={!svg} onClick={async () => descargar(`${nombre}.png`, await svgAPng(svg))}>PNG</button>
-        <button className="pill ghost" disabled={!svg} onClick={() => descargar(`${nombre}.svg`, svg, "image/svg+xml")}>SVG</button>
-        <button className="pill ghost" onClick={() => descargar(`${nombre}.mmd`, mermaid, "text/plain")}>.mmd</button>
-        <button className="pill ghost" onClick={() => descargar(`${nombre}.puml`, plantuml, "text/plain")}>.puml</button>
-      </div>
-      <div className="mono flex flex-wrap gap-4 text-[9.5px] text-[var(--bone-faint)]">
-        <button className="hover:text-[var(--bone)]" onClick={async () => window.open(await urlPlantUML(plantuml), "_blank", "noopener")}>Abrir en el servidor de PlantUML ↗</button>
-        <button className="hover:text-[var(--bone)]" onClick={() => copiar(vista === "plantuml" ? plantuml : mermaid)}>Copiar código {vista === "plantuml" ? "PlantUML" : "Mermaid"}</button>
-        {aviso && <span className="text-[var(--bone-dim)]">{aviso}</span>}
-      </div>
     </div>
   );
 }

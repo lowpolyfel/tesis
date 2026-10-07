@@ -4,22 +4,22 @@ import { useRequisitoVivo } from "../hooks/useRequisitoVivo";
 import { reprocesarRequisito, requisitosDeProyecto, validarRequisito } from "../services/backend";
 import { ESTADOS as E, INFO_VIA, estaEnProceso } from "../constants/estados";
 import { REGLAS, colorInterpretacion, tipo } from "../constants/agentes";
-import EstadoBadge from "../components/EstadoBadge";
+import { useOrb } from "../components/orb/useOrb";
+import TextoMarcado from "../components/TextoMarcado";
+import { Aviso, Cargando, EstadoChip, Plegable, Volver } from "../components/ui";
 
 /*
- * Validación humana (fase 4 de KMoS-SSA), por término.
- *
- * Para cada término con interpretaciones la persona ve cómo se llegó a la
- * propuesta (vía, similitud, rondas, arbitraje) y puede: aprobarla, elegir
- * otra interpretación (incluso una retirada en el debate) o reescribirla.
- * Al aprobar, el Modelador formaliza: entradas del LEL para los términos
- * léxicos, el requisito reescrito y sus metas. Rechazar no formaliza nada.
- * La decisión (aprobar o rechazar) es una sola para todo el requisito.
+ * Revisión humana (fase 4 de KMoS-SSA). Solo llega aquí lo que hace falta: los
+ * requisitos en los que los agentes no llegaron a un acuerdo (o todos, con
+ * VALIDACION_HUMANA=siempre; ADR 0017). Por término, la persona confirma el
+ * significado que propuso el Crítico, elige otro o escribe el suyo. Al
+ * confirmar, el Modelador reescribe el requisito; descartar no formaliza nada.
  */
 export default function Validacion() {
   const { id } = useParams();
   const [params] = useSearchParams();
   const navigate = useNavigate();
+  const orb = useOrb();
   const volver = params.get("volver");
   const { vista: v, error, recargar } = useRequisitoVivo(id);
   const [elecciones, setElecciones] = useState({}); // termino -> { id, editar, significado, parafrasis }
@@ -31,7 +31,6 @@ export default function Validacion() {
   const solicitud = v?.solicitud;
   const terminos = useMemo(() => solicitud?.terminos ?? [], [solicitud]);
 
-  // Propuesta preseleccionada en cada término
   useEffect(() => {
     if (!terminos.length) return;
     setElecciones((prev) => {
@@ -46,7 +45,6 @@ export default function Validacion() {
     });
   }, [terminos]);
 
-  // El siguiente requisito por validar del mismo proyecto
   useEffect(() => {
     if (!v?.proyecto_id) return;
     requisitosDeProyecto(v.proyecto_id)
@@ -54,20 +52,11 @@ export default function Validacion() {
       .catch(() => setSiguiente(null));
   }, [v?.proyecto_id, v?.estado, id]);
 
-  if (error) return <p className="text-sm text-rose-600">No pude cargar {id}: {error.message}</p>;
-  if (!v) return <p className="text-sm text-slate-500">Cargando {id}…</p>;
+  if (error) return <div className="space-y-4"><Volver a="/proyectos">Proyectos</Volver><Aviso>No pude cargar {id}: {error.message}</Aviso></div>;
+  if (!v) return <Cargando>Cargando {id}…</Cargando>;
 
   const pendiente = v.estado === E.PENDIENTE_VALIDACION;
-
-  const reprocesar = async () => {
-    setAviso(null);
-    try {
-      const r = await reprocesarRequisito(v);
-      navigate(`/analisis?proyecto=${r.proyecto_id}&ids=${r.req_ids.join(",")}`);
-    } catch (e) {
-      setAviso(`Error: ${e.message}`);
-    }
-  };
+  const atras = volver ?? `/proyectos/${v.proyecto_id}`;
 
   const enviar = async (decision) => {
     setEnviando(true);
@@ -79,16 +68,14 @@ export default function Validacion() {
           const e = elecciones[t.termino];
           if (!e) continue;
           const base = t.todas?.[e.id];
-          if (e.editar) {
-            editadas[t.termino] = { id: e.id, significado: e.significado.trim(), parafrasis_del_requisito: e.parafrasis.trim() };
-          } else if (base && e.id !== t.propuesta?.id) {
-            editadas[t.termino] = base;
-          }
+          if (e.editar) editadas[t.termino] = { id: e.id, significado: e.significado.trim(), parafrasis_del_requisito: e.parafrasis.trim() };
+          else if (base && e.id !== t.propuesta?.id) editadas[t.termino] = base;
         }
       }
       await validarRequisito(id, { decision, interpretacionesEditadas: editadas, comentario });
-      setAviso(decision === "aprobar" ? "Aprobado. El Modelador está formalizando…" : "Rechazado.");
-      recargar({ seguir: true }); // se sigue el requisito hasta que la cola procese la validación
+      orb.setMood(decision === "aprobar" ? "success" : "sistema", { revertAfter: 1400 });
+      setAviso(decision === "aprobar" ? "Listo. El Modelador está reescribiendo el requisito…" : "Descartado.");
+      recargar({ seguir: true });
     } catch (e) {
       setAviso(`Error: ${e.message}`);
     } finally {
@@ -96,206 +83,135 @@ export default function Validacion() {
     }
   };
 
+  const reprocesar = async () => {
+    try {
+      const r = await reprocesarRequisito(v);
+      navigate(`/analisis?proyecto=${r.proyecto_id}&ids=${r.req_ids.join(",")}`);
+    } catch (e) {
+      setAviso(`Error: ${e.message}`);
+    }
+  };
+
   return (
-    <div className="space-y-6 pb-24">
-      <header className="space-y-2">
-        <nav className="text-sm text-slate-500">
-          {volver ? <Link to={volver} className="hover:underline">Volver al análisis</Link> : <Link to="/historial" className="hover:underline">Historial</Link>}
-          {" / "}<Link to={`/requisitos/${id}`} className="hover:underline">{id}</Link> / validación
-        </nav>
+    <div className="space-y-7 pb-28">
+      <header className="space-y-4">
+        <Volver a={atras}>{volver ? "Volver al análisis" : "Proyecto"}</Volver>
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold">Validación</h1>
-          <EstadoBadge estado={v.estado} className="text-sm" />
-          <span className="text-xs text-slate-500">{v.proyecto_id} · ciclo {v.ciclo}{v.origen?.marca ? ` · ${v.origen.marca}` : ""}{v.origen?.pagina ? ` · p. ${v.origen.pagina}` : ""}</span>
+          <span className="mono text-[11px] text-[var(--bone-faint)]">{v.req_id}</span>
+          <EstadoChip estado={v.estado} />
         </div>
-        <p className="font-serif text-xl leading-snug">«{v.texto}»</p>
+        <h1>{pendiente ? "Elige el significado" : "Revisión"}</h1>
+        {pendiente && terminos.length > 0 && (
+          <p className="max-w-2xl text-[15px] text-[var(--bone-dim)]">
+            Los agentes no llegaron a un acuerdo{terminos.length > 1 ? ` en ${terminos.length} términos` : ""}. Confirma la propuesta, elige otra o escribe la tuya.
+          </p>
+        )}
+        <p className="serif text-[clamp(20px,2.2vw,28px)] leading-snug">«<TextoMarcado texto={v.texto} marcados={v.marcados.filter((m) => m.tipo)} />»</p>
       </header>
 
-      {estaEnProceso(v.estado) && (
-        <p className="rounded-lg bg-slate-100 px-4 py-3 text-sm text-slate-700">
-          Los agentes siguen trabajando en este requisito ({v.estado.replaceAll("_", " ")}). La validación aparece aquí en cuanto terminen.
-        </p>
-      )}
+      {estaEnProceso(v.estado) && <div className="tarjeta flex items-center gap-3 px-5 py-4 text-[14.5px]"><span className="gira" /> Los agentes siguen trabajando; la revisión aparece aquí en cuanto terminen.</div>}
 
       {pendiente && (
         <>
           {!terminos.length && (
-            <p className="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-              No se encontraron términos ambiguos. Al aprobar, el requisito se formaliza sin entradas nuevas en el LEL
-              (los unívocos no entran: ADR 0007).
-            </p>
+            <p className="tarjeta px-5 py-4 text-[14.5px] text-[var(--bone-dim)]">No hay términos dudosos. Confirma para que el Modelador reescriba el requisito.</p>
           )}
           {terminos.map((t) => (
-            <TerminoAValidar key={t.termino} t={t} eleccion={elecciones[t.termino]}
+            <TerminoAElegir key={t.termino} t={t} eleccion={elecciones[t.termino]}
               onCambio={(e) => setElecciones((x) => ({ ...x, [t.termino]: { ...x[t.termino], ...e } }))} />
           ))}
-          <Contexto solicitud={solicitud} />
-          <section className="sticky bottom-3 z-10 space-y-3 rounded-xl border border-slate-300 bg-[color-mix(in_oklab,var(--bg)_94%,transparent)] p-4 shadow-2xl backdrop-blur-xl">
-            <textarea value={comentario} onChange={(e) => setComentario(e.target.value)} rows={2}
-              placeholder="Comentario (opcional): por qué apruebas, eliges o rechazas"
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-            <div className="flex flex-wrap items-center gap-3">
-              <button disabled={enviando} onClick={() => enviar("aprobar")}
-                className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-sobre hover:bg-slate-700 disabled:opacity-50">
-                Aprobar y formalizar
-              </button>
-              <button disabled={enviando} onClick={() => enviar("rechazar")}
-                className="rounded-md border border-rose-300 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-50">
-                Rechazar
-              </button>
-              {aviso && <span className="text-sm text-slate-600">{aviso}</span>}
-            </div>
-          </section>
+          <Plegable titulo="Comentario" nota="opcional: queda en la traza">
+            <textarea value={comentario} onChange={(e) => setComentario(e.target.value)} rows={2} className="campo text-[14px]"
+              placeholder="Por qué eliges esto" />
+          </Plegable>
+          <div className="sticky bottom-4 z-10 tarjeta flex flex-wrap items-center gap-3 px-4 py-3 shadow-2xl">
+            <button disabled={enviando} onClick={() => enviar("aprobar")} className="pill">Confirmar</button>
+            <button disabled={enviando} onClick={() => enviar("rechazar")} className="pill ghost">Descartar requisito</button>
+            {aviso && <span className="text-[14px] text-[var(--bone-dim)]">{aviso}</span>}
+          </div>
         </>
       )}
 
-      {v.estado === E.ERROR && (
-        <section className="space-y-2 rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-900">
-          <p className="font-semibold">El caso terminó en error antes de llegar a validación: no hay nada que validar.</p>
-          <ul className="space-y-1">
-            {v.errores.map((e) => <li key={e.secuencia}>#{e.secuencia} · {e.nodo ?? "fuera de los nodos"} · {e.excepcion}: {e.mensaje}</li>)}
-          </ul>
-          <p className="text-xs">Reprocesar lo carga como un requisito nuevo del mismo proyecto; este queda en la historia.</p>
-        </section>
+      {!pendiente && !estaEnProceso(v.estado) && (
+        <div className="tarjeta space-y-2 px-5 py-4 text-[14.5px]">
+          <p>{v.estado === E.FORMALIZADO ? "Listo: el requisito ya está en la especificación." : v.estado === E.RECHAZADO ? "Lo descartaste." : "Este requisito no espera revisión."}</p>
+          {aviso && <p className="text-[var(--bone-dim)]">{aviso}</p>}
+        </div>
       )}
+      {v.estado === E.VALIDADO && <p className="flex items-center gap-2 text-[14px] text-[var(--bone-dim)]"><span className="gira" /> El Modelador está reescribiendo el requisito…</p>}
 
-      {!pendiente && !estaEnProceso(v.estado) && <Resultado v={v} />}
-      {aviso && !pendiente && <p className="text-sm text-slate-600">{aviso}</p>}
-
-      <footer className="flex flex-wrap gap-3 text-sm">
+      <footer className="flex flex-wrap gap-2">
         {siguiente && (
-          <button className="rounded-md bg-violet-600 px-3 py-1.5 text-sobre hover:bg-violet-500"
-            onClick={() => navigate(`/requisitos/${siguiente.req_id}/validacion${volver ? `?volver=${encodeURIComponent(volver)}` : ""}`)}>
-            Validar el siguiente ({siguiente.req_id})
+          <button className="pill sm" onClick={() => navigate(`/requisitos/${siguiente.req_id}/validacion${volver ? `?volver=${encodeURIComponent(volver)}` : ""}`)}>
+            Revisar el siguiente ({siguiente.req_id})
           </button>
         )}
-        {[E.ERROR, E.RECHAZADO].includes(v.estado) && (
-          <button onClick={reprocesar} className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50">Reprocesar</button>
-        )}
-        <Link to={`/requisitos/${id}`} className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50">Ver la traza completa</Link>
-        <Link to={`/proyectos/${v.proyecto_id}`} className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50">Ir al proyecto</Link>
+        {[E.ERROR, E.RECHAZADO].includes(v.estado) && <button onClick={reprocesar} className="pill ghost sm">Volver a analizar</button>}
+        <Link to={`/requisitos/${id}`} className="pill ghost sm">Ver el requisito</Link>
       </footer>
     </div>
   );
 }
 
-function TerminoAValidar({ t, eleccion, onCambio }) {
+function TerminoAElegir({ t, eleccion, onCambio }) {
   const info = tipo(t.tipo_ambiguedad);
   const retiradas = new Map((t.retiradas ?? []).map((r) => [r.interpretacion_id, r]));
   const todas = Object.values(t.todas ?? {}).sort((a, b) => a.id.localeCompare(b.id, "es", { numeric: true }));
   const via = INFO_VIA[t.via];
   if (!eleccion) return null;
-  const elegir = (interp) => onCambio({ id: interp.id, significado: interp.significado, parafrasis: interp.parafrasis_del_requisito });
+  const elegir = (i) => onCambio({ id: i.id, significado: i.significado, parafrasis: i.parafrasis_del_requisito, editar: false });
 
   return (
-    <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
-      <header className="flex flex-wrap items-center gap-2">
-        <h2 className="text-lg font-semibold">«{t.termino}»</h2>
-        <span className={`rounded px-2 py-0.5 text-xs ${info.clase}`} title={info.descripcion}>{info.etiqueta}</span>
-        {t.origen && t.origen !== "extractor" && <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-700">detectado por: {t.origen}</span>}
-        <span className="ml-auto flex items-center gap-2 text-xs text-slate-600">
-          {via && <span className="punto" style={{ background: via.tono }} />}
-          {via?.etiqueta ?? t.decision}
-          {t.similitud != null && <> · similitud {t.similitud.toFixed(2)} (umbral {t.umbral})</>}
-          {t.rondas > 0 && <> · {t.rondas} ronda{t.rondas > 1 ? "s" : ""}</>}
-        </span>
+    <section className="tarjeta space-y-4 p-5">
+      <header className="flex flex-wrap items-baseline gap-3">
+        <h2 className="!text-[22px] !normal-case !tracking-normal" style={{ fontFamily: "var(--serif)" }}>«{t.termino}»</h2>
+        <span className="etiqueta" title={info.descripcion}>{info.simple}</span>
+        {via && <span className="ml-auto text-[12px] text-[var(--bone-faint)]">{via.simple}{t.rondas > 0 ? ` tras ${t.rondas} ronda${t.rondas > 1 ? "s" : ""}` : ""}</span>}
       </header>
-      {t.detalle && <p className="text-xs text-slate-500">{t.detalle}</p>}
-
-      {t.justificacion?.length > 0 && (
-        <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
-          <p className="font-medium">El Crítico arbitró por {t.propuesta?.id}:</p>
-          <ul className="mt-1 space-y-0.5">
-            {t.justificacion.map((j) => <li key={j.regla}><b>{j.regla}</b> {REGLAS[j.regla]?.nombre}: {j.argumento}</li>)}
-          </ul>
-        </div>
-      )}
 
       <fieldset className="space-y-2">
+        <legend className="sr-only">Significado de «{t.termino}»</legend>
         {todas.map((i) => {
           const c = colorInterpretacion(i.id);
           const ret = retiradas.get(i.id);
           const marcada = eleccion.id === i.id && !eleccion.editar;
           return (
-            <label key={i.id} className={`flex cursor-pointer gap-3 rounded-lg border-l-4 p-3 ${c.clase} ${marcada ? "ring-2 ring-slate-900" : "opacity-90"}`}>
-              <input type="radio" name={`t-${t.termino}`} checked={marcada} onChange={() => { elegir(i); onCambio({ editar: false }); }} className="mt-1" />
+            <label key={i.id} className={`flex cursor-pointer gap-3 rounded-xl border p-3.5 transition-colors ${marcada ? "border-[var(--bone)] bg-white/[0.05]" : "border-[var(--line)] hover:bg-white/[0.03]"}`}>
+              <input type="radio" name={`t-${t.termino}`} checked={marcada} onChange={() => elegir(i)} className="mt-1.5 accent-[var(--bone)]" />
               <span className="min-w-0 flex-1">
-                <span className="flex flex-wrap items-center gap-2 text-sm">
-                  <b>{i.id}</b> {i.significado}
-                  {t.propuesta?.id === i.id && <span className="rounded bg-slate-900 px-1.5 py-0.5 text-[10px] text-sobre">propuesta</span>}
-                  {ret && <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[10px] text-rose-800" title={ret.motivo}>retirada en la ronda {ret.ronda}</span>}
+                <span className="flex flex-wrap items-center gap-2 text-[15.5px]">
+                  <span className="h-2 w-2 rounded-full" style={{ background: c.trazo }} />
+                  {i.significado}
+                  {t.propuesta?.id === i.id && <span className="etiqueta !text-[var(--c1)]">propuesta del Crítico</span>}
+                  {ret && <span className="etiqueta" title={ret.motivo}>descartada en el debate</span>}
                 </span>
-                <span className="mt-1 block text-sm text-slate-700">{i.parafrasis_del_requisito}</span>
+                <span className="mt-1 block text-[14px] text-[var(--bone-dim)]">{i.parafrasis_del_requisito}</span>
               </span>
             </label>
           );
         })}
-        <label className={`flex cursor-pointer gap-3 rounded-lg border border-dashed border-slate-300 p-3 ${eleccion.editar ? "ring-2 ring-slate-900" : ""}`}>
-          <input type="radio" name={`t-${t.termino}`} checked={eleccion.editar} onChange={() => onCambio({ editar: true })} className="mt-1" />
-          <span className="min-w-0 flex-1 text-sm">
-            Reescribir la interpretación elegida ({eleccion.id})
+        <label className={`flex cursor-pointer gap-3 rounded-xl border border-dashed p-3.5 ${eleccion.editar ? "border-[var(--bone)]" : "border-[var(--line)]"}`}>
+          <input type="radio" name={`t-${t.termino}`} checked={eleccion.editar} onChange={() => onCambio({ editar: true })} className="mt-1.5 accent-[var(--bone)]" />
+          <span className="min-w-0 flex-1 text-[15px]">
+            Otro significado
             {eleccion.editar && (
-              <span className="mt-2 block space-y-2">
+              <span className="mt-3 block space-y-2">
                 <input value={eleccion.significado} onChange={(e) => onCambio({ significado: e.target.value })}
-                  placeholder="significado" className="w-full rounded-md border border-slate-300 px-2 py-1" />
+                  placeholder="Qué significa aquí" className="campo text-[14.5px]" />
                 <textarea value={eleccion.parafrasis} onChange={(e) => onCambio({ parafrasis: e.target.value })} rows={2}
-                  placeholder="el requisito reescrito con ese significado" className="w-full rounded-md border border-slate-300 px-2 py-1" />
+                  placeholder="El requisito escrito con ese significado" className="campo text-[14.5px]" />
               </span>
             )}
           </span>
         </label>
       </fieldset>
-    </section>
-  );
-}
 
-function Contexto({ solicitud }) {
-  if (!solicitud) return null;
-  const bloques = [
-    solicitud.vaguedad?.length && { titulo: "Vaguedad (no se debate)", texto: `${solicitud.vaguedad.join(", ")}: límite impreciso. Considera pedir una métrica; el Modelador puede recogerla como meta blanda, sin inventar la métrica.`, clase: "bg-violet-50 text-violet-900" },
-    solicitud.estructuras?.length && { titulo: "Estructuras detectadas", texto: solicitud.estructuras.map((e) => `«${e.termino}» (${e.decision_filtro}${e.detalle ? `: ${e.detalle}` : ""})`).join(" · "), clase: "bg-indigo-50 text-indigo-900" },
-    solicitud.univocos?.length && { titulo: "Unívocos", texto: `${solicitud.univocos.join(", ")}: una sola interpretación razonable; quedan en la traza y no entran al LEL.`, clase: "bg-slate-50 text-slate-700" },
-    solicitud.resueltos_por_lel?.length && { titulo: "Resueltos por el LEL", texto: `${solicitud.resueltos_por_lel.join(", ")}: ya tienen noción validada en el proyecto.`, clase: "bg-emerald-50 text-emerald-900" },
-  ].filter(Boolean);
-  if (!bloques.length) return null;
-  return (
-    <section className="grid gap-3 md:grid-cols-2">
-      {bloques.map((b) => (
-        <div key={b.titulo} className={`rounded-lg p-3 text-sm ${b.clase}`}>
-          <p className="font-medium">{b.titulo}</p>
-          <p className="mt-1">{b.texto}</p>
-        </div>
-      ))}
-    </section>
-  );
-}
-
-function Resultado({ v }) {
-  const f = v.formalizacion;
-  const val = v.validacion;
-  return (
-    <section className="space-y-4">
-      {val && (
-        <p className="rounded-lg bg-slate-100 px-4 py-3 text-sm text-slate-700">
-          {val.decision === "aprobar" ? "Aprobado" : "Rechazado"}
-          {val.terminos?.some((t) => t.cambio !== "ninguno") && ` con cambios: ${val.terminos.filter((t) => t.cambio !== "ninguno").map((t) => `«${t.termino}» (${t.cambio})`).join(", ")}`}
-          {val.comentario && <> · «{val.comentario}»</>}
-        </p>
-      )}
-      {v.estado === E.VALIDADO && <p className="text-sm text-slate-600">El Modelador está formalizando…</p>}
-      {f && (
-        <div className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-emerald-800">Formalizado</p>
-          <p className="font-serif text-lg">«{f.requisito_reescrito}»</p>
-          {f.entradas_lel?.length > 0 && <p className="text-sm">Entradas nuevas del LEL: {f.entradas_lel.join(", ")}</p>}
-          {f.metas?.length > 0 && (
-            <ul className="space-y-1 text-sm">
-              {f.metas.map((m) => (
-                <li key={m.id}><b>{m.id}</b> <span className="text-slate-500">{m.tipo.replace("_", " ")}</span> · {m.enunciado}{m.actor ? ` · ${m.actor}` : ""}</li>
-              ))}
-            </ul>
-          )}
-        </div>
+      {t.justificacion?.length > 0 && (
+        <Plegable titulo="Por qué lo propuso el Crítico">
+          <ul className="space-y-1 text-[13.5px] text-[var(--bone-dim)]">
+            {t.justificacion.map((j) => <li key={j.regla}><b className="font-medium text-[var(--bone)]">{REGLAS[j.regla]?.nombre ?? j.regla}:</b> {j.argumento}</li>)}
+          </ul>
+        </Plegable>
       )}
     </section>
   );

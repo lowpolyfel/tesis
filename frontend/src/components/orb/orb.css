@@ -10,6 +10,10 @@
 
 /* ---- escena ---- */
 .orb-stage{position:fixed;inset:0;z-index:2;pointer-events:none;perspective:1200px;overflow:hidden}
+/* Menú de la esfera: las esferas pasan por encima del contenido (el velo queda debajo) */
+.orb-stage.es-elevada{z-index:41}
+/* La esfera principal se puede tocar: abre el menú */
+.orb-orbwrap.es-tocable{pointer-events:auto;cursor:pointer;border-radius:50%}
 .orb-membrane{position:absolute;inset:0;overflow:visible;
   filter:drop-shadow(0 0 18px rgba(239,228,206,.12))}
 .orb-body{position:absolute;left:50%;top:50%;width:0;height:0;will-change:transform,opacity}

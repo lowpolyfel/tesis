@@ -5,14 +5,17 @@
  * Hay siempre una esfera principal ("core"). Puede dividirse (mitosis) en
  * otras esferas —los agentes— y volver a fusionarlas.
  *
- * Cada esfera: { id, mood, target: { x, y, s }, label, sub, active, dim }
- *   x, y: desplazamiento desde el centro como fracción del viewport
- *   s:    escala (1 = esfera de 218 px)
+ * Cada esfera: { id, mood, target: { x, y, s, deriva }, label, sub, active, dim, onClick }
+ *   x, y:    desplazamiento desde el centro como fracción del viewport
+ *   s:       escala (1 = esfera de 218 px)
+ *   deriva:  amplitud (fracción del alto) de un vaivén lento a lo largo del borde
+ *   onClick: la esfera se puede tocar (la principal abre el menú)
  */
 export function createOrbController() {
   const bodies = new Map();
   const listeners = new Set();
-  const state = { bodies, ambient: "idle", shy: false, membranaHasta: 0 };
+  // elevada: las esferas pasan por encima del contenido (menú de la esfera)
+  const state = { bodies, ambient: "idle", shy: false, membranaHasta: 0, elevada: false };
   const membrana = (ms = 1500) => { state.membranaHasta = performance.now() + ms; };
   const emit = () => listeners.forEach((fn) => fn());
   let moodTimer;
@@ -30,7 +33,7 @@ export function createOrbController() {
 
     /* ---- esfera principal ---- */
     setPose(pose) {
-      core().target = { ...core().target, ...pose };
+      core().target = { ...core().target, deriva: 0, ...pose }; // sin deriva salvo que la pose la pida
     },
     setMood(mood, { revertAfter } = {}) {
       clearTimeout(moodTimer);
@@ -49,6 +52,12 @@ export function createOrbController() {
     setShy(shy) {
       state.shy = shy;
     },
+    setElevada(elevada) {
+      if (state.elevada === elevada) return;
+      state.elevada = elevada;
+      emit();
+    },
+    mood: () => core().mood,
     poke(amount = 0.6, id = "core") {
       const b = bodies.get(id);
       if (b) b.kick += amount;
@@ -98,9 +107,9 @@ export function createOrbController() {
       const { x, y, s, ...rest } = patch;
       Object.assign(b, rest);
       if (x != null || y != null || s != null) {
-        b.target = { x: x ?? b.target.x, y: y ?? b.target.y, s: s ?? b.target.s };
+        b.target = { ...b.target, x: x ?? b.target.x, y: y ?? b.target.y, s: s ?? b.target.s };
       }
-      if ("label" in patch || "sub" in patch) emit();
+      if ("label" in patch || "sub" in patch || "onClick" in patch) emit();
     },
 
     /* Lo llama el motor cuando una esfera terminó de fusionarse */

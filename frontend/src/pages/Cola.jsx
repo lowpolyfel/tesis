@@ -72,7 +72,7 @@ export default function Cola() {
           <p className="mono mb-3 text-[10px] text-[var(--bone-faint)]">{datos.lista.length} requisitos · {datos.proyectos.length} proyectos</p>
           <h1>Historial.</h1>
         </div>
-        <Link to="/inicio" className="pill ml-auto">+ Cargar requisitos</Link>
+        <Link to="/proyectos" className="pill ml-auto">Proyectos</Link>
       </header>
 
       {datos.fallidos?.length > 0 && (

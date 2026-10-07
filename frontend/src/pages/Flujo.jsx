@@ -221,7 +221,7 @@ export default function Flujo() {
         {proyectoId && (
           <div className="flex flex-wrap gap-2">
             {/* un proyecto de evaluación solo lo llena la evaluación del corpus */}
-            {proyecto?.tipo !== "evaluacion" && <Link to={`/inicio?proyecto=${proyectoId}`} className="pill">Nuevo ciclo</Link>}
+            {proyecto?.tipo !== "evaluacion" && <Link to={`/proyectos/${proyectoId}/analizar`} className="pill">Nuevo ciclo</Link>}
             <Link to={`/proyectos/${proyectoId}`} className="pill ghost">Proyecto</Link>
           </div>
         )}

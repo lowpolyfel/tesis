@@ -2,13 +2,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { useOrb } from "../components/orb/useOrb";
 import { isMobile } from "../components/orb/poses";
-import { obtenerCola, obtenerRequisito, requisitosDeProyecto } from "../services/backend";
-import { ESTADOS as E, estaEnProceso, esTerminal, infoEstado } from "../constants/estados";
-import { nodo } from "../constants/agentes";
+import { especificacionDeProyecto, obtenerCola, obtenerRequisito, obtenerProyecto, requisitosDeProyecto } from "../services/backend";
+import { ESTADOS as E, esTerminal, estadoSimple } from "../constants/estados";
+import { TIPO_REQUISITO, nodo } from "../constants/agentes";
 import { crearCoreografia } from "../escena/coreografia";
 import { useEnVivo } from "../escena/useEnVivo";
 import { resumenMensaje } from "../escena/resumenMensaje";
+import { pasoSimple } from "../escena/pasoSimple";
 import TextoMarcado from "../components/TextoMarcado";
+import { EstadoChip, Volver } from "../components/ui";
 
 /*
  * Analizar, paso 3: la escena en vivo.
@@ -20,8 +22,9 @@ import TextoMarcado from "../components/TextoMarcado";
  * similitud. Lo que se ve es exactamente lo que dice la traza.
  *
  * El backend procesa un requisito a la vez (cola); la escena sigue al que está
- * en proceso. Los que llegan a pendiente_validacion quedan en la bandeja
- * "por validar": la validación es de una persona, uno por uno.
+ * en proceso. Lo que se lee es un paso por mensaje, en lenguaje claro; la
+ * bitácora técnica está plegada. Solo los requisitos en los que los agentes no
+ * se pusieron de acuerdo esperan a una persona (ADR 0017).
  */
 
 const RITMOS = [0.5, 1, 2, 4];
@@ -41,9 +44,14 @@ export default function Analisis() {
   const [vistos, setVistos] = useState([]); // requisitos cuya escena ya se mostró completa
   const [repetir, setRepetir] = useState(params.get("escena") === "1");
   const [fase, setFase] = useState("division"); // division → trabajo → fusion → resultados
+  const [nombreProyecto, setNombreProyecto] = useState(null);
 
   useEffect(() => {
-    if (!ids.length || !proyecto) navigate("/inicio", { replace: true });
+    if (proyecto) obtenerProyecto(proyecto).then((x) => setNombreProyecto(x.nombre)).catch(() => {});
+  }, [proyecto]);
+
+  useEffect(() => {
+    if (!ids.length || !proyecto) navigate(proyecto ? `/proyectos/${proyecto}` : "/proyectos", { replace: true });
   }, [ids, proyecto, navigate]);
 
   /* ---- estado del lote: sondeo ligero de la lista y de la cola ---- */
@@ -155,7 +163,7 @@ export default function Analisis() {
       <main className="relative z-10 mx-auto max-w-xl px-6 pt-[30vh] text-center">
         <p className="serif text-3xl">No pude seguir el análisis.</p>
         <p className="mt-3 text-sm text-[var(--bone-dim)]">{errorCarga.message}</p>
-        <Link to="/inicio" className="pill ghost mt-6">Volver</Link>
+        <Link to={proyecto ? `/proyectos/${proyecto}` : "/proyectos"} className="pill ghost mt-6">Volver</Link>
       </main>
     );
   }
@@ -166,6 +174,9 @@ export default function Analisis() {
 
   return (
     <main className="relative z-10 min-h-screen">
+      <div className="fixed top-20 left-5 z-20 md:top-24 md:left-10">
+        <Volver a={`/proyectos/${proyecto}`}>{nombreProyecto ?? "Proyecto"}</Volver>
+      </div>
       {fase === "trabajo" && focoInfo && (
         <Foco r={focoInfo} i={lista.indexOf(focoInfo)} total={lista.length} mensajes={vivo.mensajes} animados={vivo.animados} estadoVivo={vivo.estado} />
       )}
@@ -176,7 +187,7 @@ export default function Analisis() {
         />
       )}
       {fase === "fusion" && (
-        <p className="mono sube fixed inset-x-0 bottom-[18vh] text-center text-[10px] text-[var(--bone-dim)]">Reuniendo a los agentes…</p>
+        <p className="mono aparece fixed inset-x-0 bottom-[18vh] text-center text-[10px] text-[var(--bone-dim)]">Reuniendo a los agentes…</p>
       )}
       {fase === "resultados" && (
         <Resultados lista={lista} proyecto={proyecto}
@@ -216,154 +227,143 @@ function Foco({ r, i, total, mensajes, animados, estadoVivo }) {
   const largo = r.texto.length > 110;
   return (
     <section key={r.req_id} className="pointer-events-none fixed inset-x-0 top-[max(9vh,92px)] z-10 px-6 text-center">
-      <p className="mono sube text-[10px] text-[var(--bone-faint)]">
-        Requisito {i + 1} de {total} · {r.req_id} · ciclo {r.ciclo ?? 1}{estado && <> · <span className="text-[var(--bone-dim)]">{infoEstado(estado).etiqueta}</span></>}
+      <p className="mono aparece text-[10px] text-[var(--bone-faint)]">
+        Requisito {i + 1} de {total}{estado && <> · <span className="text-[var(--bone-dim)]">{estadoSimple(estado).texto}</span></>}
       </p>
-      <p
-        className={`serif sube mx-auto mt-2 line-clamp-2 max-w-4xl leading-tight ${largo ? "text-[clamp(16px,1.5vw,21px)]" : "text-[clamp(19px,2vw,28px)]"}`}
-        style={{ "--i": 1 }}
-      >
+      <p className={`serif aparece mx-auto mt-2 line-clamp-2 max-w-4xl leading-tight ${largo ? "text-[clamp(16px,1.5vw,21px)]" : "text-[clamp(19px,2vw,28px)]"}`}>
         «<TextoMarcado texto={r.texto} marcados={marcas} />»
       </p>
     </section>
   );
 }
 
+/*
+ * Abajo: el paso actual en una frase, el avance del lote y lo que espera
+ * revisión. La bitácora técnica (emisor → receptor, tipo, payload) va plegada.
+ */
 function Panel({ vivo, lista, foco, pendientes, proyecto, onSeguir }) {
-  const [abierta, setAbierta] = useState(!isMobile());
+  const [bitacora, setBitacora] = useState(false);
   const lineas = useRef(null);
   const visibles = vivo.mensajes.slice(0, Math.max(vivo.animados, 0));
   const actual = vivo.mensajes[vivo.animados - 1];
+  const listos = lista.filter((r) => enReposo(r.estado)).length;
+  const siguienteRitmo = RITMOS[(RITMOS.indexOf(vivo.ritmo) + 1) % RITMOS.length];
 
   useEffect(() => {
     lineas.current?.scrollTo({ top: lineas.current.scrollHeight, behavior: "smooth" });
-  }, [visibles.length]);
+  }, [visibles.length, bitacora]);
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-10 px-4 pb-4 md:px-8">
-      {/* una sola columna en móvil: sin `grid-cols-1` la columna implícita crece con el texto */}
-      <div className="mx-auto grid max-w-6xl grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_300px]">
-        {/* Bitácora: un renglón por mensaje del protocolo */}
-        <section className="min-w-0 rounded-2xl border border-[var(--line)] bg-[color-mix(in_oklab,var(--bg)_82%,transparent)] backdrop-blur-xl">
-          <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--line)] px-4 py-2">
-            <button className="mono text-[9.5px] text-[var(--bone-dim)] hover:text-[var(--bone)]" onClick={() => setAbierta((x) => !x)}>
-              Bitácora · {visibles.length}/{vivo.mensajes.length} {abierta ? "▾" : "▸"}
-            </button>
-            {actual && (
-              <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--bone-dim)]">
-                <b className="text-[var(--bone)]">{nodo(actual.emisor).nombre}</b> → {nodo(actual.receptor).nombre}: {resumenMensaje(actual)}
-              </span>
-            )}
-            <span className="ml-auto flex items-center gap-1">
-              {RITMOS.map((x) => (
-                <button key={x} onClick={() => vivo.setRitmo(x)}
-                  className={`mono rounded-full px-2 py-0.5 text-[9px] ${vivo.ritmo === x ? "bg-[var(--bone)] text-[#16130f]" : "text-[var(--bone-faint)] hover:text-[var(--bone)]"}`}>
-                  {x}×
-                </button>
-              ))}
-              {!(vivo.animados >= vivo.mensajes.length) && (
-                <button onClick={vivo.acelerar} className="mono ml-1 text-[9px] text-[var(--bone-faint)] hover:text-[var(--bone)]">saltar</button>
-              )}
-            </span>
-          </header>
-          {abierta && (
-            <ol ref={lineas} className="max-h-[24vh] overflow-y-auto px-4 py-2 font-mono text-[11.5px] leading-relaxed">
-              {visibles.map((m, i) => (
-                <li key={m.secuencia} className={`flex gap-3 py-0.5 ${i === visibles.length - 1 ? "text-[var(--bone)]" : "text-[var(--bone-dim)]"}`}>
-                  <span className="w-7 shrink-0 text-right text-[var(--bone-faint)]">{m.secuencia}</span>
-                  <span className="w-5 shrink-0 text-[var(--bone-faint)]">{m.ronda ? `r${m.ronda}` : ""}</span>
-                  <span className="w-48 shrink-0 truncate">
-                    <span style={{ color: nodo(m.emisor).tono }}>{m.emisor}</span>
-                    <span className="text-[var(--bone-faint)]"> → </span>
-                    <span style={{ color: nodo(m.receptor).tono }}>{m.receptor}</span>
-                  </span>
-                  <span className="w-36 shrink-0 text-[var(--bone-faint)]">{m.tipo}</span>
-                  <span className="min-w-0 flex-1 break-words font-sans">{resumenMensaje(m)}</span>
-                </li>
-              ))}
-              {!visibles.length && <li className="py-1 text-[var(--bone-faint)]">Esperando el primer mensaje…</li>}
-              {vivo.error && <li className="py-1 text-rose-300">{vivo.error.message}</li>}
-            </ol>
-          )}
-        </section>
+      <div className="tarjeta mx-auto max-w-4xl">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3.5">
+          {actual ? (
+            <p className="min-w-0 flex-1 text-[15px]">
+              <span className="mono mr-2 text-[10px]" style={{ color: nodo(actual.emisor).tono }}>{nodo(actual.emisor).nombre}</span>
+              {pasoSimple(actual)}
+            </p>
+          ) : <p className="min-w-0 flex-1 text-[15px] text-[var(--bone-dim)]">{vivo.error ? vivo.error.message : "Esperando el primer paso…"}</p>}
+          <span className="mono flex items-center gap-3 text-[10px] text-[var(--bone-faint)]">
+            <button onClick={() => vivo.setRitmo(siguienteRitmo)} className="hover:text-[var(--bone)]" title="Velocidad de la animación">{vivo.ritmo}×</button>
+            {vivo.animados < vivo.mensajes.length && <button onClick={vivo.acelerar} className="hover:text-[var(--bone)]">saltar</button>}
+            <button onClick={() => setBitacora((x) => !x)} className="hover:text-[var(--bone)]">{bitacora ? "ocultar bitácora" : "bitácora"}</button>
+          </span>
+        </div>
 
-        {/* Lote: quién está en proceso, quién espera validación */}
-        <section className="min-w-0 rounded-2xl border border-[var(--line)] bg-[color-mix(in_oklab,var(--bg)_82%,transparent)] p-3 backdrop-blur-xl">
-          <p className="mono text-[9.5px] text-[var(--bone-faint)]">
-            Lote · {lista.filter((r) => enReposo(r.estado)).length} de {lista.length} listos
-          </p>
-          <ol className="mt-2 max-h-[16vh] space-y-0.5 overflow-y-auto">
-            {lista.map((r) => (
-              <li key={r.req_id}>
-                <button onClick={() => onSeguir(r.req_id)} title={r.texto}
-                  className={`flex w-full items-center gap-2 rounded px-1 py-0.5 text-left text-[12px] hover:bg-white/5 ${r.req_id === foco ? "text-[var(--bone)]" : "text-[var(--bone-dim)]"}`}>
-                  <span className="mono w-9 shrink-0 text-[9px]">{r.req_id}</span>
-                  <span className="min-w-0 flex-1 truncate">{r.texto}</span>
-                  {estaEnProceso(r.estado) && r.estado !== E.CARGADO ? <span className="gira" /> : <span className={`punto ${infoEstado(r.estado).punto}`} />}
-                </button>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-[var(--line)] px-5 py-2.5">
+          <span className="mono text-[10px] text-[var(--bone-faint)]">{listos} de {lista.length} listos</span>
+          <span className="flex flex-wrap gap-1.5">
+            {lista.map((r) => {
+              const e = estadoSimple(r.estado);
+              return (
+                <button key={r.req_id} onClick={() => onSeguir(r.req_id)} title={`${r.req_id} · ${e.texto}\n${r.texto}`}
+                  className={`h-3 w-3 rounded-full transition-transform hover:scale-125 ${r.req_id === foco ? "ring-2 ring-[var(--bone)] ring-offset-2 ring-offset-[var(--bg)]" : ""}`}
+                  style={{ background: e.tono, opacity: e.id === "cola" ? 0.4 : 1 }} />
+              );
+            })}
+          </span>
+          {pendientes.length > 0 && (
+            <Link className="pill sm ml-auto" to={`/requisitos/${pendientes[0].req_id}/validacion?volver=${encodeURIComponent(`/analisis?proyecto=${proyecto}&ids=${lista.map((x) => x.req_id).join(",")}`)}`}>
+              Revisar {pendientes.length > 1 ? `(${pendientes.length})` : pendientes[0].req_id}
+            </Link>
+          )}
+        </div>
+
+        {bitacora && (
+          <ol ref={lineas} className="max-h-[22vh] overflow-y-auto border-t border-[var(--line)] px-5 py-2 font-mono text-[11.5px] leading-relaxed">
+            {visibles.map((m, i) => (
+              <li key={m.secuencia} className={`flex gap-3 py-0.5 ${i === visibles.length - 1 ? "text-[var(--bone)]" : "text-[var(--bone-dim)]"}`}>
+                <span className="w-7 shrink-0 text-right text-[var(--bone-faint)]">{m.secuencia}</span>
+                <span className="w-44 shrink-0 truncate">
+                  <span style={{ color: nodo(m.emisor).tono }}>{m.emisor}</span>
+                  <span className="text-[var(--bone-faint)]"> → </span>
+                  <span style={{ color: nodo(m.receptor).tono }}>{m.receptor}</span>
+                </span>
+                <span className="w-32 shrink-0 text-[var(--bone-faint)]">{m.tipo}{m.ronda ? ` r${m.ronda}` : ""}</span>
+                <span className="min-w-0 flex-1 break-words font-sans">{resumenMensaje(m)}</span>
               </li>
             ))}
+            {!visibles.length && <li className="py-1 text-[var(--bone-faint)]">Sin mensajes todavía.</li>}
           </ol>
-          {pendientes.length > 0 && (
-            <div className="mt-3 border-t border-[var(--line)] pt-2">
-              <p className="mono text-[9.5px] text-pink-200">Por validar · {pendientes.length}</p>
-              <div className="mt-1.5 flex flex-wrap gap-1.5">
-                {pendientes.map((r) => (
-                  <Link key={r.req_id} to={`/requisitos/${r.req_id}/validacion?volver=${encodeURIComponent(`/analisis?proyecto=${proyecto}&ids=${lista.map((x) => x.req_id).join(",")}`)}`}
-                    className="mono rounded-full border border-pink-300/40 px-2.5 py-1 text-[9.5px] text-pink-100 hover:bg-pink-300/10">
-                    Validar {r.req_id}
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
-        </section>
+        )}
       </div>
     </div>
   );
 }
 
+/* Al terminar: qué quedó listo, qué espera revisión y la versión reescrita de cada uno */
 function Resultados({ lista, proyecto, onRepetir }) {
-  const cuenta = (estado) => lista.filter((r) => r.estado === estado).length;
+  const [espec, setEspec] = useState(null);
+  const ids = lista.map((r) => r.req_id);
+  const clave = ids.join(",");
+  useEffect(() => {
+    especificacionDeProyecto(proyecto, clave.split(",")).then(setEspec).catch(() => setEspec(null));
+  }, [proyecto, clave]);
+  const porReq = new Map(
+    espec ? [...espec.funcionales, ...espec.no_funcionales, ...espec.sin_clasificar].map((x) => [x.req_id, x]) : []);
+  const cuenta = (id) => lista.filter((r) => estadoSimple(r.estado).id === id).length;
   const pendientes = lista.filter((r) => r.estado === E.PENDIENTE_VALIDACION);
+  const listos = lista.filter((r) => r.estado === E.FORMALIZADO).map((r) => r.req_id);
+
   return (
-    <section className="mx-auto flex min-h-screen max-w-2xl flex-col gap-5 px-6 pt-[36vh] pb-14 md:mr-[7vw] md:pt-28">
-      <p className="mono sube text-[10px] text-[var(--bone-faint)]">Análisis del lote</p>
-      <h1 className="serif sube text-[clamp(40px,4.4vw,68px)] leading-[.95]" style={{ "--i": 1 }}>
-        <em>{lista.length}</em> {lista.length === 1 ? "requisito" : "requisitos"} procesados.
+    <section className="aparece mx-auto flex min-h-screen max-w-2xl flex-col gap-5 px-6 pt-[36vh] pb-14 md:mr-[7vw] md:pt-32">
+      <h1 className="serif text-[clamp(40px,4.4vw,68px)] leading-[.95]">
+        <em>{lista.length}</em> {lista.length === 1 ? "requisito analizado" : "requisitos analizados"}.
       </h1>
-      <p className="sube text-sm text-[var(--bone-dim)]" style={{ "--i": 2 }}>
-        {cuenta(E.PENDIENTE_VALIDACION)} esperan tu validación · {cuenta(E.FORMALIZADO)} formalizados · {cuenta(E.RECHAZADO)} rechazados
-        {cuenta(E.ERROR) ? ` · ${cuenta(E.ERROR)} con error` : ""}.
+      <p className="mono flex flex-wrap gap-x-5 gap-y-1 text-[10.5px] text-[var(--bone-faint)]">
+        <span><b className="font-normal text-[#57f7a7]">{cuenta("listo")}</b> listos</span>
+        {cuenta("revisar") > 0 && <span><b className="font-normal text-[#f9a8d4]">{cuenta("revisar")}</b> por revisar</span>}
+        {cuenta("descartado") > 0 && <span>{cuenta("descartado")} descartados</span>}
+        {cuenta("error") > 0 && <span className="text-[var(--danger)]">{cuenta("error")} con error</span>}
       </p>
 
-      <div className="sube sticky top-20 z-10 -mx-3 flex flex-wrap items-center gap-3 rounded-full px-3 py-2 backdrop-blur-xl" style={{ "--i": 3 }}>
-        {pendientes[0] && <Link className="pill" to={`/requisitos/${pendientes[0].req_id}/validacion`}>Validar el siguiente</Link>}
-        <Link className="pill ghost" to={`/proyectos/${proyecto}`}>Ver el proyecto</Link>
-        <Link className="pill ghost" to={`/ambiguedades?proyecto=${proyecto}`}>Ambigüedades</Link>
-        <Link className="pill ghost" to={`/big-picture?proyecto=${proyecto}`}>Big Picture</Link>
-        <button className="mono px-2 text-[10px] text-[var(--bone-faint)] hover:text-[var(--bone)]" onClick={onRepetir}>
-          Ver la escena otra vez
-        </button>
+      <div className="flex flex-wrap items-center gap-2">
+        {pendientes[0] && <Link className="pill" to={`/requisitos/${pendientes[0].req_id}/validacion`}>Revisar {pendientes.length > 1 ? `(${pendientes.length})` : ""}</Link>}
+        {listos.length > 0 && <Link className={pendientes.length ? "pill ghost" : "pill"} to={`/proyectos/${proyecto}?vista=especificacion&req=${listos.join(",")}`}>Ver especificación</Link>}
+        {listos.length > 0 && <Link className="pill ghost" to={`/proyectos/${proyecto}?vista=mapa&req=${listos.join(",")}`}>Crear mapa</Link>}
+        <button className="mono px-2 text-[10px] text-[var(--bone-faint)] hover:text-[var(--bone)]" onClick={onRepetir}>ver la escena otra vez</button>
       </div>
 
-      <p className="mono text-[9.5px] text-[var(--bone-faint)]">Toca un requisito para ver cómo lo decidieron los agentes</p>
-      <ol className="border-t border-[var(--line)]">
-        {lista.map((r, i) => (
-          <li key={r.req_id} className="sube" style={{ "--i": 4 + Math.min(i, 8) }}>
-            <Link to={r.estado === E.PENDIENTE_VALIDACION ? `/requisitos/${r.req_id}/validacion` : `/requisitos/${r.req_id}`}
-              className="group flex items-baseline gap-4 border-b border-[var(--line)] py-3 transition-colors hover:bg-white/[0.025]">
-              <span className="mono w-12 shrink-0 text-[9.5px] text-[var(--bone-faint)]">{r.req_id}</span>
-              <span className="min-w-0 flex-1 text-[15px] leading-relaxed">{r.texto}</span>
-              <span className="mono flex w-36 shrink-0 items-center justify-end gap-2 text-[9.5px] text-[var(--bone-dim)]">
-                <span className={`punto ${infoEstado(r.estado).punto}`} />
-                {infoEstado(r.estado).etiqueta}
-              </span>
-            </Link>
-          </li>
-        ))}
+      <ol className="space-y-3 pt-2">
+        {lista.map((r) => {
+          const x = porReq.get(r.req_id);
+          const destino = r.estado === E.PENDIENTE_VALIDACION ? `/requisitos/${r.req_id}/validacion` : `/requisitos/${r.req_id}`;
+          return (
+            <li key={r.req_id}>
+              <Link to={destino} className="tarjeta tarjeta-viva block p-4">
+                <span className="flex flex-wrap items-center gap-3">
+                  <span className="mono text-[10px] text-[var(--bone-faint)]">{r.req_id}</span>
+                  {x?.tipo_requisito && <span className="etiqueta" style={{ color: TIPO_REQUISITO[x.tipo_requisito].tono }}>{TIPO_REQUISITO[x.tipo_requisito].etiqueta}</span>}
+                  <EstadoChip estado={r.estado} className="ml-auto" />
+                </span>
+                <span className="mt-2 block text-[15.5px] leading-relaxed">{x?.reescrito ?? r.texto}</span>
+                {x && x.reescrito !== r.texto && <span className="mt-1 block text-[13px] italic text-[var(--bone-faint)]">antes: «{r.texto}»</span>}
+              </Link>
+            </li>
+          );
+        })}
       </ol>
-      <Link to="/inicio" className="mono self-start text-[10px] text-[var(--bone-faint)] hover:text-[var(--bone)]">Analizar otro documento</Link>
+      <Link to={`/proyectos/${proyecto}`} className="mono self-start text-[10px] text-[var(--bone-faint)] hover:text-[var(--bone)]">Volver al proyecto</Link>
     </section>
   );
 }

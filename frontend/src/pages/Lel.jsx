@@ -3,7 +3,7 @@ import { Link, useSearchParams } from "react-router";
 import { useApi } from "../hooks/useApi";
 import { listarProyectos, obtenerLel } from "../services/backend";
 import { TIPOS_LEL } from "../constants/agentes";
-import { EntradaLel } from "./Proyecto";
+import { EntradaLel } from "./proyecto/Lexico";
 
 const normalizar = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 

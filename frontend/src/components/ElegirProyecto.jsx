@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useSearchParams } from "react-router";
 import { useApi } from "../hooks/useApi";
 import { listarProyectos } from "../services/backend";
-import { proyectoRecordado, recordarProyecto } from "./SelectorProyecto";
+import { proyectoRecordado, recordarProyecto } from "./proyectoRecordado";
 
 /*
  * Las vistas de análisis (ambigüedades, comparaciones, flujo, calibración) son

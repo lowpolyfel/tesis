@@ -4,7 +4,12 @@ Prototipo de tesis de licenciatura: un sistema de cuatro agentes basados en LLM 
 detecta ambigüedad en requisitos de software escritos en español de México. Cuando dos
 interpretaciones de un mismo requisito divergen, se activa un debate acotado y un agente
 árbitro decide. El resultado se formaliza como entrada de un Léxico Extendido del
-Lenguaje (LEL).
+Lenguaje (LEL) y como un requisito reescrito completo, funcional o no funcional.
+
+El flujo: se pegan o suben los requisitos de un proyecto (con su contexto general), los
+agentes los analizan y, si no hay conflicto, pasan solos al LEL, a la especificación y al
+Big Picture. Una persona solo interviene cuando los agentes no llegan a un acuerdo, y
+puede corregir cualquier resultado después (ADR 0017).
 
 ## Agentes
 
@@ -13,7 +18,7 @@ Lenguaje (LEL).
 | Extractor | Separa el vocabulario del dominio del requisito crudo | Ollama local |
 | Clasificador | Genera interpretaciones candidatas de los términos que admiten más de una interpretación | Ollama local |
 | Crítico | Conduce el debate acotado y arbitra si se agotan las rondas | API externa |
-| Modelador | Genera los artefactos desde la interpretación validada | Ollama local |
+| Modelador | Genera los artefactos desde la interpretación validada: entrada del LEL, requisito reescrito completo (funcional o no funcional, con los supuestos que tomó del contexto) y metas | Ollama local |
 
 La detección de divergencia (embeddings + similitud coseno + umbral) es un mecanismo
 aparte en `backend/app/divergence/`, no un agente.
@@ -49,7 +54,7 @@ tesis/
 │   │   ├── divergence/         # embeddings, similitud coseno, umbral
 │   │   ├── documentos/         # carga de PDF/.txt y separación en requisitos
 │   │   ├── analisis/           # vista por término y análisis del proyecto
-│   │   ├── artefactos/         # modelo de metas y Big Picture del proyecto
+│   │   ├── artefactos/         # especificación RF/RNF, modelo de metas y Big Picture
 │   │   ├── comparacion/        # comparación entre requisitos (exploratorio)
 │   │   ├── calibracion/        # sensibilidad del umbral
 │   │   ├── evaluacion/         # corpus y evaluación contra un solo agente
@@ -64,7 +69,7 @@ tesis/
 │   └── src/
 │       ├── components/
 │       ├── escena/             # la escena en vivo dirigida por los mensajes
-│       ├── pages/
+│       ├── pages/              # proyectos, un proyecto (requisitos, especificación, léxico, mapa), analizar…
 │       ├── services/           # http.js, backend.js, eventos.js (SSE)
 │       └── hooks/
 ├── data/
@@ -82,6 +87,8 @@ tesis/
 
 Copia `.env.example` como `.env` y completa los valores. Parámetros calibrables
 principales: `SIMILARITY_THRESHOLD` (0.75 inicial) y `MAX_DEBATE_ROUNDS` (2 inicial).
+`VALIDACION_HUMANA` decide cuándo espera el sistema a una persona: `si_hay_arbitraje`
+(por omisión), `siempre` o `nunca` (ADR 0017).
 Las variables de operación (orígenes CORS del frontend, tiempo máximo de cada
 llamada a Ollama) están descritas en [`backend/README.md`](backend/README.md).
 

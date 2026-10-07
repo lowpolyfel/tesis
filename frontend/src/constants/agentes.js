@@ -46,15 +46,36 @@ export const colorInterpretacion = (id) => {
 
 /* Tipos de ambigüedad (Clasificador) y marcas de los filtros, con su presentación */
 export const TIPOS = Object.freeze({
-  lexica: { etiqueta: "Léxica", descripcion: "La palabra tiene más de un sentido", clase: "bg-sky-100 text-sky-900 decoration-sky-500", debate: true },
-  alcance: { etiqueta: "Alcance", descripcion: "No está claro sobre qué aplica un cuantificador, negación, «solo» o una coordinación", clase: "bg-indigo-100 text-indigo-900 decoration-indigo-500", debate: true },
-  anaforica: { etiqueta: "Anafórica", descripcion: "Un pronombre o posesivo tiene más de un antecedente posible", clase: "bg-fuchsia-100 text-fuchsia-900 decoration-fuchsia-500", debate: true },
-  sintactica: { etiqueta: "Sintáctica", descripcion: "La oración admite más de una estructura", clase: "bg-cyan-100 text-cyan-900 decoration-cyan-500", debate: true },
-  vaguedad: { etiqueta: "Vaguedad", descripcion: "Límite impreciso; se marca y no se debate", clase: "bg-violet-100 text-violet-900 decoration-violet-500", debate: false },
-  regional: { etiqueta: "Regional", descripcion: "Expresión del español de trabajo en México; pasa al Clasificador", clase: "bg-amber-100 text-amber-900 decoration-amber-500", debate: true },
-  lel: { etiqueta: "Resuelto por el LEL", descripcion: "Ya tiene noción validada en el proyecto; no se vuelve a debatir", clase: "bg-emerald-100 text-emerald-900 decoration-emerald-500", debate: false },
+  lexica: { etiqueta: "Léxica", simple: "Varios significados", descripcion: "La palabra tiene más de un sentido", clase: "bg-sky-100 text-sky-900 decoration-sky-500", debate: true },
+  alcance: { etiqueta: "Alcance", simple: "Alcance dudoso", descripcion: "No está claro a qué aplica un «todos», «no», «solo», «y» u «o»", clase: "bg-indigo-100 text-indigo-900 decoration-indigo-500", debate: true },
+  anaforica: { etiqueta: "Anafórica", simple: "Referencia dudosa", descripcion: "Un pronombre o «su» puede referirse a más de una cosa", clase: "bg-fuchsia-100 text-fuchsia-900 decoration-fuchsia-500", debate: true },
+  sintactica: { etiqueta: "Sintáctica", simple: "Frase con dos estructuras", descripcion: "La oración se puede armar de dos maneras", clase: "bg-cyan-100 text-cyan-900 decoration-cyan-500", debate: true },
+  vaguedad: { etiqueta: "Vaguedad", simple: "Vago", descripcion: "Límite impreciso (p. ej. «rápido», «ahorita»): se concreta con el contexto", clase: "bg-violet-100 text-violet-900 decoration-violet-500", debate: false },
+  regional: { etiqueta: "Regional", simple: "Regionalismo", descripcion: "Expresión del español de trabajo en México (p. ej. «checar», «jalar»)", clase: "bg-amber-100 text-amber-900 decoration-amber-500", debate: true },
+  lel: { etiqueta: "Resuelto por el LEL", simple: "Ya en el léxico", descripcion: "Ya tiene un significado acordado en este proyecto", clase: "bg-emerald-100 text-emerald-900 decoration-emerald-500", debate: false },
 });
-export const tipo = (t) => TIPOS[t] ?? { etiqueta: t ?? "—", descripcion: "", clase: "bg-slate-100 text-slate-800", debate: false };
+
+/* Qué hicieron los filtros con un término, dicho para una persona */
+export const HALLAZGO = Object.freeze({
+  resuelto_por_lel: "Ya definido en el léxico del proyecto",
+  vaguedad: "Expresión vaga: se concreta con el contexto",
+  regional: "Regionalismo: los agentes revisan sus sentidos",
+  alcance: "Alcance poco claro («todos», «solo», «y/o»)",
+  anafora: "Pronombre o «su» con más de un referente",
+  candidato: "Término del dominio",
+});
+export const tipo = (t) => TIPOS[t] ?? { etiqueta: t ?? "—", simple: t ?? "—", descripcion: "", clase: "bg-slate-100 text-slate-800", debate: false };
+
+/* Requisitos funcionales y no funcionales (ADR 0017) */
+export const TIPO_REQUISITO = Object.freeze({
+  funcional: { etiqueta: "Funcional", corto: "RF", tono: "#57f7a7" },
+  no_funcional: { etiqueta: "No funcional", corto: "RNF", tono: "#ffc457" },
+});
+export const CATEGORIAS_NF = Object.freeze({
+  rendimiento: "Rendimiento", seguridad: "Seguridad", usabilidad: "Usabilidad", fiabilidad: "Fiabilidad",
+  disponibilidad: "Disponibilidad", mantenibilidad: "Mantenibilidad", portabilidad: "Portabilidad",
+  compatibilidad: "Compatibilidad", legal: "Legal",
+});
 
 /* Reglas del Crítico, versión v1 provisional (ADR 0004) */
 export const REGLAS = Object.freeze({

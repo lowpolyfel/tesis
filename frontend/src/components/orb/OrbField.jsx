@@ -116,6 +116,8 @@ export default function OrbField({ controller, rootRef }) {
 
         /* ---- fusión: viaja al centro de la esfera destino y se encoge ---- */
         let tx = body.target.x * vw, ty = body.target.y * vh, ts = body.target.s;
+        // vaivén lento a lo largo del borde: la esfera de la esquina nunca se queda quieta
+        if (body.target.deriva && !reduced) ty += Math.sin(time * 0.16 + f.seed) * body.target.deriva * vh;
         if (body.fuseInto) {
           const dest = fis.get(body.fuseInto);
           if (dest) { tx = dest.px; ty = dest.py; ts = 0.05; }
@@ -300,7 +302,7 @@ export default function OrbField({ controller, rootRef }) {
       </div>
       <div className="orb-vignette" aria-hidden="true" />
 
-      <div className="orb-stage" aria-hidden="true">
+      <div className={`orb-stage${controller.state.elevada ? " es-elevada" : ""}`} aria-hidden="true">
         <svg ref={membranaRef} className="orb-membrane" width="100%" height="100%" style={{ display: "none" }}>
           <defs>
             <filter id="orbMembrane" x="-20%" y="-20%" width="140%" height="140%">
@@ -398,7 +400,7 @@ function Esfera({ body, registrar }) {
           </g>
         </svg>
         <div className="orb-backglow" />
-        <div ref={orb} className="orb-orbwrap">
+        <div ref={orb} className={`orb-orbwrap${body.onClick ? " es-tocable" : ""}`} onClick={body.onClick}>
           <div className="orb-orb">
             <div className="orb-il il1" />
             <div className="orb-il il2" />

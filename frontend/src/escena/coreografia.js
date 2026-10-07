@@ -19,6 +19,7 @@
  * backend: el Clasificador puede escribir «Sesión» por el candidato «sesión».
  */
 import { ORDEN_NODOS, nodo, colorInterpretacion } from "../constants/agentes";
+import { estadoSimple } from "../constants/estados";
 import { isMobile } from "../components/orb/poses";
 
 const fmt = (x) => (x == null ? "—" : Number(x).toFixed(2));
@@ -189,17 +190,17 @@ export function crearCoreografia(orb) {
       if (cuenta("resuelto_por_lel")) partes.push(`${cuenta("resuelto_por_lel")} del LEL`);
       if (cuenta("vaguedad")) partes.push(`${cuenta("vaguedad")} vago${cuenta("vaguedad") > 1 ? "s" : ""}`);
       if (cuenta("regional")) partes.push(`${cuenta("regional")} regional${cuenta("regional") > 1 ? "es" : ""}`);
-      if (cuenta("alcance") + cuenta("anafora")) partes.push(`${cuenta("alcance") + cuenta("anafora")} estructura(s)`);
+      if (cuenta("alcance") + cuenta("anafora")) partes.push(`${cuenta("alcance") + cuenta("anafora")} con referencia dudosa`);
       const candidatos = ts.filter((t) => ["candidato", "regional", "alcance", "anafora"].includes(t.decision_filtro)).length;
-      etiquetar("filtros", `${candidatos} candidato${candidatos === 1 ? "" : "s"}${partes.length ? ` · ${partes.join(" · ")}` : ""}`);
+      etiquetar("filtros", `${candidatos} a revisar${partes.length ? ` · ${partes.join(" · ")}` : ""}`);
       return 900;
     },
     interpretaciones(m) {
       const rs = m.payload.resultados ?? [];
       const ambiguos = rs.filter((r) => !r.univoco && r.interpretaciones?.length);
       etiquetar("clasificador", ambiguos.length
-        ? ambiguos.map((r) => `«${corto(r.termino, 12)}» ${r.interpretaciones.length}`).join(" · ")
-        : rs.length ? "todo unívoco" : "sin candidatos");
+        ? ambiguos.map((r) => `«${corto(r.termino, 12)}»: ${r.interpretaciones.length} significados`).join(" · ")
+        : rs.length ? "sin doble sentido" : "nada que revisar");
       ambiguos.slice(0, 6).forEach((r) => nacerInterpretaciones(r.termino, r.interpretaciones));
       return ambiguos.length ? 1700 : 900;
     },
@@ -226,7 +227,7 @@ export function crearCoreografia(orb) {
           distribuirTodos();
         }, 2600);
       }
-      etiquetar("divergencia", `«${corto(p.termino, 12)}» ${fmt(p.similitud)} ${sobre ? "≥" : "<"} ${fmt(p.umbral)}`,
+      etiquetar("divergencia", `«${corto(p.termino, 12)}»: ${sobre ? "se parecen" : "distintos"} (${fmt(p.similitud)})`,
         { mood: sobre ? "success" : "divergencia" });
       setTimeout(() => orb.has(idNodo("divergencia")) && orb.update(idNodo("divergencia"), { mood: "divergencia" }), 1400);
       return 1300;
@@ -261,22 +262,30 @@ export function crearCoreografia(orb) {
     consenso(m) {
       const p = m.payload;
       resolver(p.termino, p.propuesta, null, "consenso");
-      etiquetar("divergencia", `consenso «${corto(p.termino, 12)}» (${p.motivo === "umbral" ? "umbral" : "una interpretación"})`, { mood: "success" });
+      etiquetar("divergencia", `acuerdo sobre «${corto(p.termino, 12)}»`, { mood: "success" });
       return 1500;
     },
     arbitraje(m) {
       const p = m.payload;
       resolver(p.termino, p.interpretacion_elegida, "critico", "arbitraje");
-      etiquetar("critico", `arbitra «${corto(p.termino, 12)}»: ${p.interpretacion_elegida}`);
+      etiquetar("critico", `elige para «${corto(p.termino, 12)}»`);
       return 1800;
     },
     solicitud_validacion(m) {
       const n = m.payload.terminos?.length ?? 0;
-      etiquetar("humano", n ? `valida ${n} término${n === 1 ? "" : "s"}` : "valida el requisito", { mood: "humano" });
+      etiquetar("humano", n ? `revisa ${n} término${n === 1 ? "" : "s"}` : "revisa el requisito", { mood: "humano" });
       return 900;
     },
     validacion(m) {
       const p = m.payload;
+      if (p.automatica) {
+        // nadie tuvo que intervenir: lo acordado pasa directo al Modelador
+        const esferas = [...terminos.values()].flatMap((t) => [...t.ids.values()]);
+        etiquetar("modelador", "recibe lo acordado");
+        if (esferas.length) fundir(esferas, idNodo("modelador"));
+        terminos.clear();
+        return 900;
+      }
       const cambios = (p.terminos ?? []).filter((t) => t.cambio !== "ninguno").length;
       etiquetar("humano", p.decision === "aprobar" ? `aprobó${cambios ? ` (${cambios} cambio${cambios > 1 ? "s" : ""})` : ""}` : "rechazó",
         { mood: p.decision === "aprobar" ? "success" : "error" });
@@ -289,9 +298,13 @@ export function crearCoreografia(orb) {
     },
     formalizacion(m) {
       const p = m.payload;
-      if (p.alcance === "termino") etiquetar("modelador", `LEL: ${p.entrada_lel?.simbolo ?? p.termino}`);
-      else etiquetar("modelador", `${p.entradas_lel?.length ?? 0} LEL · ${p.metas?.length ?? 0} meta${(p.metas?.length ?? 0) === 1 ? "" : "s"}`, { mood: "success" });
+      if (p.alcance === "termino") etiquetar("modelador", `«${p.entrada_lel?.simbolo ?? p.termino}» al léxico`);
+      else etiquetar("modelador", "requisito reescrito", { mood: "success" });
       return 1100;
+    },
+    edicion() {
+      etiquetar("humano", "corrigió el resultado", { mood: "humano" });
+      return 900;
     },
     error(m) {
       const n = m.emisor === "sistema" ? "sistema" : m.emisor;
@@ -307,7 +320,7 @@ export function crearCoreografia(orb) {
       if (montada) return;
       montada = true;
       orb.setPose({ ...g.sistema });
-      orb.update("core", { label: "Sistema", sub: "orquestación", s: g.sistema.s });
+      orb.update("core", { label: "Sistema", sub: "coordina", s: g.sistema.s });
     },
 
     /* Vuelve a fundir todo en la esfera principal */
@@ -344,7 +357,7 @@ export function crearCoreografia(orb) {
 
     /* Estado del requisito: al terminar, todos descansan */
     estado(estado) {
-      orb.update("core", { sub: estado?.replaceAll("_", " ") ?? "" });
+      orb.update("core", { sub: estado ? estadoSimple(estado).texto.toLowerCase() : "" });
       if (["formalizado", "rechazado", "error", "pendiente_validacion"].includes(estado)) activar(estado === "pendiente_validacion" ? "humano" : null);
       if (estado === "formalizado") orb.setMood("success", { revertAfter: 2500 });
       if (estado === "error") orb.setMood("error", { revertAfter: 2500 });
