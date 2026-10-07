@@ -5,6 +5,9 @@
  *   - Cada nodo real es una esfera: extractor, filtros, clasificador,
  *     divergencia, crítico, humano, modelador. La esfera principal (core)
  *     queda arriba, pequeña, como el sistema (la orquestación).
+ *   - Un nodo nace por mitosis la primera vez que interviene en el
+ *     requisito (del nodo que le escribe, o del sistema), en su lugar fijo
+ *     del flujo; al pasar al siguiente requisito todos vuelven al sistema.
  *   - Cada mensaje viaja como una partícula del emisor al receptor.
  *   - Las interpretaciones I1…In nacen por mitosis del Clasificador y se
  *     agrupan bajo la Divergencia: su distancia refleja la similitud.
@@ -54,8 +57,18 @@ export function crearCoreografia(orb) {
 
   const idNodo = (n) => (n === "sistema" ? "core" : `n:${n}`);
 
+  /* Un nodo nace por mitosis la primera vez que se usa: de `desde` si ya existe, si no del sistema */
+  function asegurar(n, desde = "sistema") {
+    if (!montada || !n || n === "sistema" || !g.pos[n]) return;
+    const id = idNodo(n);
+    if (orb.has(id)) return;
+    const padre = orb.has(idNodo(desde)) ? idNodo(desde) : "core";
+    orb.divide(padre, [{ id, mood: n, ...g.pos[n], s: g.s, label: nodo(n).nombre, sub: "en espera", active: false, dim: true }]);
+  }
+
   /* Fusión sin arrastrar textos: las etiquetas se borran antes de que viajen */
   function fundir(ids, destino, opciones) {
+    if (destino.startsWith("n:")) asegurar(destino.slice(2));
     const vivos = ids.filter((id) => orb.has(id));
     vivos.forEach((id) => orb.update(id, { label: null, sub: null }));
     if (vivos.length) orb.fuse(vivos, destino, opciones);
@@ -63,6 +76,7 @@ export function crearCoreografia(orb) {
   const posNodo = (n) => (n === "sistema" ? g.sistema : g.pos[n] ?? g.sistema);
 
   function etiquetar(n, sub, extra = {}) {
+    asegurar(n);
     const id = idNodo(n);
     if (!orb.has(id)) return;
     orb.update(id, { sub, ...extra });
@@ -287,16 +301,13 @@ export function crearCoreografia(orb) {
   };
 
   return {
-    /* La esfera principal se divide en los nodos */
+    /* La esfera principal sube y se vuelve el sistema; los nodos nacen al usarse */
     montar() {
       g = geometria();
       if (montada) return;
       montada = true;
       orb.setPose({ ...g.sistema });
       orb.update("core", { label: "Sistema", sub: "orquestación", s: g.sistema.s });
-      orb.divide("core", ORDEN_NODOS.map((n) => ({
-        id: idNodo(n), mood: n, ...g.pos[n], s: g.s, label: nodo(n).nombre, sub: "en espera", active: false, dim: true,
-      })));
     },
 
     /* Vuelve a fundir todo en la esfera principal */
@@ -309,13 +320,11 @@ export function crearCoreografia(orb) {
       orb.update("core", { label: null, sub: null });
     },
 
-    /* Limpia interpretaciones y textos para seguir otro requisito */
+    /* Para seguir otro requisito: nodos e interpretaciones vuelven al sistema */
     reiniciar() {
       const interps = [...terminos.values()].flatMap((t) => [...t.ids.values()]);
       terminos.clear();
-      if (interps.length) fundir(interps, idNodo("clasificador"));
-      for (const n of ORDEN_NODOS) etiquetar(n, "en espera", { mood: n });
-      activar(null);
+      fundir([...ORDEN_NODOS.map(idNodo), ...interps], "core");
     },
 
     /*
@@ -325,6 +334,8 @@ export function crearCoreografia(orb) {
      */
     aplicar(m, { rapido = false } = {}) {
       if (!montada) return 0;
+      asegurar(m.emisor);
+      asegurar(m.receptor, m.emisor);
       activar(m.emisor === "sistema" ? null : m.emisor);
       if (m.emisor !== m.receptor && !rapido) enviar(m.emisor, m.receptor, m.tipo === "error" ? "error" : undefined);
       const manejar = MANEJADORES[m.tipo];
