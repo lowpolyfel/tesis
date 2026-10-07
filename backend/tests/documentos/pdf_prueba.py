@@ -29,19 +29,34 @@ def _flujo_de_texto(renglones: list[str]) -> bytes:
     return "\n".join(ops).encode("latin-1")
 
 
-def _armar(flujos: list[bytes]) -> bytes:
+def _flujo(datos: bytes, diccionario: bytes = b"") -> bytes:
+    return b"<< /Length %d %s>>\nstream\n" % (len(datos), diccionario) + datos + b"\nendstream"
+
+
+def _armar(flujos: list[bytes], xobjetos: dict[str, bytes] | None = None) -> bytes:
+    """Una página por flujo de contenido. `xobjetos`: formularios (nombre -> sus operadores)
+    disponibles en todas las páginas."""
     objetos: list[bytes] = [b"", b""]  # 1 catálogo, 2 árbol de páginas (se llenan al final)
     objetos.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>")
+    nombres = []
+    for nombre, operadores in (xobjetos or {}).items():
+        objetos.append(_flujo(operadores, b"/Type /XObject /Subtype /Form /BBox [0 0 612 792] "
+                                          b"/Resources << /Font << /F1 3 0 R >> >> "))
+        nombres.append(b"/%s %d 0 R" % (nombre.encode(), len(objetos)))
+    recursos = b"<< /Font << /F1 3 0 R >> %s>>" % (b"/XObject << %s >> " % b" ".join(nombres) if nombres else b"")
     hojas = []
     for flujo in flujos:
-        objetos.append(b"<< /Length %d >>\nstream\n" % len(flujo) + flujo + b"\nendstream")
+        objetos.append(_flujo(flujo))
         contenido = len(objetos)
         objetos.append(b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
-                       b"/Resources << /Font << /F1 3 0 R >> >> /Contents %d 0 R >>" % contenido)
+                       b"/Resources %s /Contents %d 0 R >>" % (recursos, contenido))
         hojas.append(len(objetos))
     objetos[0] = b"<< /Type /Catalog /Pages 2 0 R >>"
     objetos[1] = b"<< /Type /Pages /Kids [%s] /Count %d >>" % (b" ".join(b"%d 0 R" % h for h in hojas), len(hojas))
+    return _escribir(objetos)
 
+
+def _escribir(objetos: list[bytes]) -> bytes:
     salida = io.BytesIO()
     salida.write(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
     posiciones = []
@@ -68,3 +83,30 @@ def pdf_sin_texto(paginas: int = 1) -> bytes:
 def pdf_mixto(paginas: list[list[str] | None]) -> bytes:
     """None = página sin texto entre páginas con texto."""
     return _armar([_flujo_de_texto(p) if p is not None else b"0.5 g 72 72 468 648 re f" for p in paginas])
+
+
+def pdf_con_operadores(paginas: list[bytes], xobjetos: dict[str, bytes] | None = None) -> bytes:
+    """Páginas con sus operadores tal cual (para medir el costo de la extracción)."""
+    return _armar(paginas, xobjetos=xobjetos)
+
+
+def operadores_de_texto(renglones: list[str]) -> bytes:
+    return _flujo_de_texto(renglones)
+
+
+def pdf_con_tounicode(renglon: str, mapa: dict[str, int]) -> bytes:
+    """Un renglón ASCII con una fuente cuyo mapa ToUnicode asigna a ciertos bytes un
+    valor UTF-16 cualquiera (p. ej. media pareja sustituta, como un emoji partido)."""
+    pares = " ".join(f"<{ord(c):02X}> <{v:04X}>" for c, v in mapa.items())
+    cmap = ("/CIDInit /ProcSet findresource begin 12 dict begin begincmap /CMapName /Prueba def "
+            "1 begincodespacerange <00> <FF> endcodespacerange "
+            f"{len(mapa)} beginbfchar {pares} endbfchar endcmap CMapName currentdict /CMap defineresource pop "
+            "end end").encode()
+    # la fuente es el objeto 3 y su ToUnicode, el 4 (antes que las páginas)
+    objetos = [b"", b"", b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /ToUnicode 4 0 R >>", _flujo(cmap),
+               _flujo(_flujo_de_texto([renglon])),
+               b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> "
+               b"/Contents 5 0 R >>"]
+    objetos[0] = b"<< /Type /Catalog /Pages 2 0 R >>"
+    objetos[1] = b"<< /Type /Pages /Kids [6 0 R] /Count 1 >>"
+    return _escribir(objetos)

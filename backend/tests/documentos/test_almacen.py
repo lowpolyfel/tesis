@@ -3,9 +3,9 @@ import pytest
 
 from app.config import Settings
 from app.db import RepositorioJson
-from app.documentos import COLECCION, Documentos, SinTexto, almacen
+from app.documentos import COLECCION, DemasiadoGrande, Documentos, SinTexto, almacen
 from tests.documentos.muestras import REQUISITOS_SRS, pdf_srs
-from tests.documentos.pdf_prueba import pdf_sin_texto
+from tests.documentos.pdf_prueba import pdf_con_tounicode, pdf_sin_texto
 
 
 @pytest.fixture
@@ -54,3 +54,38 @@ def test_documento_sin_requisitos_se_guarda_con_advertencia(documentos):
     assert d.requisitos_propuestos == [] and d.total_descartados == 2
     assert d.advertencias == [("No se encontró ninguna oración con verbo de obligación o capacidad: "
                                "revisa los fragmentos descartados.")]
+
+
+def _lista(n: int) -> bytes:
+    return ("El sistema deberá permitir:\n" + "- registrar usuarios\n" * n).encode()
+
+
+def test_documento_que_no_cabe_se_rechaza_sin_guardar(documentos, monkeypatch):
+    """Lo propuesto puede pesar varias veces el archivo (una lista bajo una frase introductoria):
+    Mongo no acepta un documento de más de 16 MiB."""
+    monkeypatch.setattr(almacen, "MAX_BYTES_GUARDADOS", 20_000)
+    with pytest.raises(DemasiadoGrande) as e:
+        documentos.cargar("P01", "lista.txt", _lista(200))
+    assert "(200 requisitos)" in str(e.value) and "máximo es 0.0190735 MB por documento" in str(e.value)
+    assert documentos.repo.listar_docs(COLECCION) == []
+
+
+def test_sin_texto_por_pagina_si_asi_cabe(documentos, monkeypatch):
+    sin_texto = len(documentos.cargar("P01", "a.txt", _lista(100)).model_copy(
+        update={"texto_por_pagina": None}).model_dump_json().encode())
+    monkeypatch.setattr(almacen, "MAX_BYTES_GUARDADOS", sin_texto + 300)  # la advertencia nueva cabe
+    d = documentos.cargar("P01", "a.txt", _lista(100))
+    assert d.texto_por_pagina is None and len(d.requisitos_propuestos) == 100
+    assert d.advertencias[-1].startswith("El texto por página no se guardó: el documento pasaba de ")
+    assert len(documentos.repo.listar_docs(COLECCION)) == 2
+
+
+def test_lo_guardado_cabe_en_utf8_y_en_bson(documentos):
+    """Un sustituto UTF-16 suelto (mapa ToUnicode dañado) hacía fallar la escritura con 500."""
+    import bson
+
+    contenido = pdf_con_tounicode("El sistema debe registrar A usuarios.", {"A": 0xD83D})
+    d = documentos.cargar("P01", "emoji.pdf", contenido)
+    assert d.requisitos_propuestos[0].texto == "El sistema debe registrar � usuarios."
+    assert "contiene caracteres no reconocidos: revisa la extracción" in d.requisitos_propuestos[0].advertencias
+    bson.encode(documentos.repo.obtener_doc(COLECCION, d.documento_id))

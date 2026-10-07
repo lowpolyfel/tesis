@@ -23,8 +23,28 @@ quién lo llenara con datos confiables.
    por la firma (`%PDF-`) y luego por la extensión.
    - PDF sin texto extraíble → **422** que cita CONTEXTO §9 (sin OCR). Una página
      sin texto entre otras con texto → advertencia con su número.
-   - PDF dañado o con contraseña → 422. Más de `DOCUMENTO_MAX_MB` → **413**.
-     Otro tipo (docx, imagen…) → **415**.
+   - PDF dañado o con contraseña de apertura → 422. Más de `DOCUMENTO_MAX_MB` →
+     **413**. Otro tipo (docx, imagen…) → **415**.
+   - PDF cifrado solo con contraseña de propietario (Word y Acrobat lo hacen al
+     restringir edición, copia o impresión): se abre con contraseña vacía. Con
+     AES, pypdf necesita el paquete `cryptography`; si falta, el 422 lo dice en
+     vez de tratar cada página como vacía y terminar en «¿es un escaneo?».
+   - pypdf decodifica los mapas ToUnicode con `surrogatepass`: un glifo puede dar
+     media pareja sustituta UTF-16 (un emoji partido, una CMap mal hecha), que no
+     se puede guardar en UTF-8 ni en BSON y daba 500. Las parejas completas se
+     unen; las mitades sueltas se cambian por U+FFFD, con advertencia de página
+     (y la del requisito: «caracteres no reconocidos»).
+   - **Costo acotado** (límites técnicos en `extraccion.py`, no calibrables):
+     pypdf lee los operadores en Python, a unos 3 s por MB, y la lectura de un
+     flujo no se puede interrumpir; un PDF de 30 KB cuyo flujo se infla a 20 MB
+     tardaba casi un minuto por página. Antes de leer cada página se mide su
+     contenido descomprimido más el de los formularios (XObject) que usa: si pasa
+     de 2 MB (una página de texto ocupa unos 6 KB; más es un dibujo) no se lee y
+     se advierte. Además, todo el PDF tiene 30 s: el tiempo se revisa antes de
+     cada operador (también dentro de los formularios, que pypdf vuelve a leer en
+     cada uso) y al agotarse las páginas que faltan no se extraen y se advierte.
+     Si por estos límites, o por páginas dañadas, no queda texto, el 422 dice
+     por qué, no «¿es un escaneo?».
    - `.txt`: UTF-8 (con o sin BOM) o UTF-16 con BOM; si no, Windows-1252 y al
      final latin-1, con advertencia. Se prueba cp1252 antes de latin-1 porque es
      lo que guarda el Bloc de notas en español: coincide con latin-1 en acentos y
@@ -93,7 +113,11 @@ quién lo llenara con datos confiables.
    - Todo es lineal en el tamaño del texto (las uniones de renglones y la
      revisión de abreviaturas solo miran la cola): los 10 MB permitidos tardan
      segundos, no horas.
-6. **Advertencias por requisito propuesto**: más de 400 caracteres; sin sujeto
+6. **Advertencias por requisito propuesto**: más de 2 000 caracteres, lo más que
+   acepta la carga (`MAX_CARACTERES_REQUISITO`, igual al de `RequisitoNuevo`; una
+   prueba lo compara), también como advertencia del documento con los índices,
+   para que el humano lo recorte o lo parta antes de analizar; si no, más de
+   400 caracteres (puede ser más de un requisito); sin sujeto
    explícito (empieza con el verbo, tras conectores como «además» o «se»);
    varias oraciones con obligación en el mismo párrafo; la oración continúa en
    otra página; compuesto con frase introductoria; marca heredada; repetido;
@@ -101,9 +125,15 @@ quién lo llenara con datos confiables.
 7. **Persistencia**: colección `documentos` (`D01`…), validada con el modelo
    `Documento`. Guarda `texto_por_pagina` tal como se extrajo, para ubicar cada
    requisito en su página, y no un campo con el texto completo duplicado. Si el
-   texto pasa de 1 000 000 de caracteres no se guarda y se advierte: límite
-   técnico (16 MB por documento de Mongo, y los requisitos repiten parte del
-   texto), no calibrable.
+   texto pasa de 1 000 000 de caracteres no se guarda y se advierte. Además se
+   mide el JSON de lo que se guardaría: Mongo no acepta un documento de más de
+   16 MiB de BSON, y lo propuesto puede pesar varias veces el archivo (un .txt de
+   2 MB con una lista bajo una frase introductoria propone 100 000 requisitos y
+   pesa 28 MB). Si pasa de 8 MB (la mitad: el BSON pesa casi lo mismo que el
+   JSON, y un poco más con muchas listas cortas), primero se deja fuera
+   `texto_por_pagina`, con advertencia; si aún no cabe, **413** con cuántos
+   requisitos propone y que se divida el archivo, sin guardar nada. Límites
+   técnicos, no calibrables.
 8. **Rutas**: `POST /proyectos/{id}/documentos` (multipart, campo `archivo`) →
    201 `Documento`; `GET /proyectos/{id}/documentos` → resúmenes;
    `GET /documentos/{documento_id}` → `Documento` (404 si no existe);
@@ -130,6 +160,14 @@ quién lo llenara con datos confiables.
   Quedan como constantes con nombre en el módulo (`LINEAS_BORDE`,
   `FRACCION_LINEA_LLENA`, `MAX_PALABRAS_TITULO`, `LARGO_ADVERTENCIA`,
   `MAX_FRAGMENTOS`); si hiciera falta ajustarlas sin tocar código, se mueven.
+  Igual los límites técnicos (`MAX_BYTES_OPERADORES_PAGINA`,
+  `TIEMPO_MAX_EXTRACCION`, `MAX_BYTES_GUARDADOS`, `MAX_CARACTERES_GUARDADOS`).
+- **Partir en la separación los propuestos de más de 2 000 caracteres:** sin
+  puntos no hay dónde partir con sentido; cortar por largo daría mitades que el
+  humano tendría que unir. Se advierte y él decide.
+- **Proponer solo los primeros N requisitos en lugar de rechazar el documento
+  que no cabe:** dejaría fuera requisitos sin que el humano lo note al
+  confirmar; un SRS real queda muy por debajo de los 8 MB.
 
 ## Consecuencias
 
@@ -138,6 +176,12 @@ quién lo llenara con datos confiables.
   confirmado con su `origen`.
 - Las pruebas generan PDF reales byte por byte (Helvetica, `/WinAnsiEncoding`,
   acentos como escapes octales) y comprueban que pypdf devuelve acentos y eñes.
+  Los cifrados con AES van incrustados en base64 (`pdf_cifrados.py`) porque
+  generarlos requiere `cryptography`; la prueba exige el texto si está instalado
+  y el mensaje de la dependencia si no. Los topes de costo se prueban con un
+  reloj falso que avanza en cada consulta.
+- `backend/requirements.txt` debe incluir `cryptography` para leer PDF cifrados
+  con AES.
 - Limitaciones conocidas:
   - Tablas y texto en varias columnas: pypdf lee renglón por renglón y puede
     mezclar celdas o columnas.
@@ -166,12 +210,24 @@ quién lo llenara con datos confiables.
   - El tamaño máximo se revisa cuando Starlette ya recibió el archivo (lo
     guarda en un temporal); limitar el cuerpo HTTP le toca al proxy.
   - La extracción corre en el hilo de la petición: un PDF de cientos de páginas
-    tarda segundos.
-  - Un PDF de 10 MB comprimido puede contener varios millones de caracteres: si
-    lo propuesto pasa de unos 7 millones, el documento excede los 16 MB de Mongo
-    y la carga falla (el JSON no tiene ese límite). No se acota porque un SRS
-    real está órdenes de magnitud por debajo.
+    tarda segundos (300 páginas de texto, unos 2.5 s). Con los topes, el peor
+    caso son unos 30 s más la lectura de una página de hasta 2 MB (unos 6 s), y
+    mientras tanto el resto de la API responde más lento (el GIL). Extraer en un
+    proceso aparte con tiempo límite lo aislaría del todo, a cambio de lanzar
+    un intérprete por carga y de las diferencias de `multiprocessing` en Windows.
+  - El tope de 30 s depende de la máquina: en una lenta, un PDF legítimo muy
+    largo podría quedar incompleto. Queda advertido con las páginas que faltan.
+  - Una página con texto y un dibujo de más de 2 MB se pierde completa (con
+    advertencia de su número): el humano copia su texto si tenía requisitos.
+  - La descompresión no tiene tope propio: la acota pypdf (75 MB por flujo).
+  - Sin `cryptography` instalado, los PDF cifrados con AES se rechazan con 422
+    (el mensaje lo dice); con RC4 se leen.
+  - Un documento cuyo JSON pasa de 8 MB se rechaza aunque quizá cupiera en
+    Mongo; con el repositorio JSON, `GET /proyectos/{id}/documentos` relee
+    cada documento entero (hasta 8 MB cada uno).
   - El endpoint que confirma (`POST /proyectos/{id}/requisitos`, ADR 0008)
     acepta hasta 200 requisitos por llamada y 2 000 caracteres por texto: un
     documento con más propuestos se confirma por partes, y un propuesto más
-    largo se recorta al editarlo (ya lleva la advertencia de más de 400).
+    largo lleva su advertencia y el humano lo recorta o lo parte al editarlo
+    (la separación no parte una oración sin puntos: saldrían mitades sin
+    sentido).
