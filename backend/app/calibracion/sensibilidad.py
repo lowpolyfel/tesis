@@ -49,17 +49,40 @@ def _orden_req(req_id: str) -> tuple[int, str]:
     return len(req_id), req_id
 
 
+def _numero(x) -> float | None:
+    """La similitud como número finito, o None (null, NaN o algo que no es número: no hay
+    similitud que analizar, y con ella el histograma no tendría dónde ponerla)."""
+    if isinstance(x, bool):
+        return None
+    try:
+        x = float(x)
+    except (TypeError, ValueError):
+        return None
+    return x if math.isfinite(x) else None
+
+
 def _paso_por_divergencia(traza: Traza) -> bool:
     return any(m.tipo == TipoMensaje.SIMILITUD and m.ronda == 0 for m in traza.mensajes)
 
 
 def reprocesados(trazas: Iterable[Traza]) -> set[str]:
-    """req_id de las trazas que otra traza vuelve a procesar (`origen.reproceso_de`)
-    cuando el reproceso ya pasó por el mecanismo de divergencia: contar ambas
-    duplicaría el mismo requisito. Si el reproceso sigue en cola o falló antes de
-    llegar, la traza anterior es la única similitud que hay y se conserva."""
-    return {t.origen.reproceso_de for t in trazas
-            if t.origen and t.origen.reproceso_de and _paso_por_divergencia(t)}
+    """req_id de las trazas que un reproceso (`origen.reproceso_de`) ya sustituyó: las
+    versiones anteriores de un requisito cuya versión más nueva ya pasó por el mecanismo
+    de divergencia; contarlas duplicaría el mismo requisito. La cadena se sigue hacia
+    atrás (R01 → R02 que falló → R03 sustituye a R01 y a R02). Si ningún reproceso
+    llegó a la divergencia (sigue en cola o falló antes), la traza anterior es la única
+    similitud que hay y se conserva."""
+    trazas = list(trazas)
+    anterior = {t.req_id: t.origen.reproceso_de for t in trazas if t.origen and t.origen.reproceso_de}
+    sustituidas: set[str] = set()
+    for t in trazas:
+        if t.req_id not in anterior or not _paso_por_divergencia(t):
+            continue
+        r = anterior[t.req_id]
+        while r is not None and r not in sustituidas:  # lo ya marcado ya tiene marcada su cadena (y corta ciclos)
+            sustituidas.add(r)
+            r = anterior.get(r)
+    return sustituidas
 
 
 def _similitudes_de(traza: Traza) -> list[dict]:
@@ -81,9 +104,10 @@ def _similitudes_de(traza: Traza) -> list[dict]:
         if m.secuencia <= desde or not p.get("termino"):
             continue
         clave = normalizar(p["termino"])
-        if m.tipo == TipoMensaje.SIMILITUD and m.ronda == 0 and p.get("similitud") is not None:
+        if m.tipo == TipoMensaje.SIMILITUD and m.ronda == 0 and (similitud := _numero(p.get("similitud"))) is not None:
             iniciales.pop(clave, None)  # la repetida queda en la posición de la última
-            iniciales[clave] = {**p, "modelo_embeddings": p.get("modelo_embeddings") or m.modelo}
+            iniciales[clave] = {**p, "similitud": similitud,
+                                "modelo_embeddings": p.get("modelo_embeddings") or m.modelo}
         elif m.tipo == TipoMensaje.CONSENSO:
             vias[clave] = Via.CONSENSO.value
         elif m.tipo == TipoMensaje.ARBITRAJE:
@@ -91,7 +115,7 @@ def _similitudes_de(traza: Traza) -> list[dict]:
 
     salida = []
     for clave, p in iniciales.items():
-        similitud, umbral = float(p["similitud"]), p.get("umbral")
+        similitud, umbral = p["similitud"], _numero(p.get("umbral"))
         decision = p.get("decision")
         if decision not in _DECISIONES_INICIALES:
             decision = decidir(similitud, umbral).value if umbral is not None else None
@@ -120,7 +144,7 @@ def extraer_similitudes(trazas: Iterable[Traza]) -> list[dict]:
         {req_id, proyecto_id, ciclo, termino, similitud, umbral_usado, decision_real,
          tipo_ambiguedad, via, estado_requisito, modelo_embeddings}
 
-    Se ignoran las similitudes `null` (requisitos sin interpretaciones), las de
+    Se ignoran las similitudes `null` o no finitas (requisitos sin interpretaciones), las de
     rondas de debate (ya dependen del umbral real) y las trazas que un reproceso
     ya sustituyó (`reprocesados`).
     `via` es `null` mientras el término se debate o si el requisito falló.

@@ -17,8 +17,8 @@ router = APIRouter(tags=["calibracion"])
 ServicioDep = Annotated[Servicio, Depends(obtener_servicio)]
 
 # Resolución mínima, solo protege el tamaño de la respuesta: con umbrales en [0, 1] da a lo
-# más 1001 filas y, como el coseno está en [-1, 1] y el histograma usa el paso como ancho,
-# a lo más 2001 bins. No cambia ningún resultado.
+# más 1001 filas (más la del umbral configurado) y, como el coseno está en [-1, 1] y el
+# histograma usa el paso como ancho, a lo más 2001 bins. No cambia ningún resultado.
 PASO_MINIMO = 0.001
 
 

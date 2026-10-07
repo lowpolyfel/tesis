@@ -67,8 +67,9 @@ def _proporcion(a: int, b: int) -> float | None:
 
 
 def metricas(vp: int, fp: int, vn: int, fn: int) -> dict:
-    """Precisión, exhaustividad (recall) y F1 de «debate» contra «ambiguo»;
-    `null` cuando el denominador es cero (p. ej. ningún debate)."""
+    """Precisión, exhaustividad (recall) y F1 de «debate» contra «ambiguo». Precisión y
+    exhaustividad son `null` cuando su denominador es cero (p. ej. ningún debate) y F1
+    cuando alguna de las dos lo es: el mismo criterio que la evaluación (ADR 0014)."""
     precision, exhaustividad = _proporcion(vp, vp + fp), _proporcion(vp, vp + fn)
     f1 = None if precision is None or exhaustividad is None else _proporcion(2 * vp, 2 * vp + fp + fn)
     return {"vp": vp, "fp": fp, "vn": vn, "fn": fn, "precision": precision, "exhaustividad": exhaustividad, "f1": f1}

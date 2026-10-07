@@ -33,16 +33,23 @@ Dos hechos acotan el diseño:
    similitud **inicial**: el mensaje `similitud` de ronda 0 con valor no nulo,
    posterior a la última clasificación de la traza (un nodo reejecutado repite
    sus mensajes, ADR 0008). Se descartan:
-   - las similitudes `null` (requisitos sin interpretaciones);
+   - las similitudes `null` (requisitos sin interpretaciones) y las que no son un
+     número finito (el repositorio guarda `NaN` como `null`; si llegara otra cosa,
+     el histograma no tendría dónde ponerla);
    - las de rondas de debate, que solo existen para los términos que el umbral
      real mandó a debate y miden interpretaciones ya refinadas;
    - las trazas que un reproceso (`origen.reproceso_de`) ya sustituyó, es decir,
-     cuando el reproceso pasó por el mecanismo de divergencia. Si el reproceso
-     sigue en cola o falló antes, la traza anterior se conserva.
+     cuando el reproceso pasó por el mecanismo de divergencia. La cadena se sigue
+     hacia atrás: si R02 reprocesa R01 y falla antes de la divergencia y R03
+     reprocesa R02 y llega, R03 sustituye a R01 y a R02. Si ningún reproceso
+     llegó (sigue en cola o falló antes), la traza anterior se conserva.
 
    Cada fila lleva `decision_real` (la que registró el mensaje, con el umbral de
-   su traza), `umbral_usado`, `tipo_ambiguedad` (las trazas anteriores al tipo se
-   tratan como léxicas, ADR 0010), `via` y el estado del requisito.
+   su traza; si el mensaje no la registró, se reconstruye con `decidir` y su
+   umbral, y sin ninguno de los dos la fila se omite), `umbral_usado`,
+   `tipo_ambiguedad` (las trazas anteriores al tipo se tratan como léxicas, ADR
+   0010), `via` (`null` mientras se debate o si el requisito falló) y el estado
+   del requisito. Las trazas en `error` cuentan con la similitud que alcanzaron.
 3. **Rejilla de umbrales** de `desde` a `hasta` con `paso`, inclusive (por
    omisión `CALIBRACION_DESDE/HASTA/PASO`; la ruta acepta otros valores). Los
    umbrales se redondean a 6 decimales para que `0.5 + 5·0.05` sea `0.75`. El
@@ -53,7 +60,9 @@ Dos hechos acotan el diseño:
 4. **Distribución.** Histograma con ancho igual al `paso` y origen en `desde`,
    para que sus bordes coincidan con los umbrales de la rejilla. Cada bin es
    `[desde, hasta)`: un valor igual a un borde cae a la derecha, como en la regla
-   `>=`, y los bins a la izquierda de un umbral suman exactamente sus debates.
+   `>=`, y los bins a la izquierda de un umbral de la rejilla suman exactamente
+   sus debates (el configurado, si no cae en la rejilla, no es borde de ningún
+   bin).
    Se acompaña de n, mínimo, máximo, media y mediana.
 5. **Contraste con el ground truth, opcional.** Si la colección `evaluaciones`
    tiene un documento del proyecto con `etiquetas`
@@ -61,12 +70,16 @@ Dos hechos acotan el diseño:
    de evaluación), se usa el más reciente por proyecto. La clase positiva es
    **debate** y la verdad es `ambiguo`; se empareja por `req_id` y término
    normalizado. Por umbral: verdaderos y falsos positivos y negativos,
-   precisión, exhaustividad, F1 (`null` cuando el denominador es cero) y los
+   precisión y exhaustividad (`null` cuando su denominador es cero), F1 (`null`
+   cuando la precisión o la exhaustividad lo son; mismo criterio que la
+   evaluación, ADR 0014) y los
    casos mal separados. `separacion` dice si **existe algún** umbral que mande a
    debate todos los ambiguos y ninguno de los otros (máximo de los ambiguos <
    mínimo de los no ambiguos). Las etiquetas sin similitud y las similitudes sin
    etiqueta se informan aparte, sin contarlas. Sin etiquetas,
-   `con_ground_truth` es `null`.
+   `con_ground_truth` es `null`; si el documento solo trae etiquetas que no
+   cumplen el contrato, se devuelve igual, con `n_invalidas` y sin pares, para
+   que el problema se vea.
 6. **Avisos, no correcciones.** La respuesta advierte cuando las similitudes
    vienen de modelos de embeddings distintos, cuando hay términos decididos con
    un umbral distinto del configurado y cuando la similitud no separa los casos
@@ -75,8 +88,10 @@ Dos hechos acotan el diseño:
    (todos los proyectos que no son de evaluación juntos, `proyecto_id: null`),
    con la misma forma (`app/calibracion/formas.py`). `desde >= hasta`, paso no
    positivo o fuera de rango responden 422. El paso mínimo es 0.001: solo
-   protege el tamaño de la respuesta (a lo más 1001 umbrales y 2001 bins, porque
-   el coseno está en [-1, 1]).
+   protege el tamaño de la respuesta (a lo más 1001 umbrales más el configurado y
+   2001 bins, porque el coseno está en [-1, 1]); no cambia ningún resultado. Si
+   la configuración misma trae `CALIBRACION_DESDE >= CALIBRACION_HASTA`, la ruta
+   sin parámetros también responde 422.
 
 ## Justificación
 
@@ -137,3 +152,12 @@ respuesta lo dice con el mismo peso que cualquier otro dato.
   supone que el documento trae su id en `evaluacion_id` (si no, sale `null`).
   Las etiquetas que no cumplen el contrato se cuentan en `n_invalidas` y se
   dejan fuera.
+- **F1 sin debates.** Con un umbral que no manda nada a debate y ambiguos
+  etiquetados, la precisión no está definida y el F1 sale `null` (igual que en la
+  evaluación). Otras herramientas (p. ej. scikit-learn) informan 0 en ese caso;
+  quien compare cifras debe saberlo. La exhaustividad sí sale 0 y lo deja ver.
+- **Reprocesos.** Si un requisito etiquetado por la evaluación se reprocesa, su
+  etiqueta apunta a la traza sustituida: queda en `etiquetas_sin_similitud` y la
+  traza nueva en `valores_sin_etiqueta` (la evaluación no sigue reprocesos, ADR
+  0014). Si una misma traza se reprocesa dos veces por separado (dos ramas, no
+  una cadena), cuentan las dos versiones nuevas.

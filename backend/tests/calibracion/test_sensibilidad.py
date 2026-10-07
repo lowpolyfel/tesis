@@ -1,8 +1,10 @@
 """Funciones puras de la calibración con números conocidos: rejilla, sensibilidad,
 distribución y extracción de las similitudes iniciales de las trazas."""
+import math
+
 import pytest
 
-from app.calibracion import distribucion, extraer_similitudes, puntos_rejilla, rejilla, reprocesados, sensibilidad
+from app.calibracion import distribucion, informe_calibracion, extraer_similitudes, puntos_rejilla, rejilla, reprocesados, sensibilidad
 from tests.calibracion.ayudantes import clasificacion, similitud, traza, valor
 
 # ---------------------------------------------------------------- rejilla
@@ -153,6 +155,39 @@ def test_reproceso_pendiente_o_fallido_conserva_la_traza_anterior():
     sin_ambiguedad = traza("R04", similitud(None, None), estado="formalizado", reproceso_de="R01")
     assert reprocesados([anterior, sin_ambiguedad]) == {"R01"}
     assert extraer_similitudes([anterior, sin_ambiguedad]) == []
+
+
+def test_reproceso_en_cadena_sustituye_todas_las_versiones_anteriores():
+    """R01 → R02 (falló antes de la divergencia) → R03: el mismo requisito tres veces;
+    solo cuenta R03. Antes R01 seguía contando junto a R03 porque R02 no tenía similitud."""
+    r1 = traza("R01", clasificacion(("sesión", "lexica")), similitud("sesión", 0.2))
+    r2 = traza("R02", ("error", 0, {"nodo": "extraido", "mensaje": "falló"}), estado="error", reproceso_de="R01")
+    r3 = traza("R03", clasificacion(("sesión", "lexica")), similitud("sesión", 0.5), reproceso_de="R02")
+    assert reprocesados([r1, r2, r3]) == {"R01", "R02"}
+    assert [v["req_id"] for v in extraer_similitudes([r3, r1, r2])] == ["R03"]
+    # mientras la versión nueva no llegue a la divergencia, R01 es la única similitud que hay
+    en_cola = traza("R03", estado="cargado", reproceso_de="R02")
+    assert reprocesados([r1, r2, en_cola]) == set()
+    assert [v["req_id"] for v in extraer_similitudes([r1, r2, en_cola])] == ["R01"]
+
+
+def test_reproceso_con_ciclo_no_se_cuelga():
+    a = traza("R01", clasificacion(("sesión", "lexica")), similitud("sesión", 0.2), reproceso_de="R02")
+    b = traza("R02", clasificacion(("sesión", "lexica")), similitud("sesión", 0.3), reproceso_de="R01")
+    assert reprocesados([a, b]) == {"R01", "R02"}
+
+
+def test_similitud_no_finita_o_no_numerica_se_ignora():
+    """Sin el filtro, NaN o infinito tiraban el histograma (math.floor) con un 500."""
+    t = traza("R01", clasificacion(*((x, "lexica") for x in ("nan", "inf", "texto", "entero"))),
+              similitud("nan", math.nan, decision="en_debate"),
+              similitud("inf", math.inf, decision="aceptado_directo"),
+              ("similitud", 0, {"termino": "texto", "similitud": "0,8", "umbral": 0.75, "decision": "en_debate"}),
+              similitud("entero", 1, umbral=1))
+    assert [(v["termino"], v["similitud"], v["decision_real"]) for v in extraer_similitudes([t])] == [
+        ("entero", 1.0, "aceptado_directo")]
+    r = informe_calibracion([t], [], umbral_configurado=0.75, max_rondas=2, desde=0.5, hasta=0.95, paso=0.05)
+    assert (r["n_valores"], r["distribucion"]["bins"]) == (1, [{"desde": 1.0, "hasta": 1.05, "n": 1}])
 
 
 def test_decision_no_registrada_se_reconstruye_con_la_regla():
