@@ -32,7 +32,10 @@ arma otro LLM o el código.
    La meta blanda es el destino natural de las expresiones vagas del catálogo
    («rápido», «ahorita»), que no se debaten (ADR 0003). `contribuye_a` solo
    puede apuntar a otra meta **del mismo requisito**: el Modelador ve un
-   requisito a la vez.
+   requisito a la vez. El contrato no impide un ciclo (M1→M2→M1); al agregar,
+   en orden de id, la contribución que lo cerraría se omite, para que el modelo
+   de metas sea un bosque y cada meta tenga una raíz (la pantalla lo dibuja como
+   árbol). Igual que una contribución a una meta que no existe, no se reporta.
 
 2. **El nivel proyecto se agrega en código, sin LLM** (`app/artefactos/`).
    Funciones puras sobre los documentos de `formalizados`, el LEL del proyecto
@@ -44,10 +47,23 @@ arma otro LLM o el código.
 
 3. **Qué requisitos entran.** Los `formalizado` con documento. Quedan fuera,
    listados en `requisitos_fuera` con su motivo: `en_proceso`, `rechazado`,
-   `error`, `reprocesado` (otro requisito vigente lo vuelve a procesar, mismo
-   criterio que la comparación, ADR 0012), `sin_formalizacion` (formalizados
-   antes del documento por requisito) y `sin_traza`. Nada se deja fuera en
-   silencio. El LEL entra completo: es la memoria del proyecto.
+   `error`, `reprocesado`, `sin_formalizacion` (formalizados antes del
+   documento por requisito) y `sin_traza`. Nada se deja fuera en silencio. El
+   LEL entra completo: es la memoria del proyecto.
+
+   `reprocesado` sigue el mismo criterio que la comparación (ADR 0012): una
+   versión **vigente** (ni en error ni rechazada; puede seguir en proceso) deja
+   fuera a las anteriores de su cadena `origen.reproceso_de`, que se sigue hacia
+   atrás aunque pase por una versión que falló (R01 → R02 en error → R03 deja
+   fuera a R01 y el detalle nombra a R03, la más nueva). Cada eslabón debe
+   apuntar a un requisito más antiguo: una referencia a sí mismo o circular corta
+   la cadena en vez de dejar fuera a todos. Mientras el reproceso no termina, el
+   requisito no aparece en los artefactos con ninguna de sus versiones.
+
+   Las rutas leen las trazas **antes** que los documentos y el LEL: el Modelador
+   guarda el LEL y el documento antes de pasar la traza a `formalizado`, así
+   que un requisito que se formaliza durante la petición se ve en proceso o
+   completo, nunca formalizado sin documento.
 
 4. **Coincidencia de texto** (`terminos.Comparador`). Cada palabra se compara por
    su forma normalizada (minúsculas, sin acentos) y, si el servicio tiene spaCy,
@@ -62,8 +78,10 @@ arma otro LLM o el código.
    - **actores normalizados**: sin artículo inicial, con minúscula inicial salvo
      siglas; los **sujetos del LEL** abren los grupos (su escritura manda) y
      aparecen aunque ninguna meta los nombre; un actor se une al primer grupo con
-     el que es *el mismo* (con spaCy, «los usuarios» y «usuario» se unen). Cada
-     meta guarda `actor` (normalizado) y `actor_original`;
+     el que es *el mismo* (con spaCy, «los usuarios» y «usuario» se unen) o
+     con el que comparte la clave del id (`actor:el_sistema`), para que no haya
+     dos nodos con el mismo id. Cada meta guarda `actor` (normalizado) y
+     `actor_original`;
    - `por_tipo`, `sin_actor`, y `metas_blandas_desde_vaguedad`: cada expresión
      vaga registrada en el documento, con la meta blanda del mismo requisito que
      ya la recoge (si su enunciado la contiene o la lista en `simbolos`) o `null`.
@@ -94,9 +112,13 @@ arma otro LLM o el código.
    infinitivo**, si no `verbo: null` y el enunciado completo como objeto);
    restricciones (metas blandas y expresiones vagas que ninguna meta blanda
    recoge); términos resueltos (de `resoluciones`, con la vía y el `cambio` del
-   humano); dependencias `{de, a, por}`: el requisito `de` usa (menciona,
-   resuelve o tiene una meta que usa) un símbolo que resolvió la formalización
-   del requisito `a`; y el requisito reescrito de cada uno.
+   humano); dependencias `{de, a, por}`: el requisito `de` usa (menciona o
+   tiene una meta que usa) un símbolo que resolvió la formalización del
+   requisito `a`. No hay dependencia si `de` también resolvió ese símbolo (dos
+   entradas del mismo símbolo, ADR 0015) ni si `a` es una versión anterior de
+   `de` (un reproceso toma del LEL lo que resolvió su versión anterior). `a`
+   puede ser un requisito que quedó fuera (por ejemplo, reprocesado por otro):
+   es de donde vino el símbolo. Al final, el requisito reescrito de cada uno.
 
 8. **Exportaciones de texto deterministas**: Mermaid (`flowchart LR`, formas por
    tipo al estilo i\*, colores por tipo con `classDef`, ids saneados a
@@ -104,13 +126,18 @@ arma otro LLM o el código.
    comillas con `"`, `#`, `<`, `>` y el acento grave como entidades) y PlantUML
    (diagrama de clases: un símbolo del LEL por clase con noción e impacto como
    atributos `{field}`, actores que no son sujetos del LEL, relaciones entre
-   símbolos y «actor → símbolo : verbo (metas)»). Dibujarlos queda en
-   herramientas externas.
+   símbolos y «actor → símbolo : verbo (metas)»; los textos van en una línea,
+   sin caracteres de control, y sin la barra invertida ni el `/'` que PlantUML
+   interpreta como continuación de línea y como comentario). Dibujarlos queda
+   en herramientas externas.
 
 9. **Artefactos de un requisito** (`GET /requisitos/{id}/artefactos`): el
    documento formalizado tal cual (o `null`), las entradas del LEL que salieron
-   de él y sus metas con id global. 404 si el requisito no existe. Un proyecto
-   sin formalizados devuelve estructuras vacías, no un error.
+   de él y sus metas con id global; los actores se agrupan con los del proyecto,
+   así que cada meta lleva el mismo `actor` que en el modelo de metas. Un
+   requisito que quedó fuera del proyecto (por ejemplo, reprocesado) también
+   muestra sus metas. 404 si el requisito no existe. Un proyecto sin
+   formalizados devuelve estructuras vacías, no un error.
 
 ## Justificación
 
@@ -165,7 +192,16 @@ comprueba en código.
   `req_ids`, pero el nodo muestra la primera noción.
 - Cada petición recorre todos los formalizados y, con spaCy, analiza cada texto
   una vez: sirve para decenas de requisitos, no para miles (sin caché).
-- Mermaid y PlantUML se validaron a mano con sus intérpretes (mermaid 12 y
-  PlantUML 1.2024); las pruebas automáticas comprueban la sintaxis con
-  expresiones regulares y, si el entorno tiene Node y el paquete `mermaid` del
-  frontend, también con el parser de Mermaid.
+- Las pruebas comprueban la sintaxis de Mermaid con expresiones regulares y, si
+  el entorno tiene Node y el paquete `mermaid` del frontend (12.1), con el
+  parser de Mermaid. PlantUML no viene con el repositorio: su prueba con el
+  intérprete corre solo con `PLANTUML_JAR` (se probó con PlantUML 1.2026.8,
+  incluidos textos con comillas, llaves, marcado, caracteres de control, barra
+  invertida y `/'`). El parser valida la sintaxis, no cómo se ve el dibujo: el
+  marcado de PlantUML que llegue en un texto (`**negrita**`) se dibuja como
+  formato.
+- Un mismo requisito reprocesado dos veces desde la misma versión (dos ramas,
+  R02 y R03 reprocesan R01) deja ambas versiones dentro: la cadena es lineal,
+  como en la comparación y la calibración.
+- Un término resuelto cuya entrada del LEL quedó repetida (un nodo reejecutado
+  tras un reinicio, ADR 0008) se lista una vez por requisito.

@@ -29,26 +29,41 @@ def ordenar(formalizados: list[dict]) -> list[dict]:
     return sorted(formalizados, key=lambda d: _orden(d["req_id"]))
 
 
+def _cadena(req_id: str, anterior: dict[str, str]) -> list[str]:
+    """Versiones anteriores de `req_id` siguiendo `reproceso_de` hacia atrás. Cada
+    eslabón debe apuntar a un requisito más antiguo (un reproceso siempre es un
+    requisito nuevo): una referencia a sí mismo o circular corta la cadena."""
+    cadena, actual = [], req_id
+    while (r := anterior.get(actual)) is not None and _orden(r) < _orden(actual):
+        cadena.append(r)
+        actual = r
+    return cadena
+
+
+def _anteriores(trazas_resumen: list[dict]) -> dict[str, str]:
+    return {t["req_id"]: r for t in trazas_resumen if (r := _reproceso_de(t))}
+
+
 def reprocesados(trazas_resumen: list[dict]) -> dict[str, str]:
     """{req_id: versión vigente más nueva que lo vuelve a procesar}.
 
     Vigente = ni en error ni rechazada. Desde cada versión vigente se sigue
     `reproceso_de` hacia atrás, pasando por las versiones intermedias aunque estén en
-    error o rechazadas. Solo se sustituye a requisitos anteriores (un reproceso
-    siempre es un requisito nuevo): una referencia a sí mismo o circular no deja
-    fuera a todos los de la cadena."""
-    trazas = sorted(trazas_resumen, key=lambda t: _orden(t["req_id"]))
-    anterior = {t["req_id"]: r for t in trazas if (r := _reproceso_de(t))}
+    error o rechazadas."""
+    anterior = _anteriores(trazas_resumen)
     sustituido_por: dict[str, str] = {}
-    for t in trazas:  # de la más antigua a la más nueva: gana la versión más reciente
-        if t.get("estado") in _EXCLUIDOS:
-            continue
-        r, vistos = anterior.get(t["req_id"]), set()
-        while r is not None and r not in vistos and _orden(r) < _orden(t["req_id"]):
-            vistos.add(r)
-            sustituido_por[r] = t["req_id"]
-            r = anterior.get(r)
+    for t in sorted(trazas_resumen, key=lambda t: _orden(t["req_id"])):  # gana la versión más reciente
+        if t.get("estado") not in _EXCLUIDOS:
+            for r in _cadena(t["req_id"], anterior):
+                sustituido_por[r] = t["req_id"]
     return sustituido_por
+
+
+def versiones_anteriores(trazas_resumen: list[dict] | None) -> dict[str, set[str]]:
+    """{req_id: versiones anteriores del mismo requisito}: un requisito no depende
+    de su propia versión anterior aunque use el símbolo que esa resolvió."""
+    anterior = _anteriores(trazas_resumen or [])
+    return {req_id: set(_cadena(req_id, anterior)) for req_id in anterior}
 
 
 def seleccionar(formalizados: list[dict], trazas_resumen: list[dict] | None) -> tuple[list[dict], list[dict]]:

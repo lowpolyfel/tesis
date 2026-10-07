@@ -187,3 +187,81 @@ def test_estable_y_sin_depender_del_orden():
         random.Random(semilla).shuffle(entradas)
         random.Random(semilla).shuffle(resumenes)
         assert _bp(docs=docs, entradas=entradas, resumenes=resumenes) == base
+
+
+def _deps(docs, entradas, resumenes):
+    return big_picture_proyecto(docs, entradas, resumenes)["panorama"]["dependencias"]
+
+
+def test_un_reproceso_no_depende_de_su_version_anterior():
+    from tests.artefactos.ayudantes import entrada, formalizado, meta, resumen
+
+    # R02 reprocesa R01: «sesión» ya está en el LEL (resuelto por el LEL), así que R02 no
+    # tiene entrada propia; R03 es otro requisito que también usa «sesión»
+    texto = "El sistema registra la sesión."
+    docs = [formalizado(r, texto, [meta("M1", "Registrar la sesión", simbolos=["sesión"])]) for r in ("R01", "R02", "R03")]
+    entradas = [entrada("sesión", "objeto", ["Periodo de uso."], ["Se registra."], "R01")]
+    resumenes = [resumen("R01", "formalizado"), resumen("R02", "formalizado", "R01"), resumen("R03", "formalizado")]
+    assert _deps(docs, entradas, resumenes) == [{"de": "R03", "a": "R01", "por": "sesión"}]
+    # la cadena pasa por una versión que falló: R04 reprocesa R02 (error), que reprocesaba R01
+    resumenes = [resumen("R01", "formalizado"), resumen("R02", "error", "R01"), resumen("R03", "formalizado"),
+                 resumen("R04", "formalizado", "R02")]
+    docs = docs + [formalizado("R04", texto, [meta("M1", "Registrar la sesión", simbolos=["sesión"])])]
+    assert _deps(docs, entradas, resumenes) == [{"de": "R03", "a": "R01", "por": "sesión"}]
+
+
+def test_quien_tambien_resolvio_el_simbolo_no_depende_del_otro():
+    from tests.artefactos.ayudantes import entrada, formalizado, meta, resumen
+
+    # R01 y R02 resolvieron «sesión» cada uno (dos entradas, ADR 0015); R03 solo lo menciona
+    docs = [formalizado("R01", "Registra la sesión.", [meta("M1", "Registrar la sesión", simbolos=["sesión"])],
+                        entradas_lel=["sesión"]),
+            formalizado("R02", "Cierra la sesión.", [meta("M1", "Cerrar la sesión", simbolos=["sesión"])],
+                        entradas_lel=["Sesión"]),
+            formalizado("R03", "Muestra la sesión.", [meta("M1", "Mostrar el reporte")])]
+    entradas = [entrada("sesión", "objeto", ["Periodo de uso."], ["Se registra."], "R01"),
+                entrada("Sesión", "estado", ["Conexión activa."], ["Se cierra."], "R02")]
+    resumenes = [resumen(r, "formalizado") for r in ("R01", "R02", "R03")]
+    assert _deps(docs, entradas, resumenes) == [{"de": "R03", "a": "R01", "por": "sesión"},
+                                                {"de": "R03", "a": "R02", "por": "sesión"}]
+
+
+def test_simbolo_repetido_en_el_mismo_requisito_no_depende_del_orden():
+    from tests.artefactos.ayudantes import entrada
+
+    # dos entradas del mismo símbolo y del mismo requisito (un nodo reejecutado tras un
+    # reinicio): la escritura y el tipo no dependen del orden en que llegan
+    otra = entrada("Bitácora", "estado", ["Registro diario."], ["Se archiva."], "R02")
+    a, b = _bp(entradas=lel() + [otra]), _bp(entradas=[otra] + lel())
+    assert a == b
+    bitacora = next(n for n in a["nodos"] if n["id"] == "simbolo:bitacora")
+    assert (bitacora["etiqueta"], bitacora["subtipo"]) == ("Bitácora", "estado")
+
+
+def test_terminos_resueltos_del_lel_sin_repetir():
+    from tests.artefactos.ayudantes import entrada
+
+    # R08 se formalizó antes del documento por requisito y su nodo se reejecutó: dos entradas iguales
+    repetida = entrada("expediente", "objeto", ["Conjunto de documentos del trámite."],
+                       ["Se archiva al cerrar el trámite."], "R08")
+    resueltos = _bp(entradas=lel() + [repetida])["panorama"]["terminos_resueltos"]
+    assert [(t["req_id"], t["termino"]) for t in resueltos] == [
+        ("R01", "sesión"), ("R02", "usuario"), ("R02", "bitácora"), ("R03", "dar de alta"), ("R08", "expediente")]
+
+
+def test_termino_sin_simbolo_con_otra_mayuscula_en_la_misma_meta():
+    from tests.artefactos.ayudantes import formalizado, meta
+
+    d = formalizado("R01", "x", [meta("M1", "Registrar al cliente", simbolos=["Cliente", "cliente"]),
+                                 meta("M2", "Avisar al cliente", simbolos=["cliente"])])
+    assert big_picture_proyecto([d], [], None)["terminos_sin_simbolo"] == [
+        {"termino": "Cliente", "metas": ["R01.M1", "R01.M2"]}]
+
+
+def test_ciclo_de_contribuciones_en_el_grafo():
+    from tests.artefactos.ayudantes import formalizado, meta
+
+    d = formalizado("R01", "x", [meta("M1", "Registrar a", contribuye_a="M2"), meta("M2", "Guardar b", contribuye_a="M1")])
+    bp = big_picture_proyecto([d], [], None)
+    assert [(a["origen"], a["destino"]) for a in bp["aristas"] if a["relacion"] == "contribuye_a"] == [
+        ("R01.M1", "R01.M2")]
