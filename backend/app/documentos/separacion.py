@@ -7,7 +7,8 @@ página y su motivo: el humano ve lo que se dejó fuera antes de confirmar.
 Casos especiales:
 - Frase introductoria con obligación que termina en dos puntos seguida de una
   lista sin verbos («El sistema deberá permitir:» / «- Registrar usuarios»): cada
-  elemento se propone compuesto con la frase.
+  elemento se propone compuesto con la frase y conserva su identificador
+  («RF-03 … permitir:» / «a) registrar» -> marca «RF-03.a»).
 - Título con identificador y sin verbo («RF-01 Registro de usuarios») seguido de
   un párrafo sin marca: el párrafo hereda la marca.
 """
@@ -22,8 +23,8 @@ from .limpieza import MAX_PALABRAS_TITULO, Parrafo, limpiar
 from .modelos import FragmentoDescartado, RequisitoPropuesto, Separacion
 from .patrones import (
     TIPOS_DE_LISTA,
-    dividir_oraciones,
     empieza_con_verbo,
+    posiciones_de_oraciones,
     tiene_caracteres_raros,
     tiene_letras,
     tiene_obligacion,
@@ -51,6 +52,15 @@ class _Introduccion:
 
 def _es_titulo(oracion: str) -> bool:
     return oracion.rstrip()[-1:] not in ".!?;…" and len(oracion.split()) <= MAX_PALABRAS_TITULO
+
+
+def _marca_de_elemento(intro: str | None, elemento: str | None, tipo: str | None) -> str | None:
+    """La marca del requisito compuesto: «RF-03» + «a» -> «RF-03.a»; con viñeta, la de la frase."""
+    if intro is None:
+        return elemento
+    if elemento is None or tipo == "vineta":
+        return intro
+    return f"{intro}.{elemento}"
 
 
 def _como_continuacion(elemento: str) -> str:
@@ -94,17 +104,19 @@ def separar_parrafos(parrafos: list[Parrafo], max_fragmentos: int = MAX_FRAGMENT
             cerrar_introduccion()
         if introduccion is not None and tiene_letras(p.texto) and not tiene_obligacion(p.texto):
             introduccion.usos += 1
-            frase = introduccion.candidato.texto
+            frase = introduccion.candidato
             candidatos.append(_Candidato(
-                texto=f"{frase.rstrip(' :')} {_como_continuacion(p.texto)}.", pagina=p.pagina, marca=p.marca,
-                original=f"{frase}\n{p.original}", advertencias=[f"compuesto con la frase introductoria «{frase}»"]))
+                texto=f"{frase.texto.rstrip(' :')} {_como_continuacion(p.texto)}.", pagina=p.pagina,
+                marca=_marca_de_elemento(frase.marca, p.marca, p.tipo_marca), original=f"{frase.original}\n{p.original}",
+                advertencias=[f"compuesto con la frase introductoria «{frase.texto}»"]))
             continue
         if not tiene_letras(p.texto):
             descartados.append(FragmentoDescartado(texto=p.original, pagina=p.pagina, marca=p.marca, motivo="sin_texto"))
             titulo_con_id = None
             continue
 
-        oraciones = dividir_oraciones(p.texto)
+        posiciones = posiciones_de_oraciones(p.texto)
+        oraciones = [p.texto[a:b] for a, b in posiciones]
         con_obligacion = [o for o in oraciones if tiene_obligacion(o)]
         marca, heredada = p.marca, None
         if titulo_con_id is not None and p.marca is None and con_obligacion:
@@ -112,19 +124,22 @@ def separar_parrafos(parrafos: list[Parrafo], max_fragmentos: int = MAX_FRAGMENT
         titulo_con_id = p if (p.tipo_marca == "id" and not con_obligacion and len(oraciones) == 1
                               and _es_titulo(oraciones[0])) else None
 
-        for i, oracion in enumerate(oraciones):
+        for i, ((a, b), oracion) in enumerate(zip(posiciones, oraciones)):
+            # Solo el pedazo del original de esta oración: copiar el párrafo entero en cada
+            # una haría crecer el documento con el cuadrado del largo del párrafo.
+            original, pagina, pagina_fin = p.fragmento(a, b)
             if not tiene_obligacion(oracion):
                 descartados.append(FragmentoDescartado(
-                    texto=oracion, pagina=p.pagina, marca=p.marca,
+                    texto=oracion, pagina=pagina, marca=p.marca,
                     motivo="titulo" if _es_titulo(oracion) else "sin_verbo_obligacion"))
                 continue
-            c = _Candidato(texto=oracion, pagina=p.pagina, marca=marca, original=p.original)
+            c = _Candidato(texto=oracion, pagina=pagina, marca=marca, original=original)
             if len(con_obligacion) > 1:
                 c.advertencias.append(f"una de {len(con_obligacion)} oraciones con obligación del mismo párrafo")
             if heredada:
                 c.advertencias.append(f"marca tomada del título «{heredada}»")
-            if p.pagina_fin != p.pagina:
-                c.advertencias.append(f"el párrafo continúa en la página {p.pagina_fin}")
+            if pagina_fin != pagina:
+                c.advertencias.append(f"continúa en la página {pagina_fin}")
             candidatos.append(c)
             if i == len(oraciones) - 1 and oracion.endswith(":"):
                 cerrar_introduccion()

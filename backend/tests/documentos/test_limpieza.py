@@ -83,13 +83,27 @@ def test_titulo_corto_cierra_parrafo():
 def test_renglon_sin_punto_en_pdf_cierra_si_es_corto_y_sigue_si_esta_lleno():
     pagina = ("El sistema debe exportar el reporte mensual de ventas al formato que\n"
               "elija el gerente\n"
-              "El cajero podrá enviar el corte de caja a la plataforma de la oficina\n"
+              "Cajeros y supervisores podrán enviar el corte de caja a la oficina\n"
               "SAT Juárez al cerrar el turno.")
     assert _textos(limpiar([pagina], con_paginas=False, maquetado=True)) == [
         "El sistema debe exportar el reporte mensual de ventas al formato que elija el gerente",
-        "El cajero podrá enviar el corte de caja a la plataforma de la oficina SAT Juárez al cerrar el turno."]
-    # en texto plano no hay ancho de referencia: solo un título aislado cierra sin punto
+        "Cajeros y supervisores podrán enviar el corte de caja a la oficina SAT Juárez al cerrar el turno."]
+    # en texto plano no hay ancho de referencia: sin punto final solo cierran un título
+    # aislado o un renglón que abre oración («El», «La»…); «Cajeros» no la abre
     assert len(limpiar([pagina], con_paginas=False, maquetado=False).parrafos) == 1
+
+
+def test_renglon_que_abre_oracion_cierra_el_anterior_sin_punto():
+    """Requisitos uno por renglón y sin punto final: antes se pegaban en uno solo."""
+    texto = ("El sistema debe guardar los datos del cliente\nEl sistema debe imprimir el ticket\n"
+             "La aplicación podrá cancelar ventas\nCada cajero debe cerrar su turno")
+    for maquetado in (True, False):
+        assert _textos(limpiar([texto], con_paginas=False, maquetado=maquetado)) == [
+            "El sistema debe guardar los datos del cliente", "El sistema debe imprimir el ticket",
+            "La aplicación podrá cancelar ventas", "Cada cajero debe cerrar su turno"]
+    # tras palabra de enlace sigue siendo la misma oración aunque empiece con «La»
+    assert _textos(limpiar(["El sistema debe abrir una sucursal en\nLa Paz y otra en Mérida."], con_paginas=False,
+                           maquetado=False)) == ["El sistema debe abrir una sucursal en La Paz y otra en Mérida."]
 
 
 def test_renglon_que_termina_en_punto_cierra_parrafo():
@@ -115,3 +129,43 @@ def test_renglon_vacio_siempre_cierra_parrafo():
 def test_normaliza_ligaduras_y_caracteres_invisibles():
     assert normalizar_caracteres("\ufb01rma\u00ad digital\u200b\x07ok\u00a0ya") == "firma digital ok ya"
     assert normalizar_caracteres("\uf0b7 viñeta de Word") == "\uf0b7 viñeta de Word"
+
+
+def test_encabezado_igual_al_pie_cuenta_paginas_no_renglones():
+    resultado = limpiar(["ACME\nEl sistema debe guardar.\nACME", "ACME\nEl sistema debe salir.\nACME"],
+                        con_paginas=True, maquetado=True)
+    assert resultado.advertencias == ["Encabezado o pie de página quitado (2 de 2 páginas): «ACME»."]
+    assert _textos(resultado) == ["El sistema debe guardar.", "El sistema debe salir."]
+
+
+def test_titulo_con_identificador_arriba_de_cada_pagina_no_es_encabezado():
+    """«RF-01 Registro de usuarios» y «RF-02 Registro de usuarios» son iguales salvo dígitos."""
+    paginas = ["RF-01 Registro de usuarios\nEl administrador podrá dar de alta usuarios.",
+               "RF-02 Registro de usuarios\nEl administrador podrá dar de baja usuarios."]
+    resultado = limpiar(paginas, con_paginas=True, maquetado=True)
+    assert resultado.advertencias == []
+    assert [p.marca for p in resultado.parrafos] == ["RF-01", None, "RF-02", None]
+
+
+def test_numero_tras_palabra_de_enlace_sigue_la_oracion_y_lista_numerada_no():
+    texto = ("El servidor debe responder en un máximo de\n2.5 Segundos según la norma, como lo indica el\n"
+             "RF-01 del anexo.\n1. registrar usuarios\n2. borrar usuarios")
+    assert [(p.marca, p.texto) for p in limpiar([texto], con_paginas=False, maquetado=False).parrafos] == [
+        (None, "El servidor debe responder en un máximo de 2.5 Segundos según la norma, como lo indica el RF-01 del anexo."),
+        ("1", "registrar usuarios"), ("2", "borrar usuarios")]
+
+
+def test_guion_suave_al_final_del_renglon_une_la_palabra():
+    """Algunos PDF marcan el corte con U+00AD (byte 0xAD en WinAnsi): se quitaba y quedaba «autenti car»."""
+    parrafo, = limpiar(["El sistema deberá autenti­\ncar al usuario con su con­traseña."], con_paginas=False,
+                       maquetado=True).parrafos
+    assert parrafo.texto == "El sistema deberá autenticar al usuario con su contraseña."
+
+
+def test_fragmento_original_de_cada_oracion():
+    parrafo, = limpiar(["RF-02 Uno debe ir. El sistema deberá autenti-\ncar al usuario. Tres\npuede salir."],
+                       con_paginas=False, maquetado=False).parrafos
+    assert parrafo.texto == "Uno debe ir. El sistema deberá autenticar al usuario. Tres puede salir."
+    assert parrafo.fragmento(0, 12) == ("RF-02 Uno debe ir.", None, None)
+    assert parrafo.fragmento(13, 53)[0] == "El sistema deberá autenti-\ncar al usuario."
+    assert parrafo.fragmento(54, len(parrafo.texto))[0] == "Tres\npuede salir."

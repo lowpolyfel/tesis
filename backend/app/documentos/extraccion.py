@@ -131,8 +131,7 @@ def leer(nombre: str, contenido: bytes, max_bytes: int, tipo_contenido: str | No
     """Valida tamaño y tipo, y extrae el texto por página."""
     if len(contenido) > max_bytes:
         raise DemasiadoGrande(f"El archivo excede el máximo de {max_bytes / (1024 * 1024):g} MB (DOCUMENTO_MAX_MB).")
+    tipo = tipo_de(nombre, contenido, tipo_contenido)  # primero el tipo: un .docx vacío es 415, no 422
     if not contenido:
         raise SinTexto("El archivo está vacío.")
-    if tipo_de(nombre, contenido, tipo_contenido) == "pdf":
-        return extraer_pdf(contenido)
-    return extraer_txt(contenido)
+    return extraer_pdf(contenido) if tipo == "pdf" else extraer_txt(contenido)

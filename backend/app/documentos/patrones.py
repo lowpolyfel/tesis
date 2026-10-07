@@ -51,6 +51,8 @@ _ABREVIATURAS = {"p", "pp", "ej", "pag", "num", "no", "art", "fig", "sr", "sra",
                  "ing", "mtro", "mtra", "aprox", "max", "min", "vs", "cf", "av", "tel", "ext", "depto", "dpto",
                  "cia", "obs", "op", "cap", "sec", "vol", "ed"}
 _RARO = re.compile(r"[\ufffd\ue000-\uf8ff]")
+_NUMERO = re.compile(r"\d+(?:\.\d+)*")  # 5, 2026, 2.1, 3.2.1
+_COLA = 80  # caracteres que bastan para ver el final de un párrafo o la palabra antes de un punto
 
 
 def detectar_marca(linea: str) -> tuple[str | None, str | None, str]:
@@ -69,15 +71,16 @@ def tiene_obligacion(texto: str) -> bool:
 
 def empieza_con_verbo(texto: str) -> bool:
     """La oración empieza (tras conectores como «además» o «se») con el verbo de obligación."""
-    for palabra in re.findall(r"[a-z]+", normalizar(texto)[:80]):
+    for palabra in re.findall(r"[a-z]+", normalizar(texto[:120])[:80]):
         if palabra not in _ANTES_DEL_VERBO:
             return palabra in _VERBOS_INICIALES
     return False
 
 
 def termina_oracion(texto: str) -> bool:
-    """Cierra con . ! ? … : o ; (también antes de comillas o paréntesis de cierre)."""
-    return bool(_TERMINA_ORACION.search(texto.rstrip()))
+    """Cierra con . ! ? … : o ; (también antes de comillas o paréntesis de cierre).
+    Solo mira la cola: se llama con párrafos que pueden ser muy largos."""
+    return bool(_TERMINA_ORACION.search(texto[-_COLA:].rstrip()))
 
 
 def tiene_letras(texto: str) -> bool:
@@ -89,27 +92,46 @@ def tiene_caracteres_raros(texto: str) -> bool:
     return bool(_RARO.search(texto))
 
 
-def _es_abreviatura(previo: str) -> bool:
-    token = (previo.split() or [""])[-1].lstrip("([«\"'¿¡")
+def _es_abreviatura(previo: str, siguiente: str, completo: bool) -> bool:
+    """El punto al final de `previo` no cierra la oración. `previo` es solo la cola
+    del texto (acota el costo); `completo` dice si empieza donde empieza la oración."""
+    tokens = previo.split()
+    token = (tokens or [""])[-1].lstrip("([«\"'¿¡")
     clave = normalizar(token)
-    return (clave in _ABREVIATURAS or "." in clave or clave.isdigit()
-            or (len(clave) == 1 and clave.isalpha()))
+    if _NUMERO.fullmatch(clave):
+        # «1. Ingresar» o «Los pasos son: 1. Ingresar» numeran; «… de 5. El sistema» cierra la oración
+        return (len(tokens) == 1 and completo) or (len(tokens) > 1 and tokens[-2].endswith((":", ";")))
+    if clave == "no":  # «No. 5» es «número»; «… si acepta o no. El sistema» cierra la oración
+        return siguiente.isdigit()
+    return clave in _ABREVIATURAS or "." in clave or (len(clave) == 1 and clave.isalpha())
 
 
-def dividir_oraciones(texto: str) -> list[str]:
-    """Parte en oraciones por . ! ? seguidos de mayúscula, dígito o signo de apertura.
-    No parte tras abreviaturas («p. ej.», «Sr.»), iniciales, siglas con punto ni números
-    («1. Ingresar»): es preferible una oración larga a dos mitades sin sentido."""
-    oraciones, inicio = [], 0
+def posiciones_de_oraciones(texto: str) -> list[tuple[int, int]]:
+    """(inicio, fin) de cada oración en `texto`, sin los espacios de los bordes.
+    Parte por . ! ? seguidos de mayúscula, dígito o signo de apertura. No parte tras
+    abreviaturas («p. ej.», «Sr.»), iniciales, siglas con punto ni números que
+    numeran («1. Ingresar»): es preferible una oración larga a dos mitades sin sentido."""
+    cortes, inicio = [], 0
     for m in _FIN_ORACION.finditer(texto):
         siguiente = texto[m.end():m.end() + 1]
         if not siguiente or not (siguiente.isupper() or siguiente.isdigit() or siguiente in "¿¡\"«“("):
             continue
-        if texto[m.start()] == "." and _es_abreviatura(texto[inicio:m.start()]):
+        desde = max(inicio, m.start() - _COLA)
+        if texto[m.start()] == "." and _es_abreviatura(texto[desde:m.start()], siguiente, desde == inicio):
             continue
-        oraciones.append(texto[inicio:m.end()].strip())
+        cortes.append((inicio, m.end()))
         inicio = m.end()
-    resto = texto[inicio:].strip()
-    if resto:
-        oraciones.append(resto)
-    return oraciones
+    cortes.append((inicio, len(texto)))
+    salida = []
+    for a, b in cortes:
+        while a < b and texto[a].isspace():
+            a += 1
+        while b > a and texto[b - 1].isspace():
+            b -= 1
+        if a < b:
+            salida.append((a, b))
+    return salida
+
+
+def dividir_oraciones(texto: str) -> list[str]:
+    return [texto[a:b] for a, b in posiciones_de_oraciones(texto)]
