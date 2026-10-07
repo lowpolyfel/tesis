@@ -10,10 +10,10 @@ no escriben nada. Se comparan dos lados con las mismas reglas:
 Detección por término (`deteccion`): lo esperado es todo lo que el ground truth
 marca (términos ambiguos, vaguedad y regionales, sin repetir). Un término del
 sistema cuenta como detectado si tuvo interpretaciones, o si los filtros lo
-marcaron como vaguedad o regional y el ground truth lo lista así. Un término de la
-línea base cuenta si lo devolvió. `deteccion_ambiguedad` repite la cuenta solo con
-términos ambiguos (el núcleo): ahí la línea base no queda en desventaja por no
-tener catálogos.
+marcaron como vaguedad o regional y el ground truth lo lista en `vaguedad` o en
+`regionales`. Un término de la línea base cuenta si lo devolvió.
+`deteccion_ambiguedad` repite la cuenta solo con términos ambiguos (el núcleo):
+ahí la línea base no queda en desventaja por no tener catálogos.
 """
 from __future__ import annotations
 
@@ -62,13 +62,13 @@ def esperados(gt: RequisitoGT) -> list[dict]:
     return salida
 
 
-# ---------------------------------------------------------------- lectura de la traza
+# ---------------------------------------------------------------- lo que el sistema propuso, desde la traza
 
 def _ultimo(mensajes, tipo: TipoMensaje):
     return next((m for m in reversed(mensajes) if m.tipo == tipo), None)
 
 
-def lectura_sistema(traza: Traza) -> dict:
+def resultado_sistema(traza: Traza) -> dict:
     """Lo que el sistema propuso para un requisito, leído de su traza::
 
         {estado, listo, error, ambiguo, debate, resueltos_por_lel: [str],
@@ -183,28 +183,29 @@ def _debate_gt(debate: bool, ambiguo: bool) -> str:
     return "faltante" if ambiguo else "sin_debate_correcto"
 
 
-def lado_sistema(lectura: dict | None, gt: RequisitoGT, lemas: Lematizador) -> dict:
-    """Forma `formas.LadoSistema`."""
-    if lectura is None or not lectura["listo"]:
-        return {"listo": False, "estado": lectura["estado"] if lectura else None, "error": None, "ambiguo": None,
-                "correcto": None, "debate": bool(lectura and lectura["debate"]), "debate_gt": None, "terminos": [],
+def lado_sistema(rs: dict | None, gt: RequisitoGT, lemas: Lematizador) -> dict:
+    """Forma `formas.LadoSistema`. `rs` es `resultado_sistema(traza)`."""
+    if rs is None or not rs["listo"]:
+        return {"listo": False, "estado": rs["estado"] if rs else None, "error": None, "ambiguo": None,
+                "correcto": None, "debate": bool(rs and rs["debate"]), "debate_gt": None, "terminos": [],
                 "faltantes": [], "deteccion": dict(_CERO), "deteccion_ambiguedad": dict(_CERO)}
     terminos = []
-    for t in lectura["terminos"]:
+    for t in rs["terminos"]:
         motivo = None
         if t["con_interpretaciones"]:
             motivo = "interpretaciones"
-        elif t["origen"] == "vaguedad" and _listado(t["termino"], gt.vaguedad, lemas):
-            motivo = "vaguedad"
-        elif t["origen"] == "regional" and _listado(t["termino"], gt.regionales, lemas):
-            motivo = "regional"
+        elif t["origen"] in ("vaguedad", "regional") and _listado(t["termino"], gt.vaguedad + gt.regionales, lemas):
+            # Lo marcó un catálogo y el ground truth lo lista; como con el tipo de ambigüedad, la clase
+            # (vaguedad o regional) no decide si se detectó: «ahorita» está en el catálogo de vaguedad
+            # y puede venir en `regionales` del ground truth
+            motivo = t["origen"]
         terminos.append({"termino": t["termino"], "origen": t["origen"], "detectado": motivo is not None,
                          "motivo_deteccion": motivo, "tipo_ambiguedad": t["tipo_ambiguedad"],
                          "interpretacion": t["interpretacion"], "via": t["via"], "similitud": t["similitud"]})
-    ambiguo = lectura["ambiguo"]
-    return {"listo": True, "estado": lectura["estado"], "error": lectura["error"], "ambiguo": ambiguo,
-            "correcto": None if ambiguo is None else ambiguo == gt.ambiguo, "debate": lectura["debate"],
-            "debate_gt": _debate_gt(lectura["debate"], gt.ambiguo), **_evaluar_terminos(terminos, gt, lemas)}
+    ambiguo = rs["ambiguo"]
+    return {"listo": True, "estado": rs["estado"], "error": rs["error"], "ambiguo": ambiguo,
+            "correcto": None if ambiguo is None else ambiguo == gt.ambiguo, "debate": rs["debate"],
+            "debate_gt": _debate_gt(rs["debate"], gt.ambiguo), **_evaluar_terminos(terminos, gt, lemas)}
 
 
 def lado_linea_base(entrada: EntradaLineaBase | None, gt: RequisitoGT, lemas: Lematizador) -> dict:
@@ -271,16 +272,22 @@ def resumen_sistema(filas: list[tuple[dict, RequisitoGT]]) -> dict:
 
 # ---------------------------------------------------------------- etiquetas para la calibración
 
-def etiquetas_de(req_id: str, lectura: dict, gt: RequisitoGT, lemas: Lematizador) -> list[dict]:
+def etiquetas_de(req_id: str, rs: dict, gt: RequisitoGT, lemas: Lematizador) -> list[dict]:
     """Contrato con la calibración (ADR 0013): una etiqueta por candidato del Clasificador y
     otra por término ambiguo del ground truth que no se emparejó con ninguno.
 
     El candidato lleva el término como lo escribió el sistema (así la calibración lo
     encuentra entre sus similitudes) y es ambiguo si se emparejó con un término
-    ambiguo del ground truth, con el tipo del ground truth."""
-    candidatos = [t["termino"] for t in lectura["terminos"] if t["clasificado"]]
-    pares = {p.izquierda: p.derecha for p in emparejar(candidatos, [t.termino for t in gt.terminos], lemas)}
-    salida = [{"req_id": req_id, "termino": c, "ambiguo": i in pares,
+    ambiguo del ground truth, con el tipo del ground truth. Dentro de un mismo
+    criterio de emparejamiento, los candidatos con interpretaciones van primero: son
+    los que tienen similitud, y un unívoco («historial») no debe quitarle el término
+    del ground truth («historial de compras de su cliente») al que sí se debatió
+    («su cliente»)."""
+    candidatos = [t for t in rs["terminos"] if t["clasificado"]]
+    orden = sorted(range(len(candidatos)), key=lambda i: not candidatos[i]["con_interpretaciones"])
+    pares = {orden[p.izquierda]: p.derecha
+             for p in emparejar([candidatos[i]["termino"] for i in orden], [t.termino for t in gt.terminos], lemas)}
+    salida = [{"req_id": req_id, "termino": c["termino"], "ambiguo": i in pares,
                "tipo_ambiguedad": gt.terminos[pares[i]].tipo_ambiguedad.value if i in pares else None}
               for i, c in enumerate(candidatos)]
     usados = set(pares.values())
@@ -296,12 +303,14 @@ def etiquetas(ev: Evaluacion, trazas: dict[str, Traza], lemas: Lematizador) -> l
     for it in ev.items:
         t = trazas.get(it.req_id)
         if t is not None and t.estado in LISTOS:
-            salida += etiquetas_de(it.req_id, lectura_sistema(t), gt[it.id_corpus], lemas)
+            salida += etiquetas_de(it.req_id, resultado_sistema(t), gt[it.id_corpus], lemas)
     return salida
 
 
 def completa(ev: Evaluacion, trazas: dict[str, Traza]) -> bool:
-    return all((t := trazas.get(it.req_id)) is not None and t.estado in LISTOS and it.id_corpus in ev.linea_base
+    """Todos los requisitos listos en los dos lados. Una traza que no existe no va a llegar (las
+    trazas se crean antes que el documento): no detiene el cierre, y el informe la avisa."""
+    return all(((t := trazas.get(it.req_id)) is None or t.estado in LISTOS) and it.id_corpus in ev.linea_base
                for it in ev.items)
 
 
@@ -313,7 +322,7 @@ def progreso(ev: Evaluacion, estados: dict[str, Estado]) -> dict:
             "listos_linea_base": sum(it.id_corpus in ev.linea_base for it in ev.items)}
 
 
-def _avisos(ev: Evaluacion, prog: dict, filas: list[dict], lecturas: dict[str, dict], faltan_trazas: list[str], *,
+def _avisos(ev: Evaluacion, prog: dict, filas: list[dict], resultados: dict[str, dict], faltan_trazas: list[str], *,
             huella_actual: str | None, con_lemas: bool) -> list[str]:
     avisos = []
     if ev.ejemplo:
@@ -330,15 +339,25 @@ def _avisos(ev: Evaluacion, prog: dict, filas: list[dict], lecturas: dict[str, d
     elif huella_actual != ev.huella:
         avisos.append(f"el corpus «{ev.corpus}» cambió desde que se creó la evaluación; las métricas usan el ground "
                       "truth guardado al crearla. Para medir contra el nuevo, crea otra evaluación")
-    con_lel = [req_id for req_id, lect in lecturas.items() if lect["resueltos_por_lel"]]
+    con_lel = [req_id for req_id, rs in resultados.items() if rs["resueltos_por_lel"]]
     if con_lel:
         avisos.append(f"hubo términos resueltos por el LEL del proyecto de evaluación en {', '.join(con_lel)}: alguien "
                       "validó requisitos durante la corrida y la memoria afectó a los siguientes")
-    for lado, nombre in (("sistema", "del sistema"), ("linea_base", "de la línea base")):
-        errores = [f["id_corpus"] for f in filas if f[lado]["error"] is not None]
-        if errores:
-            avisos.append(f"{len(errores)} requisito(s) {nombre} terminaron en error ({', '.join(errores)}): cuentan "
-                          "como «sin decisión» y sus términos como no detectados")
+    con_error = [f for f in filas if f["sistema"]["error"] is not None]
+    antes = [f["id_corpus"] for f in con_error if f["sistema"]["ambiguo"] is None]
+    despues = [f["id_corpus"] for f in con_error if f["sistema"]["ambiguo"] is not None]
+    if antes:
+        avisos.append(f"{len(antes)} requisito(s) del sistema fallaron antes de la clasificación ({', '.join(antes)}): "
+                      "cuentan como «sin decisión», sin debate, y de sus términos solo cuenta lo que ya habían marcado "
+                      "los filtros")
+    if despues:
+        avisos.append(f"{len(despues)} requisito(s) del sistema fallaron después de la clasificación "
+                      f"({', '.join(despues)}): cuenta lo que propuso el Clasificador; los términos que no terminaron el "
+                      "debate quedan sin vía")
+    errores = [f["id_corpus"] for f in filas if f["linea_base"]["error"] is not None]
+    if errores:
+        avisos.append(f"{len(errores)} requisito(s) de la línea base terminaron en error ({', '.join(errores)}): cuentan "
+                      "como «sin decisión» y sus términos como no detectados")
     if not con_lemas:
         avisos.append("sin analizador de spaCy: el emparejamiento por lema está desactivado")
     return avisos
@@ -349,17 +368,17 @@ def informe(ev: Evaluacion, trazas: dict[str, Traza], lemas: Lematizador, *, hue
     """Forma `formas.InformeEvaluacion`. `huella_actual` es la del corpus en disco (`None`
     si ya no existe o no es válido)."""
     gt_por_id = {g.id: g for g in ev.ground_truth}
-    filas, lecturas, faltan = [], {}, []
+    filas, resultados, faltan = [], {}, []
     for it in ev.items:
         gt = gt_por_id[it.id_corpus]
         t = trazas.get(it.req_id)
         if t is None:
             faltan.append(it.req_id)
-        lectura = lectura_sistema(t) if t is not None else None
-        if lectura is not None:
-            lecturas[it.req_id] = lectura
+        rs = resultado_sistema(t) if t is not None else None
+        if rs is not None:
+            resultados[it.req_id] = rs
         filas.append({"id_corpus": it.id_corpus, "req_id": it.req_id, "texto": t.texto if t is not None else None,
-                      "ground_truth": gt.model_dump(mode="json"), "sistema": lado_sistema(lectura, gt, lemas),
+                      "ground_truth": gt.model_dump(mode="json"), "sistema": lado_sistema(rs, gt, lemas),
                       "linea_base": lado_linea_base(ev.linea_base.get(it.id_corpus), gt, lemas)})
     gts = [gt_por_id[it.id_corpus] for it in ev.items]
     prog = progreso(ev, {req_id: t.estado for req_id, t in trazas.items()})
@@ -371,6 +390,6 @@ def informe(ev: Evaluacion, trazas: dict[str, Traza], lemas: Lematizador, *, hue
                     "linea_base": resumen_lado([(f["linea_base"], g) for f, g in zip(filas, gts)])},
         "requisitos": filas,
         "etiquetas": [e.model_dump(mode="json") for e in ev.etiquetas],
-        "avisos": _avisos(ev, prog, filas, lecturas, faltan, huella_actual=huella_actual, con_lemas=con_lemas),
+        "avisos": _avisos(ev, prog, filas, resultados, faltan, huella_actual=huella_actual, con_lemas=con_lemas),
         "nota": NOTA,
     }

@@ -29,11 +29,15 @@ sistema con los del ground truth y qué se cuenta como acierto.
    `autoria`, `validado_por`). El cargador (`app/evaluacion/corpus.py`) valida cada
    línea con Pydantic (`extra="forbid"`), que los ids coincidan entre los dos
    archivos y que el ground truth sea coherente: `ambiguo` si y solo si hay
-   términos, al menos dos interpretaciones válidas, la esperada entre las válidas,
-   sin términos repetidos. Reporta **todos** los errores juntos, con archivo, línea
-   e id. Avisa (sin rechazar) si un término no aparece tal cual en el texto o si no
-   hay casos sin ambigüedad. La vaguedad no es ambigüedad (CONTEXTO §6): va en su
-   propia lista y un requisito solo vago tiene `ambiguo: false`.
+   términos, al menos dos interpretaciones válidas distintas, la esperada entre las
+   válidas, sin términos repetidos y ningún término a la vez en `terminos` y en
+   `vaguedad`. Reporta **todos** los errores juntos, con archivo, línea e id.
+   Avisa (sin rechazar) si un término no aparece tal cual en el texto o si no hay
+   casos sin ambigüedad. Acepta UTF-8 con o sin BOM. La vaguedad no es ambigüedad
+   (CONTEXTO §6): va en su propia lista y un requisito solo vago tiene
+   `ambiguo: false`. Las interpretaciones distintas y la separación de la vaguedad
+   se revisan en el cargador y no en el modelo del ground truth, para que una regla
+   nueva no invalide las copias ya guardadas en evaluaciones anteriores.
 2. **Corpus de ejemplo** en `data/corpus/ejemplo/` (7 requisitos: sin ambigüedad,
    léxica *sesión*, regional *jalar* con vaguedad *ahorita*, anafórica *su
    historial*, alcance *todos … no* y vaguedad sola *rápido*). Está marcado como
@@ -74,39 +78,59 @@ sistema con los del ground truth y qué se cuenta como acierto.
    está en *usuario*); (c) **lema**: el mismo conjunto, no vacío, de lemas de
    contenido según spaCy (*sesiones* y *sesión*). Primero se toman todos los pares
    exactos, luego los de contención y al final los de lema, en orden de aparición.
-   Cada par informa su criterio.
+   Cada par informa su criterio. En las etiquetas (punto 8), dentro de cada
+   criterio van primero los candidatos con interpretaciones.
 7. **Métricas** (`GET /evaluaciones/{id}`), calculadas al vuelo, por requisito y en
    resumen para los dos lados:
    - `deteccion` por término (vp, fp, fn, precisión, exhaustividad, F1; `null` con
      denominador cero). Lo esperado es todo lo que marca el ground truth (términos
      ambiguos, vaguedad y regionales, sin repetir). Un término del sistema cuenta
      como detectado si tuvo interpretaciones, o si los filtros lo marcaron como
-     vaguedad o regional **y** el ground truth lo lista así; uno de la línea base,
-     si lo devolvió.
+     vaguedad o regional **y** el ground truth lo lista en `vaguedad` o en
+     `regionales`; uno de la línea base, si lo devolvió. Como con el tipo de
+     ambigüedad, la clase no decide la detección: *ahorita* está en el catálogo de
+     vaguedad y el ground truth puede listarlo como regional (CONTEXTO §6 lo
+     clasifica como mexicanismo); la fila muestra las dos clases.
    - `deteccion_ambiguedad`: lo mismo solo con términos ambiguos (los del
      Clasificador con interpretaciones; todos los de la línea base). Es la
      comparación del núcleo.
    - `requisito`: ambiguo sí/no contra el ground truth (vp, fp, vn, fn,
      `sin_decision`, exactitud). Para el sistema, ambiguo = algún término con
-     interpretaciones (la opinión del Clasificador, no el debate).
+     interpretaciones (la opinión del Clasificador, no el debate). La exactitud
+     divide entre todos los requisitos listos de ese lado: un `sin_decision`
+     cuenta como fallo.
    - `tipo`: exactitud del tipo de ambigüedad en los pares emparejados con un
      término ambiguo del ground truth.
    - Solo del sistema: `debates` por requisito (`en_debate` contra `ambiguo`):
      activados, necesarios, justificados, de más y faltantes; y `vias` por término
      con interpretaciones (aceptado directo, consenso, arbitraje, sin vía).
-   - Un requisito en `error` (de cualquier lado) cuenta como `sin_decision` y sus
-     términos como no detectados, salvo lo que ya hubieran marcado los filtros.
+   - Errores. En la línea base, una falla cuenta como `sin_decision` y sin
+     términos detectados. En el sistema depende de dónde falló: **antes** de la
+     clasificación cuenta como `sin_decision`, sin debate (si el ground truth es
+     ambiguo es un debate faltante) y de sus términos solo cuenta lo que ya habían
+     marcado los filtros; **después** de la clasificación cuenta lo que propuso el
+     Clasificador (ambiguo sí/no, detección y tipo), y los términos que no
+     terminaron el debate quedan `sin_via`. Los dos casos se cuentan en `errores`
+     y el informe los avisa por separado.
    - La interpretación elegida **no se califica**: se muestra junto a la esperada
      del ground truth para revisarla a mano.
 8. **Etiquetas para la calibración** (contrato de ADR 0013): una por candidato del
    Clasificador, con el término **como lo escribió el sistema** (así la
    calibración lo encuentra entre sus similitudes), ambiguo si se emparejó con un
    término ambiguo del ground truth y con su tipo; más una por término ambiguo del
-   ground truth que no se emparejó con ningún candidato. La vaguedad y los
-   regionales no ambiguos no generan etiqueta. Solo se escriben para requisitos
-   que el sistema ya terminó. Se recalculan bajo un candado al terminar cada
-   trabajo de la evaluación y en cada `GET /evaluaciones/{id}`, que escribe el
-   documento solo si algo cambió. Una evaluación `terminada` no vuelve atrás.
+   ground truth que no se emparejó con ningún candidato. Dentro de cada criterio de
+   emparejamiento se prefieren los candidatos con interpretaciones, que son los que
+   tienen similitud: un unívoco (*historial*) no le quita el término del ground
+   truth (*historial de compras de su cliente*) al que se debatió (*su cliente*);
+   si el unívoco coincide exacto, sí se lo queda (el Clasificador vio el término y
+   no le encontró ambigüedad). La vaguedad y los regionales no ambiguos no
+   generan etiqueta. Solo se escriben para requisitos que el sistema ya terminó.
+   Se recalculan bajo un candado al terminar cada trabajo de la evaluación y en
+   cada `GET /evaluaciones/{id}`, que escribe el documento solo si algo cambió.
+   La evaluación termina cuando los dos lados están listos; una traza que no
+   existe (las trazas se crean antes que el documento, así que no va a llegar) no
+   detiene el cierre y el informe la avisa. Una evaluación `terminada` no vuelve
+   atrás.
 9. **Rutas:** `POST /evaluaciones` (404 corpus inexistente, 422 corpus inválido con
    la lista de errores, 503 sin cliente del agente único), `GET /evaluaciones`
    (la más reciente primero, con progreso), `GET /evaluaciones/{id}`,
@@ -157,9 +181,9 @@ sistema con los del ground truth y qué se cuenta como acierto.
   de como aparece en el texto (*jalar* cuando el texto dice *jale*) lo deja sin
   pareja: el lematizador de `es_core_news_sm` falla justo con las formas
   regionales (ADR 0003). El cargador lo avisa. La contención puede emparejar un
-  término con una lectura distinta (*usuarios* léxico con *todos los usuarios* de
-  alcance); el tipo lo deja ver. El emparejamiento es voraz, no un emparejamiento
-  máximo.
+  término con otro de distinta naturaleza (*usuarios* léxico con *todos los
+  usuarios* de alcance); el tipo lo deja ver. El emparejamiento es voraz, no un
+  emparejamiento máximo.
 - **La línea base no tiene catálogos.** En `deteccion` el sistema tiene ventaja por
   diseño (vaguedad y regionales); la comparación del núcleo es
   `deteccion_ambiguedad`. Una vaguedad o un regional que el ground truth no lista
@@ -178,9 +202,15 @@ sistema con los del ground truth y qué se cuenta como acierto.
   mientras corre, el LEL del proyecto afecta a los siguientes; la respuesta lo
   avisa cuando hay términos `resuelto_por_lel`. Un reproceso crea otra traza que la
   evaluación no sigue.
-- **Reinicio.** La cola vive en memoria: tras un reinicio hay que llamar
-  `evaluacion.recuperar(servicio)` después de `servicio.iniciar()` para volver a
-  encolar la línea base que faltaba y el cierre.
+- **Reinicio.** La cola vive en memoria: tras un reinicio se pierde la línea base
+  que faltaba. `evaluacion.recuperar(servicio)`, llamado después de
+  `servicio.iniciar()`, la vuelve a encolar con el cierre; **todavía no lo llama el
+  arranque de la API** (`app/api/main.py`). Mientras tanto, `GET
+  /evaluaciones/{id}` lo suple: si falta línea base y ningún trabajo de esa
+  evaluación está en la cola, la vuelve a encolar. Así una evaluación a medias solo
+  se retoma cuando alguien la abre, y la consulta, además de escribir el documento,
+  puede encolar trabajo (que no repite llamadas: lo que ya tiene resultado se
+  salta).
 - **Cola.** La línea base va en la prioridad `analisis`: un corpus grande retrasa
   las comparaciones de otros proyectos, y requisitos nuevos de otros proyectos se
   adelantan a la línea base.

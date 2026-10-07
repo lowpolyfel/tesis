@@ -6,6 +6,8 @@
    después de los grafos, con el mismo texto que recibió el sistema.
 3. Un último trabajo cierra la evaluación. Las etiquetas para la calibración y el
    estado se recalculan al terminar cada trabajo y al consultar.
+4. La cola vive en memoria: tras un reinicio, `recuperar` (al arrancar) o la primera
+   consulta del informe vuelven a encolar la línea base que faltaba.
 
 No hace falta validación humana: se evalúa lo que el sistema propone al llegar a
 `pendiente_validacion` (o a un estado terminal). El ground truth se copia en el
@@ -104,6 +106,25 @@ def recuperar(srv) -> list[str]:
     return ids
 
 
+def _en_cola(srv, evaluacion_id: str) -> bool:
+    """Algún trabajo de la evaluación espera o corre en la cola de este proceso."""
+    estado = srv.cola.estado()
+    trabajos = [*estado["pendientes"], *([estado["en_proceso"]] if estado["en_proceso"] else [])]
+    return any(t["clave"] == evaluacion_id or t["clave"].startswith(f"{evaluacion_id}:") for t in trabajos)
+
+
+def reanudar_si_falta(srv, ev: Evaluacion) -> bool:
+    """La cola vive en memoria: si el proceso se reinició, la línea base pendiente se perdió.
+    Si falta alguna y ningún trabajo de la evaluación está en la cola, la vuelve a encolar.
+    Un duplicado no repite llamadas: `correr_linea_base` se salta lo que ya tiene resultado."""
+    if ev.estado == "terminada" or all(it.id_corpus in ev.linea_base for it in ev.items):
+        return False
+    if _en_cola(srv, ev.evaluacion_id):
+        return False
+    encolar(srv, ev)
+    return True
+
+
 # ---------------------------------------------------------------- trabajos
 
 def sincronizar(srv, evaluacion_id: str, cambio: Callable[[Evaluacion], None] | None = None
@@ -150,11 +171,13 @@ def correr_linea_base(srv, evaluacion_id: str, id_corpus: str) -> None:
 # ---------------------------------------------------------------- consultas
 
 def informe(srv, evaluacion_id: str) -> dict | None:
-    """Métricas calculadas al vuelo (forma `formas.InformeEvaluacion`)."""
+    """Métricas calculadas al vuelo (forma `formas.InformeEvaluacion`). Si la evaluación quedó
+    a medias por un reinicio, vuelve a encolar lo que falta (`reanudar_si_falta`)."""
     sinc = sincronizar(srv, evaluacion_id)
     if sinc is None:
         return None
     ev, trazas = sinc
+    reanudar_si_falta(srv, ev)
     try:
         actual = cargar_corpus(raiz_corpus(srv), ev.corpus).huella
     except (CorpusNoEncontrado, CorpusInvalido):

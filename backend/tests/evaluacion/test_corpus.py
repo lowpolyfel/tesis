@@ -161,3 +161,23 @@ def test_la_huella_cambia_si_cambia_el_ground_truth(tmp_path):
     (d / "ground_truth.jsonl").unlink()
     assert huella(d) is None
 
+
+
+def test_acepta_archivos_con_bom(tmp_path):
+    """El Bloc de notas de Windows guarda UTF-8 con BOM: el contenido es el mismo."""
+    d = escribir_corpus(tmp_path, "c", descripcion={"descripcion": "con BOM"})
+    for nombre in ("requisitos.jsonl", "ground_truth.jsonl", "corpus.json"):
+        (d / nombre).write_bytes(b"\xef\xbb\xbf" + (d / nombre).read_bytes())
+    c = cargar_corpus(tmp_path, "c")
+    assert [it.id for it in c.items] == ["A", "B", "C", "D"] and c.descripcion == "con BOM"
+
+
+def test_un_termino_ambiguo_tiene_dos_interpretaciones_distintas_y_no_es_vago(tmp_path):
+    escribir_corpus(tmp_path, "c", [{"id": "A", "texto": "El sistema debe responder rápido."},
+                                    {"id": "B", "texto": "El sistema debe registrar la sesión."}, REQUISITOS[3]],
+                    [gt("A", True, [termino("Rápido")], vaguedad=["rápido"]),
+                     gt("B", True, [termino(validas=["Periodo de uso", "periodo de uso "])]), GROUND_TRUTH[3]])
+    assert errores_de(tmp_path) == [
+        "ground_truth.jsonl, línea 1 (id A): «Rápido» está en terminos y en vaguedad; la vaguedad no es ambigüedad "
+        "(CONTEXTO §6): déjalo en una sola lista",
+        "ground_truth.jsonl, línea 2 (id B): «sesión» necesita al menos dos interpretaciones_validas distintas"]

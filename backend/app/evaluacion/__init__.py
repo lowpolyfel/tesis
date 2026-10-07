@@ -26,6 +26,7 @@ from .ejecucion import (  # noqa: F401
     listar_corpus,
     obtener,
     raiz_corpus,
+    reanudar_si_falta,
     recuperar,
     sincronizar,
     solicitar,

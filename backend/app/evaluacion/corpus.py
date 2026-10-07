@@ -23,6 +23,8 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from app.models import TipoAmbiguedad
+from app.nlp import normalizar
+
 from .emparejamiento import aparece_en, palabras
 
 ARCHIVO_REQUISITOS = "requisitos.jsonl"
@@ -154,7 +156,7 @@ def _leer_jsonl(ruta: Path, modelo: type[Modelo], errores: list[str]) -> tuple[l
         errores.append(f"falta el archivo {ruta.name}")
         return None
     try:
-        lineas = ruta.read_text(encoding="utf-8").splitlines()
+        lineas = ruta.read_text(encoding="utf-8-sig").splitlines()
     except UnicodeDecodeError:
         errores.append(f"{ruta.name} no está en UTF-8")
         return None
@@ -177,6 +179,22 @@ def _leer_jsonl(ruta: Path, modelo: type[Modelo], errores: list[str]) -> tuple[l
     return filas, ids
 
 
+def _reglas_de_interpretacion(filas: list[tuple[int, RequisitoGT]], errores: list[str]) -> None:
+    """Un término ambiguo tiene al menos dos interpretaciones distintas, y no puede estar a la
+    vez en `vaguedad` (CONTEXTO §6): una expresión vaga no tiene dos interpretaciones
+    discretas. Se revisa aquí y no en el modelo, para no invalidar las copias del ground
+    truth ya guardadas en evaluaciones."""
+    for n, g in filas:
+        lugar = f"{ARCHIVO_GROUND_TRUTH}, línea {n} (id {g.id})"
+        vagos = {palabras(v) for v in g.vaguedad}
+        for t in g.terminos:
+            if len({normalizar(i) for i in t.interpretaciones_validas}) < 2:
+                errores.append(f"{lugar}: «{t.termino}» necesita al menos dos interpretaciones_validas distintas")
+            if palabras(t.termino) in vagos:
+                errores.append(f"{lugar}: «{t.termino}» está en terminos y en vaguedad; la vaguedad no es ambigüedad "
+                               "(CONTEXTO §6): déjalo en una sola lista")
+
+
 def _repetidos(filas: list[tuple[int, Any]], archivo: str, errores: list[str]) -> dict[str, Any]:
     por_id: dict[str, tuple[int, Any]] = {}
     for n, x in filas:
@@ -192,7 +210,7 @@ def _descripcion(directorio: Path, errores: list[str]) -> DescripcionCorpus:
     if not ruta.is_file():
         return DescripcionCorpus()
     try:
-        return DescripcionCorpus.model_validate(json.loads(ruta.read_text(encoding="utf-8")))
+        return DescripcionCorpus.model_validate(json.loads(ruta.read_text(encoding="utf-8-sig")))
     except (json.JSONDecodeError, UnicodeDecodeError) as e:
         errores.append(f"{ARCHIVO_DESCRIPCION}: no es JSON válido ({e})")
     except ValidationError as e:
@@ -247,6 +265,8 @@ def cargar_corpus(raiz: Path, nombre: str) -> Corpus:
     leidos_gt = _leer_jsonl(d / ARCHIVO_GROUND_TRUTH, RequisitoGT, errores)
     requisitos = _repetidos(leidos_req[0], ARCHIVO_REQUISITOS, errores) if leidos_req else {}
     gt = _repetidos(leidos_gt[0], ARCHIVO_GROUND_TRUTH, errores) if leidos_gt else {}
+    if leidos_gt:
+        _reglas_de_interpretacion(leidos_gt[0], errores)
 
     if leidos_req and leidos_gt:
         ids_req, ids_gt = set(leidos_req[1]), set(leidos_gt[1])

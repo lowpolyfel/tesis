@@ -63,9 +63,11 @@ lematizador falla con las formas regionales.
 El cargador (`app/evaluacion/corpus.py`) reporta todos los errores juntos, con
 archivo, línea e id: JSON inválido, campos que faltan o sobran, ids repetidos,
 ids que no coinciden entre los dos archivos, `ambiguo` incoherente con
-`terminos`, menos de dos interpretaciones válidas, una esperada que no está entre
-las válidas y términos repetidos. Un corpus inválido aparece en `GET /corpus`
-con sus errores y no se puede evaluar.
+`terminos`, menos de dos interpretaciones válidas distintas, una esperada que no
+está entre las válidas, términos repetidos y un término que está a la vez en
+`terminos` y en `vaguedad` (la vaguedad no es ambigüedad). Un corpus inválido
+aparece en `GET /corpus` con sus errores y no se puede evaluar. Los archivos van
+en UTF-8, con o sin BOM.
 
 También avisa, sin rechazar, si un término listado no aparece tal cual en el
 texto o si no hay requisitos sin ambigüedad.

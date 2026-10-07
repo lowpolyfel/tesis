@@ -127,3 +127,31 @@ def test_recuperar_tras_reinicio(tmp_path, analizador):
         assert evaluacion.recuperar(reiniciado) == []  # terminada: no se vuelve a encolar
     finally:
         reiniciado.detener()
+
+
+def test_tras_un_reinicio_el_informe_vuelve_a_encolar_la_linea_base(tmp_path, analizador):
+    """Sin `evaluacion.recuperar` al arrancar, la línea base perdida en la cola la vuelve a
+    encolar la primera consulta del informe, una sola vez."""
+    srv, _, _ = montar(tmp_path, analizador, guiones(), corpus_dir=str(tmp_path / "corpus"))
+    escribir_corpus(tmp_path / "corpus", "escenario")
+    ev = evaluacion.crear(srv, "escenario")  # el proceso se cae antes de encolar la línea base
+
+    reiniciado, llm, _ = montar(tmp_path, analizador, guiones(), corpus_dir=str(tmp_path / "corpus"))
+    reiniciado.recuperar()  # lo que hace `Servicio.iniciar`: retoma los grafos, no la línea base
+    c = cliente_de(reiniciado)
+    try:
+        for _ in range(2):
+            r = c.get(f"/evaluaciones/{ev.evaluacion_id}")
+            assert r.status_code == 200 and r.json()["estado"] == "en_proceso"
+        claves = [t["clave"] for t in reiniciado.cola.estado()["pendientes"]]
+        assert claves == ["R01", "R02", "R03", "R04", "E01:A", "E01:B", "E01:C", "E01:D", "E01"]
+
+        reiniciado.cola.iniciar()
+        assert reiniciado.cola.esperar(20)
+        informe = formas.InformeEvaluacion.model_validate(c.get(f"/evaluaciones/{ev.evaluacion_id}").json())
+        assert informe.estado == "terminada" and informe.resumen.sistema.deteccion.f1 == 0.888889
+        assert len(llm.llamadas["agente_unico_v1"]) == 5  # una por requisito y el reintento de D
+        c.get(f"/evaluaciones/{ev.evaluacion_id}")
+        assert reiniciado.cola.estado()["pendientes"] == []  # terminada: no se vuelve a encolar
+    finally:
+        reiniciado.detener()
