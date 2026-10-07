@@ -92,16 +92,17 @@ T1 = interp("I1", "horario", "El sistema debe registrar la sesión y el horario 
 T2 = interp("I2", "lugar en la fila", "El sistema debe registrar la sesión y el lugar en la fila del usuario.")
 
 
-def montar_dos_terminos(tmp_path, analizador):
+def montar_dos_terminos(tmp_path, analizador, critico=None):
     """Un requisito con dos términos ambiguos: «sesión» llega a consenso en la ronda 1
-    (el Clasificador retira I2) y «turno» se arbitra tras dos rondas sin cambios."""
+    (el Clasificador retira I2) y «turno» se arbitra tras dos rondas sin cambios.
+    `critico` reemplaza el guion de critico_v1 (por omisión, objeta todo)."""
     sin_cambios = {"interpretaciones": [T1, T2]}
     srv, _, repo = montar(tmp_path, analizador, {
         "extractor_v1": [extraccion(("sesión", "objeto"), ("turno", "objeto"))],
         "clasificador_v2": [{"resultados": [
             {"termino": "sesión", "tipo_ambiguedad": "lexica", "interpretaciones": [I1, I2]},
             {"termino": "turno", "tipo_ambiguedad": "lexica", "interpretaciones": [T1, T2]}]}],
-        "critico_v1": r3_todas(False),
+        "critico_v1": critico or r3_todas(False),
         "clasificador_refinamiento_v1": [
             {"interpretaciones": [I1], "retiradas": [{"interpretacion_id": "I2", "motivo": "agrega red"}]},
             sin_cambios, sin_cambios],
@@ -109,6 +110,22 @@ def montar_dos_terminos(tmp_path, analizador):
     srv.deps.embeddings = EmbeddingsFalsos({**VECTORES, T1["parafrasis_del_requisito"]: [1.0, 0.0],
                                             T2["parafrasis_del_requisito"]: [0.0, 1.0]})
     return srv, repo, srv.procesar(TURNO)
+
+
+def montar_directo_y_debate(tmp_path, analizador, critico):
+    """Como `montar_dos_terminos`, pero «sesión» se acepta directo (paráfrasis cercanas) y
+    solo «turno» se debate hasta el arbitraje. `critico` es el guion de critico_v1."""
+    sin_cambios = {"interpretaciones": [T1, T2]}
+    srv, _, _ = montar(tmp_path, analizador, {
+        "extractor_v1": [extraccion(("sesión", "objeto"), ("turno", "objeto"))],
+        "clasificador_v2": [{"resultados": [
+            {"termino": "sesión", "tipo_ambiguedad": "lexica", "interpretaciones": [I1, I2_CERCANA]},
+            {"termino": "turno", "tipo_ambiguedad": "lexica", "interpretaciones": [T1, T2]}]}],
+        "critico_v1": critico, "clasificador_refinamiento_v1": [sin_cambios, sin_cambios],
+        "critico_arbitraje_v1": [{"interpretacion_elegida": "I1", "justificacion_por_regla": JUSTIFICACION}]})
+    srv.deps.embeddings = EmbeddingsFalsos({**VECTORES, T1["parafrasis_del_requisito"]: [1.0, 0.0],
+                                            T2["parafrasis_del_requisito"]: [0.0, 1.0]})
+    return srv
 
 
 def montar_proyecto(tmp_path, analizador):

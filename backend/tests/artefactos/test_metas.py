@@ -231,3 +231,35 @@ def test_meta_de_tipo_desconocido_o_sin_enunciado_se_omite():
     bp = big_picture_proyecto([d], [], None)
     formas.BigPicture.model_validate(bp)
     assert [n["id"] for n in bp["nodos"]] == ["R01", "R01.M1"]
+
+
+def test_contribucion_que_cierra_un_ciclo_se_omite():
+    # el contrato del Modelador acepta M1→M2→M1; sin cortarlo, ninguna de las dos sería raíz
+    # del árbol de metas y la pantalla no las mostraría
+    from app.models.contratos import SalidaModeladorRequisito
+
+    ciclo = [meta("M1", "Registrar a", contribuye_a="M2"), meta("M2", "Guardar b", "tarea", contribuye_a="M1")]
+    SalidaModeladorRequisito.model_validate({"requisito_reescrito": "x", "metas": ciclo})
+    triangulo = [meta("M1", "Registrar a", contribuye_a="M3"), meta("M2", "Guardar b", contribuye_a="M1"),
+                 meta("M3", "Leer c", contribuye_a="M2"), meta("M4", "Enviar d", contribuye_a="M2")]
+    m = metas_proyecto([formalizado("R01", "x", ciclo), formalizado("R02", "x", triangulo)], [])
+    contribuye = {x["id"]: x["contribuye_a"] for x in m["metas"]}
+    assert contribuye == {"R01.M1": "R01.M2", "R01.M2": None,
+                          "R02.M1": "R02.M3", "R02.M2": "R02.M1", "R02.M3": None, "R02.M4": "R02.M2"}
+    for mid in contribuye:  # cada meta llega a una raíz
+        vistos = set()
+        while mid is not None:
+            assert mid not in vistos
+            vistos.add(mid)
+            mid = contribuye[mid]
+
+
+def test_versiones_anteriores_de_un_requisito():
+    from app.artefactos.seleccion import versiones_anteriores
+
+    resumenes = [resumen("R01", "formalizado"), resumen("R02", "error", "R01"), resumen("R03", "formalizado", "R02"),
+                 resumen("R04", "formalizado", "R04"), resumen("R05", "formalizado", "R06"),
+                 resumen("R06", "formalizado", "R05")]
+    assert versiones_anteriores(resumenes) == {"R02": {"R01"}, "R03": {"R01", "R02"}, "R04": set(), "R05": set(),
+                                               "R06": {"R05"}}
+    assert versiones_anteriores(None) == {}

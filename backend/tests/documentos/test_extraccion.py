@@ -114,3 +114,27 @@ def test_nombre_de_archivo_sin_ruta():
     assert nombre_de_archivo("C:\\fakepath\\srs final.pdf") == "srs final.pdf"
     assert nombre_de_archivo("../../etc/passwd") == "passwd"
     assert nombre_de_archivo(None) == "documento"
+
+
+def test_txt_que_no_es_cp1252_cae_en_latin1():
+    contenido = "Año ".encode("latin-1") + b"\x81" + " el sistema debe validar.".encode("latin-1")
+    extraido = leer("raro.txt", contenido, MAX)
+    assert extraido.paginas == ["Año \x81 el sistema debe validar."]
+    assert extraido.advertencias == ["El archivo no estaba en UTF-8; se leyó como latin-1: revisa acentos y eñes."]
+
+
+def test_archivo_vacio_de_tipo_no_soportado_es_415():
+    with pytest.raises(TipoNoSoportado):
+        leer("vacio.docx", b"", MAX)
+    with pytest.raises(SinTexto):
+        leer("vacio.pdf", b"", MAX)
+
+
+def test_pdf_con_guion_suave_de_winansi():
+    """pypdf devuelve el byte 0xAD de WinAnsi como U+00AD; la palabra se une en la separación."""
+    from app.documentos import separar_paginas
+    extraido = leer("corte.pdf", pdf([["El sistema deberá autenti­", "car al usuario."]]), MAX)
+    assert extraido.paginas[0].splitlines() == ["El sistema deberá autenti­", "car al usuario."]
+    s = separar_paginas(extraido.paginas, extraido.con_paginas, maquetado=True)
+    assert [r.texto for r in s.requisitos_propuestos] == ["El sistema deberá autenticar al usuario."]
+    assert s.requisitos_propuestos[0].texto_original == "El sistema deberá autenti-\ncar al usuario."

@@ -537,3 +537,75 @@ def test_similitud_inicial_no_finita_no_es_la_minima(tmp_path, analizador):
     v = vista_requisito(t.model_copy(update={"mensajes": mensajes}))
     assert v["resumen"]["similitud_minima"] == 0.0  # la de «turno»
     assert resumen_requisito(t.model_copy(update={"mensajes": mensajes}))["similitud_minima"] == 0.0
+
+
+# ---------------------------------------------------------------- segunda revisión
+
+def test_via_del_requisito_es_null_mientras_un_termino_sigue_en_debate(tmp_path, analizador):
+    """«sesión» se acepta directo y «turno» se debate. Antes, mientras «turno» se debatía,
+    el resumen decía `aceptado_directo` (la única vía conocida) y el requisito terminó arbitrado."""
+    from tests.analisis.caminos import montar_directo_y_debate
+
+    capturas, servicio = [], []
+    critico = r3_todas(False)
+
+    def critico_que_mira(prompt):
+        capturas.append((vista(servicio[0], "R01"), resumen_requisito(servicio[0].traza("R01"))))
+        return critico(prompt)
+
+    srv = montar_directo_y_debate(tmp_path, analizador, critico_que_mira)
+    servicio.append(srv)
+    req = srv.procesar("El sistema debe registrar la sesión y el turno del usuario.")
+
+    assert len(capturas) == 2  # una por ronda de «turno»
+    for v, r in capturas:
+        assert v["estado"] == "en_debate"
+        assert termino(v, "sesión")["resolucion"]["via"] == "aceptado_directo"
+        assert termino(v, "turno")["resolucion"] is None
+        assert v["resumen"]["via"] is None and r["via"] is None
+    final = vista(srv, req)
+    assert final["estado"] == "pendiente_validacion" and final["resumen"]["via"] == "arbitraje"
+    assert resumen_requisito(srv.traza(req))["via"] == "arbitraje"
+
+
+def test_via_del_requisito_es_null_si_un_error_corta_el_debate(tmp_path, analizador):
+    """«sesión» llega a consenso en la ronda 1 y el Crítico falla en la ronda 2 de «turno»."""
+    llamadas = []
+    critico = r3_todas(False)
+
+    def critico_que_falla_en_la_ronda_2(prompt):
+        llamadas.append(prompt)
+        return critico(prompt) if len(llamadas) <= 2 else "no es json"
+
+    srv, _, req = montar_dos_terminos(tmp_path, analizador, critico_que_falla_en_la_ronda_2)
+    v = vista(srv, req)
+    assert v["estado"] == "error" and [e["prompt_version"] for e in v["errores"]] == ["critico_v1"]
+    assert termino(v, "sesión")["resolucion"]["via"] == "consenso" and termino(v, "turno")["resolucion"] is None
+    assert v["resumen"]["via"] is None
+
+
+def test_listas_nulas_en_un_payload_no_tumban_las_vistas(tmp_path, analizador):
+    """Una traza con listas en null (editada a mano o de otra versión) no debe tumbar la vista
+    ni las del proyecto, que recorren todas las trazas: antes era TypeError y un 500."""
+    from app.analisis import ambiguedades_proyecto, flujo_proyecto
+
+    sin_cambios = {"interpretaciones": [I1, I2]}
+    srv, _, _ = montar(tmp_path, analizador, {
+        "extractor_v1": [EXTRACCION_SESION], "clasificador_v2": [clasificacion(I1, I2)],
+        "critico_v1": r3_todas(False), "clasificador_refinamiento_v1": [sin_cambios, sin_cambios],
+        "critico_arbitraje_v1": [{"interpretacion_elegida": "I2", "justificacion_por_regla": JUSTIFICACION}]})
+    t = srv.traza(srv.procesar(SESION))
+    nulos = {"objecion": ("evaluaciones", "objeciones"), "refinamiento": ("interpretaciones", "retiradas"),
+             "arbitraje": ("justificacion_por_regla",)}
+    t = t.model_copy(update={"mensajes": [
+        m.model_copy(update={"payload": {**m.payload, **dict.fromkeys(nulos[m.tipo])}}) if m.tipo in nulos else m
+        for m in t.mensajes]})
+    v = vista_requisito(t)
+    formas.VistaRequisito.model_validate(v)
+    s = termino(v, "sesión")
+    assert [(r["evaluaciones"], r["objeciones"], r["refinamiento"]["retiradas"]) for r in s["rondas"]] == [
+        ([], [], []), ([], [], [])]
+    assert s["resolucion"]["arbitraje"] == {"interpretacion_elegida": "I2", "justificacion_por_regla": []}
+    formas.ResumenRequisito.model_validate(resumen_requisito(t))
+    formas.AmbiguedadesProyecto.model_validate(ambiguedades_proyecto([t], []))
+    formas.FlujoProyecto.model_validate(flujo_proyecto([t], []))

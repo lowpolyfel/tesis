@@ -20,9 +20,11 @@ class RequisitoPropuesto(BaseModel):
 
     indice: int = Field(ge=1)  # 1..n en orden de aparición
     texto: str = Field(min_length=1)  # la oración, sin la marca
-    pagina: int | None = Field(None, ge=1)  # donde empieza; None si el texto no tiene páginas
-    marca: str | None = None  # numeración original: RF-01, 3.2.1, 1, •…
-    texto_original: str  # el párrafo como venía (renglones y marca incluidos)
+    pagina: int | None = Field(None, ge=1)  # donde empieza la oración; None si el texto no tiene páginas
+    marca: str | None = None  # numeración original: RF-01, 3.2.1, 1, •… (RF-03.a si se compuso con su frase)
+    # la oración como venía: sus renglones y guiones de corte, y la marca si abre el párrafo;
+    # si se compuso con una frase introductoria, la frase y el elemento de la lista
+    texto_original: str
     advertencias: list[str] = []
 
 

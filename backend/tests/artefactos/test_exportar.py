@@ -1,5 +1,6 @@
 """Exportaciones de texto del Big Picture: Mermaid y PlantUML estables y sin
 caracteres que rompan la sintaxis."""
+import os
 import re
 import shutil
 import subprocess
@@ -27,6 +28,11 @@ ESTILO = re.compile(r"^    (classDef [a-z_]+ [a-z0-9:#,. -]+|class [A-Za-z0-9_,]
 CON_RAREZAS = 'campo "RFC" [obligatorio] {x} <b>#1</b> `y` | ñandú'
 DIR_MERMAID = Path(__file__).parent / "mermaid"
 NUCLEO_MERMAID = RAIZ_REPO / "frontend" / "node_modules" / "mermaid" / "dist" / "mermaid.core.mjs"
+# PlantUML no viene con el repositorio: PLANTUML_JAR=/ruta/plantuml.jar activa su prueba
+JAR_PLANTUML = os.environ.get("PLANTUML_JAR", "")
+# lo que PlantUML interpreta: la barra invertida al final une la línea con la siguiente y
+# «/'» abre un comentario; el NUL de un PDF no es válido en el SVG de ningún visor
+CON_CONTROL = "Valida\x00 el RFC /' sin comentario \\"
 
 
 def _raro():
@@ -36,6 +42,14 @@ def _raro():
     entradas = lel() + [entrada(CON_RAREZAS, "objeto", ['Dato con "comillas", [corchetes] y {llaves}.'],
                                 ["Se valida antes de guardar; #importante."], "R10")]
     return big_picture_proyecto(docs, entradas, trazas() + [resumen("R10", "formalizado")])
+
+
+def _con_control():
+    """Textos con caracteres de control y con lo que PlantUML interpreta."""
+    docs = [formalizado("R01", CON_CONTROL, [meta("M1", CON_CONTROL, actor=CON_CONTROL, simbolos=["RFC"])])]
+    entradas = [entrada("RFC", "objeto", [CON_CONTROL], [CON_CONTROL], "R01"),
+                entrada("contribuyente", "sujeto", ["Persona con RFC."], [CON_CONTROL], "R01")]
+    return big_picture_proyecto(docs, entradas, [resumen("R01", "formalizado")])
 
 
 def _lineas_validas(texto: str) -> list[str]:
@@ -78,6 +92,17 @@ def test_mermaid_escapa_comillas_corchetes_y_html():
     assert '    actor_auditor_externo(("#quot;auditor#quot; #lt;externo#gt;"))' in lineas
 
 
+def test_caracteres_de_control_y_lo_que_plantuml_interpreta():
+    bp = _con_control()
+    _lineas_validas(bp["mermaid"])
+    for texto in (bp["mermaid"], bp["plantuml"]):
+        assert "\x00" not in texto
+    lineas = bp["plantuml"].split("\n")
+    assert not any(x.rstrip().endswith("\\") for x in lineas)
+    assert not any("/'" in x for x in lineas)
+    assert "  {field} noción: Valida el RFC /’ sin comentario ∖" in lineas
+
+
 def test_texto_mermaid():
     assert texto_mermaid('a "b" #c <d> `e`\n  f') == "a #quot;b#quot; #35;c #lt;d#gt; #96;e#96; f"
     assert texto_mermaid("ñandú [x] (y) {z} | ; &") == "ñandú [x] (y) {z} | ; &"
@@ -101,7 +126,8 @@ def test_mermaid_sin_nodos():
 def test_parser_de_mermaid_acepta_las_exportaciones(tmp_path):
     archivos = []
     for nombre, texto in (("proyecto", big_picture_proyecto(documentos(), lel(), trazas())["mermaid"]),
-                          ("raro", _raro()["mermaid"]), ("vacio", a_mermaid([], []))):
+                          ("raro", _raro()["mermaid"]), ("control", _con_control()["mermaid"]),
+                          ("vacio", a_mermaid([], []))):
         archivos.append(tmp_path / f"{nombre}.mmd")
         archivos[-1].write_text(texto, encoding="utf-8")
     roto = tmp_path / "roto.mmd"
@@ -147,3 +173,18 @@ def test_plantuml_escapa():
     assert 'class "campo \'RFC\' [obligatorio] (x) ‹b›#1‹/b› `y` | ñandú" as simbolo_campo_rfc_obligatorio_x_b_1_b_y_nandu <<objeto>> {' in texto
     assert "  {field} noción: Dato con 'comillas', [corchetes] y (llaves)." in texto
     assert "class \"'auditor' ‹externo›\" as actor_auditor_externo <<actor>>" in texto
+
+
+@pytest.mark.skipif(not (JAR_PLANTUML and Path(JAR_PLANTUML).is_file() and shutil.which("java")),
+                    reason="sin Java o sin PLANTUML_JAR")
+def test_plantuml_acepta_las_exportaciones():
+    def sintaxis(texto: str) -> str:
+        r = subprocess.run(["java", "-Djava.awt.headless=true", "-jar", JAR_PLANTUML, "-syntax"], input=texto,
+                           capture_output=True, text=True, timeout=120, check=False)
+        return r.stdout
+
+    for bp in (big_picture_proyecto(documentos(), lel(), trazas()), _raro(), _con_control(),
+               big_picture_proyecto([], [], [])):
+        assert sintaxis(bp["plantuml"]).startswith("CLASS"), bp["plantuml"]
+    # el validador sí detecta un diagrama roto: la barra invertida final une dos líneas
+    assert sintaxis('@startuml\nclass "a" as a {\n  {field} x \\\n}\n@enduml\n').startswith("ERROR")

@@ -18,7 +18,7 @@ from app.nlp import Analizador, normalizar
 
 from .exportar import a_mermaid, a_plantuml
 from .metas import construir, vaguedad_candidata
-from .seleccion import seleccionar
+from .seleccion import seleccionar, versiones_anteriores
 from .simbolos import Simbolo, agrupar_lel, clave, orden_entrada
 from .terminos import Comparador, numero_req, separar_accion
 
@@ -64,12 +64,16 @@ def _terminos_resueltos(docs: list[dict], lel: list[EntradaLELFormalizada], fuer
                            "via": r.get("via"), "tipo_ambiguedad": r.get("tipo_ambiguedad") or "lexica",
                            "cambio": r.get("cambio"), "req_id": doc["req_id"]})
     # requisitos formalizados antes del documento por requisito: sus términos solo están en el LEL
-    anteriores = {f["req_id"] for f in fuera if f["motivo"] == "sin_formalizacion"}
+    # (una vez cada uno: un nodo que se reejecutó tras un reinicio repite sus entradas, ADR 0008)
+    anteriores, vistos = {f["req_id"] for f in fuera if f["motivo"] == "sin_formalizacion"}, set()
     for e in sorted((e for e in lel if e.req_id in anteriores), key=orden_entrada):
+        if (e.req_id, normalizar(e.termino)) in vistos:
+            continue
+        vistos.add((e.req_id, normalizar(e.termino)))
         salida.append({"termino": e.termino, "significado": e.interpretacion.significado, "via": e.via.value,
                        "tipo_ambiguedad": "lexica", "cambio": "edicion" if e.editada_por_humano else None,
                        "req_id": e.req_id})
-    return salida
+    return sorted(salida, key=lambda t: (numero_req(t["req_id"]), t["req_id"]))  # estable: cada requisito en su orden
 
 
 def big_picture_proyecto(formalizados: list[dict], lel: list[EntradaLELFormalizada], trazas_resumen: list[dict] | None,
@@ -139,7 +143,8 @@ def big_picture_proyecto(formalizados: list[dict], lel: list[EntradaLELFormaliza
     return {
         "nodos": nodos,
         "aristas": list(aristas),
-        "panorama": _panorama(docs, metas, actores, simbolos, usan, lel, fuera, comp),
+        "panorama": _panorama(docs, metas, actores, simbolos, usan, lel, fuera, comp,
+                              versiones_anteriores(trazas_resumen)),
         "terminos_sin_simbolo": list(sin_simbolo.values()),
         "requisitos_fuera": fuera,
         "mermaid": a_mermaid(nodos, list(aristas)),
@@ -147,7 +152,7 @@ def big_picture_proyecto(formalizados: list[dict], lel: list[EntradaLELFormaliza
     }
 
 
-def _panorama(docs, metas, actores, simbolos, usan, lel, fuera, comp) -> dict:
+def _panorama(docs, metas, actores, simbolos, usan, lel, fuera, comp, anteriores) -> dict:
     acciones = []
     for m in metas:
         if m["tipo"] in ("meta", "tarea"):
@@ -164,11 +169,12 @@ def _panorama(docs, metas, actores, simbolos, usan, lel, fuera, comp) -> dict:
                           for v in vagas if v["req_id"] == d["req_id"] and v["meta_blanda"] is None]
 
     # R03 depende de R01 si usa un símbolo que resolvió la formalización de R01; quien
-    # resolvió el símbolo por su cuenta (dos entradas del mismo símbolo) no depende del otro
+    # resolvió el símbolo por su cuenta (dos entradas del mismo símbolo) no depende del otro,
+    # ni un reproceso de su versión anterior (R02 reprocesa R01 y toma «sesión» del LEL)
     dependencias = {}
     for s in simbolos:
         for de in usan[s.id] - set(s.req_ids):
-            for a in s.req_ids:
+            for a in set(s.req_ids) - anteriores.get(de, set()):
                 dependencias[(numero_req(de), de, numero_req(a), a, normalizar(s.simbolo))] = {
                     "de": de, "a": a, "por": s.simbolo}
     return {

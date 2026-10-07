@@ -97,7 +97,9 @@ def test_documento_de_muestra_completo():
                               f"Encabezado o pie de página quitado (3 de 3 páginas): «{ENCABEZADO}»."]
     rnf = s.requisitos_propuestos[2]
     assert rnf.texto_original.startswith("RNF-3 La aplicación tendrá que responder") and "consul-\nta" in rnf.texto_original
-    assert s.requisitos_propuestos[3].advertencias == ["el párrafo continúa en la página 3"]
+    assert s.requisitos_propuestos[3].advertencias == ["continúa en la página 3"]
+    assert s.requisitos_propuestos[3].texto_original == ("RF-05 El sistema deberá conservar la bitácora de cambios de "
+                                                         "cada empleado durante\ncinco años contados a partir de su baja.")
     assert ENCABEZADO not in " ".join(r.texto_original for r in s.requisitos_propuestos)
 
 
@@ -182,3 +184,82 @@ def test_texto_con_saltos_de_pagina_reporta_pagina():
 def test_texto_sin_requisitos():
     s = separar_texto("Introducción\nEste documento describe el sistema.")
     assert s.requisitos_propuestos == [] and s.total_descartados == 2
+
+
+@pytest.mark.parametrize("texto, esperado", [
+    ("El usuario decide si acepta o no. El sistema debe guardar la decisión.",
+     ["El usuario decide si acepta o no.", "El sistema debe guardar la decisión."]),
+    ("El límite es de 5. El sistema debe bloquear la cuenta.", ["El límite es de 5.", "El sistema debe bloquear la cuenta."]),
+    ("Aplica desde 2026. El sistema debe usar la versión 2.1. Luego debe migrar.",
+     ["Aplica desde 2026.", "El sistema debe usar la versión 2.1.", "Luego debe migrar."]),
+    ("El expediente No. 5 debe guardarse.", ["El expediente No. 5 debe guardarse."]),
+    ("Los pasos son: 1. Ingresar. 2. Validar.", ["Los pasos son: 1. Ingresar.", "2. Validar."]),
+])
+def test_dividir_oraciones_tras_numero_o_no(texto, esperado):
+    """«o no.» y un número al final de la oración la cierran; «No. 5» y la numeración en línea no."""
+    assert dividir_oraciones(texto) == esperado
+
+
+def test_texto_original_es_solo_el_de_la_oracion():
+    """Antes cada oración llevaba el párrafo entero: un párrafo de N oraciones crecía como N²."""
+    texto = "RF-04 El sistema debe guardar el dato. " * 2000
+    s = separar_texto(texto)
+    assert len(s.requisitos_propuestos) == 2000
+    assert sum(len(r.texto_original) for r in s.requisitos_propuestos) <= len(texto)
+    assert s.requisitos_propuestos[0].texto_original == "RF-04 El sistema debe guardar el dato."
+    assert s.requisitos_propuestos[1].texto_original == "RF-04 El sistema debe guardar el dato."  # la marca repetida es texto
+    assert {r.marca for r in s.requisitos_propuestos} == {"RF-04"}
+
+
+def test_oracion_conserva_renglones_y_guion_de_corte_en_su_original():
+    s = separar_texto("RF-09 Esto es contexto. El sistema deberá autenti-\ncar al usuario con su\ncontraseña. Fin.")
+    r, = s.requisitos_propuestos
+    assert r.texto == "El sistema deberá autenticar al usuario con su contraseña."
+    assert r.texto_original == "El sistema deberá autenti-\ncar al usuario con su\ncontraseña."
+    assert [f.texto for f in s.fragmentos_descartados] == ["Esto es contexto.", "Fin."]
+
+
+def test_pagina_de_cada_oracion_en_parrafo_que_cruza_de_pagina():
+    paginas = ["Intro\nEl sistema debe guardar la venta. El cajero podrá\n", "cerrar la caja. El gerente podrá salir."]
+    s = separar_paginas(paginas, con_paginas=True, maquetado=False)
+    assert [(r.pagina, r.texto, r.advertencias[1:]) for r in s.requisitos_propuestos] == [
+        (1, "El sistema debe guardar la venta.", []),
+        (1, "El cajero podrá cerrar la caja.", ["continúa en la página 2"]),
+        (2, "El gerente podrá salir.", [])]
+
+
+def test_frase_introductoria_con_identificador_lo_conserva_en_cada_elemento():
+    s = separar_texto("RF-03 El sistema deberá permitir:\n- Registrar usuarios\n- Borrar usuarios\n\n"
+                      "3.2.1 El cajero podrá:\na) cobrar en efectivo;\nb) cobrar con tarjeta.")
+    assert [(r.marca, r.texto) for r in s.requisitos_propuestos] == [
+        ("RF-03", "El sistema deberá permitir registrar usuarios."),
+        ("RF-03", "El sistema deberá permitir borrar usuarios."),
+        ("3.2.1.a", "El cajero podrá cobrar en efectivo."),
+        ("3.2.1.b", "El cajero podrá cobrar con tarjeta.")]
+    assert s.requisitos_propuestos[0].texto_original == "RF-03 El sistema deberá permitir:\n- Registrar usuarios"
+
+
+def test_lista_numerada_en_minusculas_tras_frase_introductoria():
+    """«1. registrar» / «2. borrar» se pegaban en un solo elemento."""
+    s = separar_texto("El sistema deberá permitir:\n1. registrar usuarios,\n2. borrar usuarios, y\n3. consultar el saldo")
+    assert [(r.marca, r.texto) for r in s.requisitos_propuestos] == [
+        ("1", "El sistema deberá permitir registrar usuarios."), ("2", "El sistema deberá permitir borrar usuarios."),
+        ("3", "El sistema deberá permitir consultar el saldo.")]
+
+
+def test_requisitos_sin_punto_uno_por_renglon():
+    s = separar_texto("El sistema debe guardar los datos del cliente\nEl sistema debe imprimir el ticket\n"
+                      "El gerente podrá cancelar ventas")
+    assert [(r.texto, r.advertencias) for r in s.requisitos_propuestos] == [
+        ("El sistema debe guardar los datos del cliente", []), ("El sistema debe imprimir el ticket", []),
+        ("El gerente podrá cancelar ventas", [])]
+
+
+def test_texto_enorme_en_tiempo_lineal():
+    """Antes, renglones en minúscula sin punto (un solo párrafo) o muchas abreviaturas costaban tiempo
+    cuadrático: 80 KB tardaban 3 s, y los 10 MB permitidos, horas."""
+    import time
+    inicio = time.perf_counter()
+    separar_texto("\n".join(["el sistema guarda datos y algo más"] * 30_000))  # ~1 MB
+    separar_texto("Sr. Pérez " * 100_000)  # 1 MB
+    assert time.perf_counter() - inicio < 10

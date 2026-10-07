@@ -31,28 +31,43 @@ quién lo llenara con datos confiables.
      eñes, y además decodifica comillas curvas y rayas, que latin-1 convierte en
      caracteres de control. Un salto de página (`\f`) separa páginas.
 3. **Limpieza** (`limpieza.py`): NFKC (ligaduras, espacios duros), sin guiones
-   suaves ni caracteres invisibles. Solo cuando hay páginas reales:
+   suaves ni caracteres invisibles; un guion suave al final del renglón (así
+   marcan el corte de palabra algunos PDF: el byte 0xAD de WinAnsi) cuenta como
+   guion de corte. Solo cuando hay páginas reales:
    - números de página sueltos («7», «- 7 -», «Página 7 de 9») en los tres
      primeros y tres últimos renglones de cada página;
    - encabezados y pies: renglones de esos bordes que se repiten (sin acentos y
      con los dígitos como comodín) en al menos la mitad de las páginas con texto
      y en dos como mínimo. Nunca se toma como encabezado un renglón con verbo de
-     obligación ni una marca sola («RF-01» en una celda).
-   Lo quitado se informa en `advertencias`: nada se descarta en silencio.
+     obligación, una marca sola («RF-01» en una celda) ni uno que empieza con
+     identificador: con los dígitos como comodín, «RF-01 Registro de usuarios» y
+     «RF-02 Registro de usuarios» arriba de dos páginas parecerían el mismo.
+   Lo quitado se informa en `advertencias` (cuántas páginas): nada se descarta
+   en silencio.
 4. **Reconstrucción de párrafos**: un renglón vacío cierra; una marca de
-   numeración abre (salvo número seguido de minúscula: «la versión / 2.1 o
-   superior»); un renglón que empieza en minúscula, o un anterior que termina en
-   coma, guion o palabra de enlace, continúa; punto final seguido de mayúscula
-   cierra. Sin punto final, en un PDF cierra si el renglón anterior es corto
-   (menos del 75 % del percentil 90 del ancho: título o párrafo sin punto); en
-   texto plano solo si el anterior es un título aislado (un renglón, sin verbo,
-   12 palabras o menos). La palabra cortada con guion al final del renglón se une
-   si el siguiente empieza en minúscula. Un párrafo puede seguir en la página
-   siguiente.
+   numeración abre, salvo un número que sigue la oración: jerárquico ante
+   minúscula («la versión / 2.1 o superior») o jerárquico o identificador tras
+   palabra de enlace («un máximo de / 2.5 segundos», «lo indica el / RF-01»);
+   `1.` `2)` siempre abren, también en minúscula y tras «…, y». Un renglón que
+   empieza en minúscula, o un anterior que termina en coma, guion o palabra de
+   enlace, continúa. Punto final seguido de mayúscula cierra, y también un
+   renglón que abre oración con mayúscula inicial («El», «La», «Cada», «Se»,
+   «Debe»…: a media oración van en minúscula), para que los requisitos escritos
+   uno por renglón y sin punto no se peguen. Si no, sin punto final: en un PDF
+   cierra si el renglón anterior es corto (menos del 75 % del percentil 90 del
+   ancho: título o párrafo sin punto); en texto plano solo si el anterior es un
+   título aislado (un renglón, sin verbo, 12 palabras o menos). La palabra
+   cortada con guion al final del renglón se une si el siguiente empieza en
+   minúscula. Un párrafo puede seguir en la página siguiente. El párrafo guarda
+   la página de cada renglón y dónde empieza cada uno en el texto unido, para
+   devolver de cada oración su pedazo del original.
 5. **Separación** (`separacion.py`, función pura, sin LLM ni spaCy):
    - Oraciones por `. ! ?` seguidos de mayúscula, dígito o signo de apertura; no
      se parte tras abreviaturas («p. ej.», «Sr.»), iniciales, siglas con punto ni
-     números («1. Ingresar»).
+     números que numeran (al inicio de la oración o tras dos puntos: «1.
+     Ingresar», «Los pasos son: 1. Ingresar»). Un número al final de la oración sí
+     la cierra («… de 5. El sistema…»), y «no.» solo es «número» ante un dígito
+     («No. 5»; «… o no. El sistema…» cierra).
    - Se propone solo la oración con verbo de obligación o capacidad de una lista
      cerrada, comparada sin acentos: debe(n), deberá(n), debería(n), podrá(n),
      puede(n), permitirá(n), tiene/tienen/tendrá(n) que, ha/han/habrá(n) de, se
@@ -62,16 +77,25 @@ quién lo llenara con datos confiables.
      `3.2.1`, y RF-01, RF01, RNF-3, R1., REQ-12, [RF-02], CU-4, HU-7.
    - Frase introductoria con obligación que termina en dos puntos seguida de una
      lista sin verbos («El sistema deberá permitir:» / «- Registrar usuarios»):
-     cada elemento se propone compuesto con la frase. Sin lista, la frase se
-     propone sola con advertencia.
+     cada elemento se propone compuesto con la frase. Si la frase tenía
+     identificador, el elemento lo conserva: con viñeta, «RF-03»; numerado,
+     «RF-03.a» o «3.2.1.1». Sin lista, la frase se propone sola con advertencia.
    - Título con identificador y sin verbo («RF-01 Registro de usuarios») seguido
      de un párrafo sin marca: el párrafo hereda la marca (con advertencia).
    - Lo que no se propone va a `fragmentos_descartados` con página, marca y
      motivo (`titulo`, `sin_verbo_obligacion`, `sin_texto`); se devuelven los 50
      primeros y siempre el total (`total_descartados`).
+   - De cada oración propuesta: `pagina` es la página donde empieza ella (no su
+     párrafo) y `texto_original` es solo su pedazo del original, con sus
+     renglones, sus guiones de corte y la marca si abre el párrafo. Copiar el
+     párrafo entero en cada oración hacía crecer la respuesta con el cuadrado del
+     largo del párrafo (66 KB pegados en un solo renglón daban 132 MB de JSON).
+   - Todo es lineal en el tamaño del texto (las uniones de renglones y la
+     revisión de abreviaturas solo miran la cola): los 10 MB permitidos tardan
+     segundos, no horas.
 6. **Advertencias por requisito propuesto**: más de 400 caracteres; sin sujeto
    explícito (empieza con el verbo, tras conectores como «además» o «se»);
-   varias oraciones con obligación en el mismo párrafo; el párrafo continúa en
+   varias oraciones con obligación en el mismo párrafo; la oración continúa en
    otra página; compuesto con frase introductoria; marca heredada; repetido;
    caracteres no reconocidos (fuente del PDF sin mapa a Unicode).
 7. **Persistencia**: colección `documentos` (`D01`…), validada con el modelo
@@ -83,7 +107,9 @@ quién lo llenara con datos confiables.
 8. **Rutas**: `POST /proyectos/{id}/documentos` (multipart, campo `archivo`) →
    201 `Documento`; `GET /proyectos/{id}/documentos` → resúmenes;
    `GET /documentos/{documento_id}` → `Documento` (404 si no existe);
-   `POST /requisitos/separar {texto}` → la misma separación sin guardar nada.
+   `POST /requisitos/separar {texto}` → la misma separación sin guardar nada
+   (`requisitos_propuestos`, `fragmentos_descartados`, `total_descartados` y las
+   `advertencias` de la limpieza).
 
 ## Alternativas consideradas
 
@@ -121,6 +147,14 @@ quién lo llenara con datos confiables.
     posibilidad («puede ocurrir que…»).
   - Una palabra compuesta partida justo en su guion («teórico-/práctico») se une
     sin el guion.
+  - Un nombre propio que empieza con artículo al inicio del renglón y tras una
+    palabra que no es de enlace («la sucursal / La Paz debe…») se toma como
+    oración nueva. A la inversa, requisitos sin punto final uno por renglón que
+    no empiezan con una palabra de apertura («Cajeros y supervisores podrán…»)
+    se siguen uniendo al renglón anterior en texto plano; el humano los separa
+    al editar.
+  - Una lista con `3.2.1` en minúscula o tras palabra de enlace se toma como
+    continuación de la oración (para no partir «versión / 2.1 o superior»).
   - Las viñetas de segundo nivel de Word que se extraen como la letra «o» no se
     reconocen como marca.
   - Encabezados que cambian en cada página (el nombre de cada capítulo) no se
@@ -133,3 +167,11 @@ quién lo llenara con datos confiables.
     guarda en un temporal); limitar el cuerpo HTTP le toca al proxy.
   - La extracción corre en el hilo de la petición: un PDF de cientos de páginas
     tarda segundos.
+  - Un PDF de 10 MB comprimido puede contener varios millones de caracteres: si
+    lo propuesto pasa de unos 7 millones, el documento excede los 16 MB de Mongo
+    y la carga falla (el JSON no tiene ese límite). No se acota porque un SRS
+    real está órdenes de magnitud por debajo.
+  - El endpoint que confirma (`POST /proyectos/{id}/requisitos`, ADR 0008)
+    acepta hasta 200 requisitos por llamada y 2 000 caracteres por texto: un
+    documento con más propuestos se confirma por partes, y un propuesto más
+    largo se recorta al editarlo (ya lleva la advertencia de más de 400).

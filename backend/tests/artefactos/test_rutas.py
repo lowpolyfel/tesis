@@ -87,3 +87,77 @@ def test_proyecto_sin_formalizados(entorno):
     bp = cliente.get(f"/proyectos/{vacio}/big-picture").json()
     assert bp["nodos"] == [] and bp["aristas"] == [] and bp["panorama"]["requisitos"] == []
     assert cliente.get("/proyectos/P00/big-picture").status_code == 200
+
+
+def test_artefactos_de_un_requisito_con_los_actores_del_proyecto(tmp_path, analizador):
+    # R01 nombra «Los usuarios» primero: en el proyecto, el «El usuario» de R02 es «usuarios»;
+    # visto solo, R02 diría «usuario». La ruta debe dar el nombre del proyecto.
+    from app.models import Estado
+    from tests.artefactos.ayudantes import formalizado, meta
+
+    srv, _, repo = montar(tmp_path, analizador, {})
+    p = srv.proyectos.crear("Actores")
+    docs = [formalizado("R01", "Los usuarios consultan.", [meta("M1", "Consultar el saldo", actor="Los usuarios")],
+                        proyecto_id=p.proyecto_id),
+            formalizado("R02", "El usuario paga.", [meta("M1", "Pagar el saldo", actor="El usuario")],
+                        proyecto_id=p.proyecto_id)]
+    for d in docs:
+        t = repo.crear_traza(d["requisito_original"], {}, proyecto_id=p.proyecto_id)
+        assert t.req_id == d["req_id"]
+        repo.guardar_doc("formalizados", t.req_id, d)
+        repo.cambiar_estado(t.req_id, Estado.FORMALIZADO)
+    app = FastAPI()
+    app.include_router(artefactos.router)
+    app.state.servicio = srv
+    cliente = TestClient(app)
+    proyecto = {m["id"]: m["actor"] for m in cliente.get(f"/proyectos/{p.proyecto_id}/metas").json()["metas"]}
+    assert proyecto == {"R01.M1": "usuarios", "R02.M1": "usuarios"}
+    a = cliente.get("/requisitos/R02/artefactos").json()
+    assert [(m["id"], m["actor"], m["actor_original"]) for m in a["metas"]] == [("R02.M1", "usuarios", "El usuario")]
+
+
+class _ModeladorEntreLecturas:
+    """Repositorio que, después de la primera lectura de la ruta, hace lo que hace el
+    Modelador al formalizar: guarda el LEL y el documento y luego pasa la traza a
+    `formalizado`."""
+
+    def __init__(self, repo, formalizar):
+        self._repo, self._formalizar = repo, formalizar
+
+    def __getattr__(self, nombre):
+        original = getattr(self._repo, nombre)
+        if nombre not in ("listar_trazas", "listar_docs", "listar_lel"):
+            return original
+
+        def leer(*args, **kwargs):
+            salida = original(*args, **kwargs)
+            if self._formalizar is not None:
+                self._formalizar, formalizar = None, self._formalizar
+                formalizar()
+            return salida
+        return leer
+
+
+def test_un_requisito_que_se_formaliza_durante_la_peticion(tmp_path, analizador):
+    # leer las trazas antes que los documentos: si se leyera al revés, R01 aparecería
+    # formalizado y sin documento («sin_formalizacion»)
+    from app.models import Estado
+    from tests.artefactos.ayudantes import formalizado, meta
+
+    srv, _, repo = montar(tmp_path, analizador, {})
+    p = srv.proyectos.crear("Carrera")
+    t = repo.crear_traza("El sistema imprime.", {}, proyecto_id=p.proyecto_id)
+    repo.cambiar_estado(t.req_id, Estado.VALIDADO)
+
+    def formalizar():
+        repo.guardar_doc("formalizados", t.req_id, formalizado(
+            t.req_id, "El sistema imprime.", [meta("M1", "Imprimir el reporte")], proyecto_id=p.proyecto_id))
+        repo.cambiar_estado(t.req_id, Estado.FORMALIZADO)
+
+    srv.repo = _ModeladorEntreLecturas(repo, formalizar)
+    app = FastAPI()
+    app.include_router(artefactos.router)
+    app.state.servicio = srv
+    m = TestClient(app).get(f"/proyectos/{p.proyecto_id}/metas").json()
+    # la petición ve a R01 en proceso (antes) o formalizado con su documento, nunca a medias
+    assert [(f["req_id"], f["motivo"]) for f in m["requisitos_fuera"]] == [("R01", "en_proceso")]

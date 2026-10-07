@@ -47,6 +47,25 @@ def _metas_del_doc(doc: dict) -> list[dict]:
     return sorted(unicas.values(), key=lambda m: numero_meta(m["id"]))
 
 
+def _contribuciones(metas_doc: list[dict]) -> dict[str, str | None]:
+    """{id local: id local de la meta a la que contribuye, o None}. Solo vale otra
+    meta del mismo documento; en orden de id, una contribución que cerraría un ciclo
+    (M1→M2→M1, que el contrato del Modelador no impide) se omite: el modelo de metas
+    queda como un bosque y cada meta tiene una raíz."""
+    ids = {m["id"] for m in metas_doc}
+    padre: dict[str, str | None] = {}
+    for m in metas_doc:
+        destino = m.get("contribuye_a")
+        if not isinstance(destino, str) or destino not in ids or destino == m["id"]:
+            padre[m["id"]] = None
+            continue
+        r = destino
+        while r is not None and r != m["id"]:
+            r = padre.get(r)
+        padre[m["id"]] = None if r == m["id"] else destino
+    return padre
+
+
 def construir(docs: list[dict], simbolos: list[Simbolo], comp: Comparador) -> tuple[list[dict], list[GrupoActor]]:
     """(metas con id global, actores). Los sujetos del LEL abren los grupos de
     actores (su escritura manda); un actor de una meta se une al primer grupo
@@ -69,20 +88,20 @@ def construir(docs: list[dict], simbolos: list[Simbolo], comp: Comparador) -> tu
     metas = []
     for doc in ordenar(docs):
         req_id = doc["req_id"]
-        locales = {m.get("id") for m in _metas_del_doc(doc)}
-        for m in _metas_del_doc(doc):
+        del_doc = _metas_del_doc(doc)
+        contribuye = _contribuciones(del_doc)  # el contrato del Modelador: otra meta del mismo requisito
+        for m in del_doc:
             mid = id_global(req_id, m["id"])
             original = (m.get("actor") or "").strip() or None
             g = grupo_de(original) if original else None
             if g is not None:
                 g.metas.append(mid)
-            destino = m.get("contribuye_a")
+            destino = contribuye[m["id"]]
             metas.append({
                 "id": mid, "req_id": req_id, "enunciado": m.get("enunciado", ""), "tipo": m.get("tipo"),
                 "actor": g.nombre if g else None, "actor_original": original,
                 "simbolos": list(dict.fromkeys(t.strip() for t in m.get("simbolos") or [] if t and t.strip())),
-                # el contrato del Modelador solo permite apuntar a otra meta del mismo requisito
-                "contribuye_a": id_global(req_id, destino) if destino in locales and destino != m["id"] else None,
+                "contribuye_a": id_global(req_id, destino) if destino else None,
             })
     return metas, sorted(grupos, key=lambda g: (normalizar(g.nombre), g.nombre))
 

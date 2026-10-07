@@ -133,7 +133,7 @@ def test_separar_texto_sin_guardar(cliente):
             {"indice": 1, "texto": "El sistema debe registrar la sesión.", "pagina": None, "marca": "RF-01",
              "texto_original": "RF-01 El sistema debe registrar la sesión.", "advertencias": []},
             {"indice": 2, "texto": "El usuario podrá salir.", "pagina": None, "marca": None,
-             "texto_original": "Esto es contexto. El usuario podrá salir.", "advertencias": []}],
+             "texto_original": "El usuario podrá salir.", "advertencias": []}],
         "fragmentos_descartados": [
             {"texto": "Requisitos", "pagina": None, "marca": None, "motivo": "titulo"},
             {"texto": "Esto es contexto.", "pagina": None, "marca": None, "motivo": "sin_verbo_obligacion"}],
