@@ -8,6 +8,7 @@ entrada del LEL. Funciones puras: no llaman a ningún modelo ni al repositorio.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -192,8 +193,9 @@ class Analisis:
         tipos = {t.value: 0 for t in TipoAmbiguedad}
         for t in self.ambiguos:
             tipos[t.tipo_ambiguedad] = tipos.get(t.tipo_ambiguedad, 0) + 1
-        iniciales = [t.divergencia_inicial["similitud"] for t in self.ambiguos
-                     if t.divergencia_inicial and t.divergencia_inicial.get("similitud") is not None]
+        # una similitud que no es un número finito (embeddings con NaN) no puede ser la mínima
+        iniciales = [s for t in self.ambiguos if t.divergencia_inicial
+                     and isinstance(s := t.divergencia_inicial.get("similitud"), (int, float)) and math.isfinite(s)]
         formas = [t.forma() for t in self.ambiguos]
         return {
             "n_terminos": len(self.terminos), "n_ambiguos": len(self.ambiguos), "tipos": tipos,

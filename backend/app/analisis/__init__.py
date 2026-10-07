@@ -1,5 +1,5 @@
 """Vistas derivadas de las trazas para el frontend (ADR 0015). Funciones puras, sin LLM."""
-from .configuracion import configuracion_vigente, leer_catalogos, rejilla  # noqa: F401
+from .configuracion import CatalogoInvalido, configuracion_vigente, leer_catalogos  # noqa: F401
 from .proyecto import (  # noqa: F401
     ambiguedades_proyecto,
     flujo_proyecto,

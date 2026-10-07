@@ -41,7 +41,7 @@ class ConfigNormalizada(Forma):
     semilla: int | None
     significado_max_palabras: int | None
     spacy_model: str | None
-    catalogos: dict[str, str | None]
+    catalogos: dict[str, Any]  # versión de cada catálogo, tal cual la trae su JSON
     persistencia: str | None
     otros: dict[str, Any]  # claves de la configuración que esta vista no reconoce
 
@@ -70,7 +70,7 @@ class Configuracion(ConfigNormalizada):
 class Catalogos(Forma):
     regionales: dict[str, Any] | None
     vaguedad: dict[str, Any] | None
-    versiones: dict[str, str | None]
+    versiones: dict[str, Any]  # el campo `version` de cada JSON, tal cual
     nota: str
 
 

@@ -15,7 +15,9 @@ from tests.analisis.caminos import (
     APROBAR,
     I2_CERCANA,
     JUSTIFICACION,
+    T1,
     insertar,
+    montar_dos_terminos,
     termino,
     vista,
 )
@@ -432,3 +434,106 @@ def test_resumen_requisito(tmp_path, analizador):
     assert {k: r[k] for k in ("similitud_minima", "via", "rondas_max", "n_ambiguos", "tipos", "vaguedad")} == {
         k: v["resumen"][k] for k in ("similitud_minima", "via", "rondas_max", "n_ambiguos", "tipos", "vaguedad")}
     assert r["en_proceso"] is False and r["estado"] == "pendiente_validacion"
+
+
+# ---------------------------------------------------------------- revisión: casos que fallaban o no se probaban
+
+def test_reejecucion_de_una_ronda_descarta_lo_que_la_ultima_no_repitio(tmp_path, analizador):
+    """La primera ejecución de la ronda 1 llegó a consenso (retiró I2) y se cortó antes del
+    checkpoint; la que quedó en el grafo no retiró nada y terminó en arbitraje. El consenso
+    viejo no tiene a quién reemplazarlo por clave, pero va antes de la última objeción."""
+    sin_cambios = {"interpretaciones": [I1, I2]}
+    srv, _, _ = montar(tmp_path, analizador, {
+        "extractor_v1": [EXTRACCION_SESION], "clasificador_v2": [clasificacion(I1, I2)],
+        "critico_v1": r3_todas(False), "clasificador_refinamiento_v1": [sin_cambios, sin_cambios],
+        "critico_arbitraje_v1": [{"interpretacion_elegida": "I2", "justificacion_por_regla": JUSTIFICACION}]})
+    original = srv.traza(srv.procesar(SESION))
+    objecion = next(m for m in original.mensajes if m.tipo == "objecion" and m.ronda == 1)
+    abandonada = [
+        objecion.model_dump(include={"ronda", "emisor", "receptor", "tipo", "modelo", "prompt_version", "payload"}),
+        {"ronda": 1, "emisor": "clasificador", "receptor": "divergencia", "tipo": "refinamiento",
+         "payload": {"termino": "sesión", "interpretaciones": [I1],
+                     "retiradas": [{"interpretacion_id": "I2", "motivo": "agrega servidor"}]}},
+        {"ronda": 1, "emisor": "sistema", "receptor": "sistema", "tipo": "consenso",
+         "payload": {"termino": "sesión", "motivo": "una_interpretacion", "similitud": None, "umbral": 0.75,
+                     "propuesta": "I1", "interpretaciones": [I1]}},
+    ]
+    repetida = insertar(original, objecion.secuencia, abandonada)
+
+    antes, despues = vista_requisito(original), vista_requisito(repetida)
+    formas.VistaRequisito.model_validate(despues)
+    assert despues["n_repetidos"] == 3
+    assert despues["terminos"] == antes["terminos"] and despues["resumen"] == antes["resumen"]
+    s = termino(despues, "sesión")
+    assert [r["consenso"] for r in s["rondas"]] == [None, None]
+    assert all(i["estado"] == "vigente" for i in s["interpretaciones"])
+    assert s["resolucion"]["via"] == "arbitraje"
+
+
+def test_dos_terminos_consenso_y_arbitraje_en_el_mismo_requisito(tmp_path, analizador):
+    from app.analisis import flujo_proyecto
+
+    srv, _, req = montar_dos_terminos(tmp_path, analizador)
+    v = vista(srv, req)
+    assert v["estado"] == "pendiente_validacion"
+    assert [x["estado"] for x in v["transiciones"]] == [
+        "cargado", "extraido", "interpretado", "en_debate", "en_debate", "arbitrado", "pendiente_validacion"]
+
+    s, t = termino(v, "sesión"), termino(v, "turno")
+    assert [r["ronda"] for r in s["rondas"]] == [1] and [r["ronda"] for r in t["rondas"]] == [1, 2]
+    assert s["resolucion"] == {"via": "consenso", "decision": "consenso", "propuesta": I1,
+                               "motivo": "una_interpretacion", "similitud_final": None, "arbitraje": None}
+    assert [(i["id"], i["estado"], i["retirada_en_ronda"]) for i in s["interpretaciones"]] == [
+        ("I1", "vigente", None), ("I2", "retirada", 1)]
+    assert t["resolucion"]["via"] == "arbitraje" and t["resolucion"]["propuesta"] == T1
+    assert t["resolucion"]["similitud_final"] == 0.0
+    assert [r["similitud"]["similitud"] for r in t["rondas"]] == [0.0, 0.0]
+    assert v["resumen"] == {"n_terminos": 2, "n_ambiguos": 2,
+                            "tipos": {"lexica": 2, "alcance": 0, "anaforica": 0, "sintactica": 0},
+                            "vaguedad": [], "regionales": [], "resueltos_por_lel": [], "estructuras": 0,
+                            "similitud_minima": 0.0, "via": "arbitraje", "rondas_max": 2, "n_errores": 0}
+
+    # a mano: ronda 1 debate de los dos (2 objeciones, 2 refinamientos, similitud solo de «turno»
+    # porque a «sesión» le quedó una, 1 consenso); ronda 2 solo «turno»; 2 similitudes iniciales
+    f = flujo_proyecto([srv.traza(req)], [])["total"]
+    tipos = f["mensajes_por_tipo"]
+    assert (tipos["similitud"], tipos["objecion"], tipos["refinamiento"], tipos["consenso"], tipos["arbitraje"]) == (
+        4, 3, 3, 1, 1)
+    assert f["fases"][2]["mensajes"] == 12
+    # el requisito no pasó por el estado `consenso` aunque un término sí se resolvió así
+    assert {k: f[k] for k in ("debates", "rondas_totales", "consensos", "arbitrajes", "directos")} == {
+        "debates": 1, "rondas_totales": 2, "consensos": 0, "arbitrajes": 1, "directos": 0}
+
+
+def test_error_del_modelador_tras_aprobar(tmp_path, analizador):
+    from app.analisis import flujo_proyecto
+
+    srv, _, repo = montar(tmp_path, analizador, {
+        "extractor_v1": [EXTRACCION_SESION], "clasificador_v2": [clasificacion(I1, I2_CERCANA)],
+        "modelador_v1": ["no es json", "tampoco"]})
+    req = srv.procesar(SESION)
+    srv.validar(req, APROBAR)
+    v = vista(srv, req)
+    assert (v["estado"], v["terminal"], v["en_proceso"]) == ("error", True, False)
+    assert [x["estado"] for x in v["transiciones"]][-2:] == ["validado", "error"]
+    assert v["validacion"]["decision"] == "aprobar" and v["formalizacion"] is None
+    assert [(e["nodo"], e["prompt_version"]) for e in v["errores"]] == [("formalizado", "modelador_v1")]
+    s = termino(v, "sesión")
+    assert s["validacion"] == {"final": I1, "cambio": "ninguno"} and s["entrada_lel"] is None
+    assert v["resumen"]["via"] == "aceptado_directo" and v["resumen"]["n_errores"] == 1
+
+    f = flujo_proyecto([srv.traza(req)], [])["total"]
+    assert (f["validados"], f["formalizados"]) == (1, 0)
+    assert [x["requisitos_que_pasaron"] for x in f["fases"]] == [1, 1, 1, 1, 0]
+
+
+def test_similitud_inicial_no_finita_no_es_la_minima(tmp_path, analizador):
+    """Con embeddings que devuelven NaN, `min` daba NaN o el otro valor según el orden."""
+    srv, _, req = montar_dos_terminos(tmp_path, analizador)
+    t = srv.traza(req)
+    mensajes = [m.model_copy(update={"payload": {**m.payload, "similitud": float("nan")}})
+                if m.tipo == "similitud" and m.ronda == 0 and m.payload.get("termino") == "sesión" else m
+                for m in t.mensajes]
+    v = vista_requisito(t.model_copy(update={"mensajes": mensajes}))
+    assert v["resumen"]["similitud_minima"] == 0.0  # la de «turno»
+    assert resumen_requisito(t.model_copy(update={"mensajes": mensajes}))["similitud_minima"] == 0.0

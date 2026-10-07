@@ -12,6 +12,7 @@ from app.models import Interpretacion, Mensaje, Traza, Validacion
 from tests.escenarios import (
     EXTRACCION_SESION,
     I1,
+    I2,
     MODELADO,
     P1_CERCANA,
     SESION,
@@ -84,6 +85,30 @@ def insertar(traza: Traza, antes_de: int, nuevos: list[dict]) -> Traza:
     transiciones = [t.model_copy(update={"secuencia": t.secuencia + (len(nuevos) if t.secuencia >= antes_de else 0)})
                     for t in traza.transiciones]
     return traza.model_copy(update={"mensajes": mensajes, "transiciones": transiciones})
+
+
+TURNO = "El sistema debe registrar la sesión y el turno del usuario."
+T1 = interp("I1", "horario", "El sistema debe registrar la sesión y el horario del usuario.")
+T2 = interp("I2", "lugar en la fila", "El sistema debe registrar la sesión y el lugar en la fila del usuario.")
+
+
+def montar_dos_terminos(tmp_path, analizador):
+    """Un requisito con dos términos ambiguos: «sesión» llega a consenso en la ronda 1
+    (el Clasificador retira I2) y «turno» se arbitra tras dos rondas sin cambios."""
+    sin_cambios = {"interpretaciones": [T1, T2]}
+    srv, _, repo = montar(tmp_path, analizador, {
+        "extractor_v1": [extraccion(("sesión", "objeto"), ("turno", "objeto"))],
+        "clasificador_v2": [{"resultados": [
+            {"termino": "sesión", "tipo_ambiguedad": "lexica", "interpretaciones": [I1, I2]},
+            {"termino": "turno", "tipo_ambiguedad": "lexica", "interpretaciones": [T1, T2]}]}],
+        "critico_v1": r3_todas(False),
+        "clasificador_refinamiento_v1": [
+            {"interpretaciones": [I1], "retiradas": [{"interpretacion_id": "I2", "motivo": "agrega red"}]},
+            sin_cambios, sin_cambios],
+        "critico_arbitraje_v1": [{"interpretacion_elegida": "I1", "justificacion_por_regla": JUSTIFICACION}]})
+    srv.deps.embeddings = EmbeddingsFalsos({**VECTORES, T1["parafrasis_del_requisito"]: [1.0, 0.0],
+                                            T2["parafrasis_del_requisito"]: [0.0, 1.0]})
+    return srv, repo, srv.procesar(TURNO)
 
 
 def montar_proyecto(tmp_path, analizador):

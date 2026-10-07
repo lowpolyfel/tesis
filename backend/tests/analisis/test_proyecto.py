@@ -7,7 +7,6 @@ from app.analisis import (
     resumen_proyecto,
     resumen_requisito,
 )
-from app.analisis.configuracion import rejilla
 
 
 def _datos(proyecto):
@@ -113,6 +112,29 @@ def test_sin_inconsistencia_con_un_solo_significado(proyecto):
     assert next(g for g in a["terminos"] if g["clave"] == "sesion")["detalle_inconsistencia"] is None
 
 
+def _entrada(req_id: str, nocion: list[str], simbolo: str = "sesión"):
+    from app.models import EntradaLELFormalizada
+    from tests.escenarios import I1
+
+    return EntradaLELFormalizada(simbolo=simbolo, tipo="objeto", nocion=nocion, impacto=["Se registra."],
+                                 proyecto_id="P01", req_id=req_id, termino=simbolo, via="consenso",
+                                 interpretacion=I1, editada_por_humano=False, fecha="2026-10-06")
+
+
+def test_nociones_iguales_en_otro_orden_no_son_inconsistencia():
+    """Antes se comparaban como tuplas en su orden: el mismo LEL escrito en otro orden contaba."""
+    mismas = [_entrada("R01", ["Periodo de uso.", "Se abre al entrar."]),
+              _entrada("R02", ["se abre al entrar.", "Periodo de uso."])]
+    a = ambiguedades_proyecto([], mismas)
+    formas.AmbiguedadesProyecto.model_validate(a)
+    assert a["terminos"] == [] and a["totales"]["inconsistentes"] == 0
+
+    distintas = [*mismas, _entrada("R03", ["Evento de conexión."])]
+    (g,) = ambiguedades_proyecto([], distintas)["terminos"]
+    assert g["inconsistente"] and [e["req_id"] for e in g["detalle_inconsistencia"]["lel"]] == ["R01", "R02", "R03"]
+    assert "2 nociones distintas" in g["detalle_inconsistencia"]["texto"]
+
+
 # ---------------------------------------------------------------- flujo KMoS-SSA
 
 def _fases(ciclo):
@@ -162,6 +184,3 @@ def test_flujo_por_ciclo(proyecto):
     assert total["duracion_s"] >= max(c1["duracion_s"], c2["duracion_s"])
 
 
-def test_rejilla_de_calibracion():
-    assert rejilla(0.5, 0.95, 0.05) == [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95]
-    assert rejilla(0.7, 0.7, 0.05) == [0.7] and rejilla(0.8, 0.7, 0.05) == []

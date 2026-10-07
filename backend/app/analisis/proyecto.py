@@ -106,7 +106,8 @@ def _agrupar(a: Analisis, decision: DecisionFiltro, destino: dict[str, dict]) ->
 
 def _inconsistencia(g: dict, relacionadas: list[EntradaLELFormalizada]) -> dict | None:
     """Significados validados distintos entre requisitos, o entradas del LEL del mismo
-    símbolo con nociones distintas. La comparación es literal (minúsculas, sin acentos)."""
+    símbolo con nociones distintas. La comparación es literal (minúsculas, sin acentos);
+    los enunciados de una noción se comparan sin importar su orden."""
     significados: dict[str, dict] = {}
     for ap in g["apariciones"]:
         if ap["interpretacion_final"]:
@@ -121,7 +122,7 @@ def _inconsistencia(g: dict, relacionadas: list[EntradaLELFormalizada]) -> dict 
     for e in relacionadas:
         por_simbolo.setdefault(clave(e.simbolo), []).append(e)
     for entradas in por_simbolo.values():
-        nociones = {tuple(clave(n) for n in e.nocion) for e in entradas}
+        nociones = {tuple(sorted(clave(n) for n in e.nocion)) for e in entradas}
         if len(nociones) > 1:
             partes.append(f"el LEL tiene {len(entradas)} entradas «{entradas[0].simbolo}» "
                           f"con {len(nociones)} nociones distintas")

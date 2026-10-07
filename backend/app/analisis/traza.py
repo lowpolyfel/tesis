@@ -13,6 +13,8 @@ from app.nlp import normalizar
 # Se emiten una vez por requisito; si aparecen dos veces es por un nodo reejecutado
 _UNO_POR_REQUISITO = {TipoMensaje.EXTRACCION, TipoMensaje.FILTRADO, TipoMensaje.INTERPRETACIONES,
                       TipoMensaje.SOLICITUD_VALIDACION, TipoMensaje.VALIDACION}
+# En cada ronda, el debate de un término empieza con la objeción del Crítico y sigue con estos
+_TRAS_LA_OBJECION = {TipoMensaje.REFINAMIENTO, TipoMensaje.SIMILITUD, TipoMensaje.CONSENSO}
 
 
 def clave(termino: str | None) -> str | None:
@@ -44,8 +46,11 @@ def mensajes_efectivos(traza: Traza) -> tuple[list[Mensaje], int]:
 
     Un nodo que continúa tras un reinicio se vuelve a ejecutar completo y repite
     sus mensajes (ADR 0008). Cuenta el último de cada clave, que es el que quedó en
-    el estado del grafo; las similitudes iniciales anteriores a la última
-    clasificación también quedan reemplazadas. Los errores nunca se descartan.
+    el estado del grafo. Lo que una ejecución anterior emitió y la última no repitió
+    también queda reemplazado: las similitudes iniciales anteriores a la última
+    clasificación y, en cada ronda, lo que siguió a una objeción anterior a la última
+    del mismo término (un consenso que la reejecución ya no alcanzó, por ejemplo).
+    Los errores nunca se descartan.
     """
     ordenados = sorted(traza.mensajes, key=lambda m: m.secuencia)
     ultimo: dict[tuple, int] = {}
@@ -60,6 +65,10 @@ def mensajes_efectivos(traza: Traza) -> tuple[list[Mensaje], int]:
             return True
         if m.tipo == TipoMensaje.SIMILITUD and m.ronda == 0 and m.secuencia < clasificacion:
             return False
+        if m.tipo in _TRAS_LA_OBJECION and m.ronda > 0:
+            objecion = ultimo.get((TipoMensaje.OBJECION, m.ronda, k[2]), 0)
+            if m.secuencia < objecion:
+                return False
         return ultimo[k] == m.secuencia
 
     efectivos = [m for m in ordenados if cuenta(m)]

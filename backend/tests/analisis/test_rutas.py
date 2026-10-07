@@ -100,3 +100,61 @@ def test_las_rutas_estan_en_la_app_real_con_sus_formas(proyecto):
                                "/configuracion", "/catalogos")}
     assert respuestas["/requisitos/{req_id}"]["$ref"].endswith("/VistaRequisito")
     assert respuestas["/proyectos/{proyecto_id}/flujo"]["$ref"].endswith("/FlujoProyecto")
+
+
+def _app_con(servicio) -> TestClient:
+    app = FastAPI()
+    app.include_router(analisis.router)
+    app.state.servicio = servicio
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def _servicio_con_catalogos(directorio):
+    from types import SimpleNamespace
+
+    from app.config import Settings
+
+    return SimpleNamespace(deps=SimpleNamespace(settings=Settings(_env_file=None, catalogos_dir=str(directorio))))
+
+
+@pytest.mark.parametrize("contenido, motivo", [('{"version": "v2", "terminos": [', "no es JSON válido"),
+                                               ('["jalar"]', "debe ser un objeto JSON")])
+def test_catalogo_mal_formado_dice_cual_y_por_que(tmp_path, contenido, motivo):
+    (tmp_path / "regionales.json").write_text(contenido, encoding="utf-8")
+    r = _app_con(_servicio_con_catalogos(tmp_path)).get("/catalogos")
+    assert r.status_code == 500
+    assert "regionales.json" in r.json()["detail"] and motivo in r.json()["detail"]
+
+
+def test_catalogo_con_version_numerica(tmp_path):
+    """La versión se copia tal cual del JSON; un número no debe tumbar la ruta."""
+    (tmp_path / "vaguedad.json").write_text('{"version": 2, "terminos": []}', encoding="utf-8")
+    r = _app_con(_servicio_con_catalogos(tmp_path)).get("/catalogos")
+    assert r.status_code == 200 and r.json()["versiones"] == {"regionales": None, "vaguedad": 2}
+
+
+def test_la_rejilla_de_configuracion_es_la_de_la_calibracion(cliente, proyecto):
+    from app.calibracion import rejilla
+
+    s = proyecto[0].deps.settings
+    c = cliente.get("/configuracion").json()["calibracion"]
+    assert c["umbrales"] == rejilla(s.calibracion_desde, s.calibracion_hasta, s.calibracion_paso)
+    assert c["umbrales"] == [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95]
+
+
+def test_similitud_nan_en_la_traza_sale_como_null(proyecto):
+    """Embeddings con NaN dejan un NaN en la traza: la ruta responde JSON válido con null."""
+    from types import SimpleNamespace
+
+    srv = proyecto[0]
+    t = srv.traza("R01")
+    t = t.model_copy(update={"mensajes": [
+        m.model_copy(update={"payload": {**m.payload, "similitud": float("nan"), "pares": {"I1-I2": float("nan")}}})
+        if m.tipo == "similitud" else m for m in t.mensajes]})
+    stub = SimpleNamespace(traza=lambda req_id: t if req_id == "R01" else None,
+                           repo=SimpleNamespace(obtener_doc=lambda coleccion, doc_id: None))
+    r = _app_con(stub).get("/requisitos/R01")
+    assert r.status_code == 200
+    s = next(x for x in r.json()["terminos"] if x["termino"] == "sesión")
+    assert s["divergencia_inicial"]["similitud"] is None and s["divergencia_inicial"]["pares"] == {"I1-I2": None}
+    assert r.json()["resumen"]["similitud_minima"] is None
