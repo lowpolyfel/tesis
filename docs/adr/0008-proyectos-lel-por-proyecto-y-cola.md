@@ -38,17 +38,24 @@ revisión explícito de KMoS-SSA).
      estado y guardar el checkpoint) o ya pasó de `humano` con la validación
      registrada (cayó antes de `validado`). Antes se saltaban todos los de
      `pendiente_validacion` y esos quedaban atascados: `/validar` respondía 409
-     para siempre;
-   - pausado en `humano`: si hay una validación aceptada esperando turno
-     (punto 8), se reanuda con ella; si no, sigue esperando a la persona.
+     para siempre. LangGraph guarda los checkpoints en segundo plano
+     (`durability="async"`), así que el checkpoint puede ir uno o más nodos
+     detrás del repositorio; un checkpoint sin `next` pero con tareas
+     pendientes también se continúa;
+   - pausado en `humano`: si hay una validación aceptada esperando turno en esa
+     misma pausa (punto 8), se reanuda con ella; si no, sigue esperando a la
+     persona.
 7. **Almacén genérico** en el repositorio (`crear_doc`, `guardar_doc`,
    `obtener_doc`, `listar_docs` por colección) para proyectos, documentos,
    comparaciones y evaluaciones, con ids consecutivos por prefijo. Cada módulo
    valida sus datos con su propio modelo Pydantic.
 8. **La validación aceptada se guarda antes de encolarla** (colección
    `validaciones`: un documento por `req_id` con la decisión, las ediciones, el
-   comentario y la fecha). `POST /validar` responde 202 solo después de
-   guardarla, así que un reinicio mientras espera turno no la pierde.
+   comentario, la fecha y el id del checkpoint de la pausa a la que responde).
+   `POST /validar` responde 202 solo después de guardarla, así que un reinicio
+   mientras espera turno no la pierde. Solo se aplica a esa misma pausa: si se
+   vacían las trazas y los checkpoints, el id `R01` se reutiliza y la decisión
+   sobre el R01 anterior no debe aplicarse sola al nuevo.
 9. **Reejecutar un nodo no duplica la memoria.** `guardar_lel` reemplaza la
    entrada del mismo `req_id` y término (el documento de `formalizados` ya se
    reemplazaba por `req_id`). Cada entrada del LEL guarda además el `cambio` de
@@ -78,8 +85,8 @@ revisión explícito de KMoS-SSA).
   determinista, la entrada del LEL que queda es la de la última ejecución.
 - La colección `validaciones` conserva la última validación aceptada de cada
   requisito aunque ya se haya aplicado; solo se usa si el grafo sigue pausado
-  en `humano`. La fuente de verdad de la decisión sigue siendo el mensaje
-  `validacion` de la traza.
+  en `humano` en la misma pausa. La fuente de verdad de la decisión sigue
+  siendo el mensaje `validacion` de la traza.
 - Las entradas del LEL guardadas antes de este cambio no tienen `cambio`
   (queda vacío); `editada_por_humano` sigue marcando solo la edición.
 - Límites que se aceptan: el candado del ciclo es de proceso (un script con su

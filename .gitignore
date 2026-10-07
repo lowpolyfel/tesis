@@ -44,6 +44,12 @@ Thumbs.db
 data/checkpoints.sqlite
 data/checkpoints.sqlite-*
 
-# Salidas locales del respaldo JSON del repositorio
+# Salidas locales del respaldo JSON del repositorio (estado de trabajo, no resultados)
 data/resultados/trazas/
 data/resultados/lel.json
+data/resultados/proyectos/
+data/resultados/documentos/
+data/resultados/formalizados/
+data/resultados/validaciones/
+data/resultados/comparaciones/
+data/resultados/evaluaciones/

@@ -51,6 +51,11 @@ def checkpointer_sqlite(ruta: Path):
     return SqliteSaver(sqlite3.connect(str(ruta), check_same_thread=False))
 
 
+def _pausa(snapshot) -> str | None:
+    """Id del checkpoint de un snapshot del grafo (identifica una pausa concreta)."""
+    return (snapshot.config or {}).get("configurable", {}).get("checkpoint_id")
+
+
 class Servicio:
     def __init__(self, deps: Dependencias, checkpointer=None):
         self.deps = deps
@@ -81,8 +86,11 @@ class Servicio:
         - a mitad del grafo: continúa desde su último checkpoint. Incluye los que el
           repositorio ya marca `pendiente_validacion` pero cuyo grafo no llegó a pausarse
           en `humano`, o ya pasó de ahí con la validación registrada;
-        - pausado en `humano`: si había una validación aceptada esperando turno, se
-          reanuda con ella; si no, sigue esperando a la persona.
+        - pausado en `humano`: si había una validación aceptada esperando turno en esa
+          misma pausa, se reanuda con ella; si no, sigue esperando a la persona.
+        El checkpoint se guarda en segundo plano (durability async de LangGraph) y puede
+        ir uno o más nodos detrás del repositorio: un checkpoint sin `next` pero con
+        tareas pendientes también se continúa.
         Devuelve los req_id retomados."""
         retomados = []
         for r in self.repo.listar_trazas():
@@ -95,11 +103,11 @@ class Servicio:
                     continue
                 tipo, trabajo = "ejecutar", lambda r=req_id: self.ejecutar(r)
             elif snapshot.next == ("humano",):
-                validacion = self.validacion_aceptada(req_id)
+                validacion = self.validacion_aceptada(req_id, _pausa(snapshot))
                 if validacion is None:
                     continue
                 tipo, trabajo = "reanudar", lambda r=req_id, v=validacion: self.reanudar(r, v)
-            elif snapshot.next:
+            elif snapshot.next or snapshot.tasks:
                 tipo, trabajo = "continuar", lambda r=req_id: self._correr(r, None)
             else:
                 continue
@@ -180,8 +188,9 @@ class Servicio:
         self.ejecutar(req_id)
         return req_id
 
-    def preparar_validacion(self, req_id: str, validacion: Validacion) -> None:
-        """Comprueba que se puede reanudar y reserva el requisito."""
+    def preparar_validacion(self, req_id: str, validacion: Validacion) -> str | None:
+        """Comprueba que se puede reanudar y reserva el requisito. Devuelve el id del
+        checkpoint de la pausa en `humano` a la que responde la validación."""
         traza = self.repo.obtener_traza(req_id)
         if traza is None:
             raise KeyError(req_id)
@@ -195,6 +204,7 @@ class Servicio:
         if desconocidos:
             raise ValueError(f"términos sin interpretaciones en {req_id}: {sorted(desconocidos)}; válidos: {sorted(conocidos)}")
         self._reservar(req_id)
+        return _pausa(snapshot)
 
     def reanudar(self, req_id: str, validacion: Validacion) -> None:
         self._correr(req_id, Command(resume=validacion.model_dump(mode="json")))
@@ -208,20 +218,25 @@ class Servicio:
         """Preparar y encolar la reanudación (API). Va antes que los requisitos nuevos.
         Se guarda antes de encolarla: si el proceso se reinicia mientras espera turno,
         `recuperar()` la vuelve a encolar en vez de perder la decisión de la persona."""
-        self.preparar_validacion(req_id, validacion)
+        pausa = self.preparar_validacion(req_id, validacion)
         try:
             self.repo.guardar_doc(COLECCION_VALIDACIONES, req_id, {
-                "req_id": req_id, "validacion": validacion.model_dump(mode="json"), "aceptada": ahora().isoformat()})
+                "req_id": req_id, "pausa": pausa, "validacion": validacion.model_dump(mode="json"),
+                "aceptada": ahora().isoformat()})
         except Exception:
             self._liberar(req_id)
             raise
         self.cola.encolar("reanudar", req_id, lambda: self.reanudar(req_id, validacion))
 
-    def validacion_aceptada(self, req_id: str) -> Validacion | None:
-        """La última validación aceptada para `req_id`. Solo cuenta si el grafo sigue
-        pausado en `humano`: después de aplicarla, el checkpoint ya pasó de ahí."""
+    def validacion_aceptada(self, req_id: str, pausa: str | None) -> Validacion | None:
+        """La validación aceptada para `req_id` en esta pausa en `humano`. Una validación
+        de otra pausa no cuenta: si se vaciaron las trazas y los checkpoints, el id R01
+        se reutiliza, y la decisión que una persona tomó sobre el R01 anterior no debe
+        aplicarse sola al nuevo."""
         doc = self.repo.obtener_doc(COLECCION_VALIDACIONES, req_id)
-        return Validacion.model_validate(doc["validacion"]) if doc else None
+        if not doc or pausa is None or doc.get("pausa") != pausa:
+            return None
+        return Validacion.model_validate(doc["validacion"])
 
     def traza(self, req_id: str) -> Traza | None:
         return self.repo.obtener_traza(req_id)

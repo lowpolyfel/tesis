@@ -171,3 +171,53 @@ def test_cambio_en_el_lel_al_aceptar_o_reescribir(tmp_path, analizador, edicion,
     srv.validar(req, Validacion(decision="aprobar", interpretaciones_editadas={"sesión": edicion} if edicion else {}))
     e = repo.listar_lel()[0]
     assert (e.via, e.cambio, e.editada_por_humano) == ("aceptado_directo", cambio, cambio == "edicion")
+
+
+def test_una_validacion_de_otra_corrida_no_se_aplica_a_un_requisito_nuevo(tmp_path, analizador):
+    """Si se vacían las trazas y los checkpoints, el id R01 se reutiliza: la validación que
+    alguien aceptó para el R01 anterior no debe aplicarse sola al nuevo."""
+    import shutil
+
+    srv, _, _ = arrancar(tmp_path, analizador)
+    req = srv.procesar(SESION)
+    srv.solicitar_validacion(req, Validacion(decision="aprobar", comentario="validación de la corrida VIEJA"))
+    shutil.rmtree(tmp_path / "resultados" / "trazas")
+    (tmp_path / "resultados" / "lel.json").unlink(missing_ok=True)
+    (tmp_path / "cp.sqlite").unlink()
+
+    nuevo, _, _ = arrancar(tmp_path, analizador)
+    assert nuevo.procesar(SESION) == req  # el mismo id, otra corrida
+
+    srv2, _ = reiniciar(tmp_path, analizador)
+    t = srv2.traza(req)
+    assert t.estado == Estado.PENDIENTE_VALIDACION and "validacion" not in tipos(t)
+    srv2.validar(req, Validacion(decision="aprobar", comentario="la de ahora"))
+    assert next(m for m in srv2.traza(req).mensajes if m.tipo == "validacion").payload["comentario"] == "la de ahora"
+    srv2.detener()
+
+
+def test_checkpoint_sin_next_pero_con_tareas_pendientes_se_continua(tmp_path, analizador):
+    """El checkpoint se guarda en segundo plano y puede ir detrás del repositorio: tras una
+    caída puede quedar sin `next` pero con tareas pendientes. Antes se saltaba y el
+    requisito quedaba atascado (POST /validar respondía 409 para siempre)."""
+    srv, _, repo = arrancar(tmp_path, analizador)
+    req = srv.procesar(SESION)
+    caer_en(repo, "cambiar_estado", lambda req_id, estado: estado == Estado.VALIDADO)
+    with pytest.raises(Caida):
+        srv.validar(req, Validacion(decision="aprobar"))
+
+    srv2, _, _ = arrancar(tmp_path, analizador)
+    real = srv2.grafo.get_state
+
+    def rezagado(config, *a, **kw):
+        s = real(config, *a, **kw)
+        return s._replace(next=()) if s.tasks else s
+
+    srv2.grafo.get_state = rezagado
+    assert srv2.recuperar() == [req]
+    srv2.grafo.get_state = real
+    srv2.cola.iniciar()
+    assert srv2.cola.esperar(10)
+    t = srv2.traza(req)
+    assert t.estado == Estado.FORMALIZADO and tipos(t).count("validacion") == 1
+    srv2.detener()
