@@ -28,6 +28,9 @@ class Settings(BaseSettings):
 
     # Ollama
     ollama_base_url: str = "http://localhost:11434"
+    # Tiempo máximo de una llamada a Ollama (generación o embeddings). Generoso: un modelo
+    # cargándose en frío tarda; sin límite, un Ollama colgado detiene la cola para siempre.
+    ollama_timeout_s: float = Field(300, gt=0)
     extractor_model: str = "qwen2.5:7b"
     clasificador_model: str = "qwen2.5:7b"
     modelador_model: str = "qwen2.5:7b"
@@ -58,8 +61,11 @@ class Settings(BaseSettings):
 
     # API: cada cuánto la sandbox recibe mensajes nuevos por SSE (no afecta resultados)
     sse_intervalo_s: float = Field(0.3, gt=0)
-    # Orígenes permitidos para el frontend (Vite en desarrollo), separados por coma
+    # Orígenes permitidos para el frontend, separados por coma, y además los que cumplan la
+    # expresión (por omisión, cualquier puerto de localhost: `npm run dev` en 5173 o 5174,
+    # `npm run preview` en 4173). Vacía, solo cuentan los de la lista.
     cors_origenes: str = "http://localhost:5173,http://127.0.0.1:5173"
+    cors_origenes_regex: str = r"https?://(localhost|127\.0\.0\.1)(:\d+)?"
 
     # Documentos (PDF con texto extraíble o texto plano)
     documento_max_mb: float = Field(10, gt=0)

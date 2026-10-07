@@ -34,6 +34,20 @@ La interfaz principal es Dudamel: en otra terminal, `cd ..\frontend`,
 `frontend/README.md`). La sandbox mínima sigue en <http://localhost:8000/sandbox>
 y la documentación de la API en `/docs`.
 
+Variables de `.env` que conviene conocer al correrlo (además de las calibrables):
+
+| Variable | Por omisión | Para qué |
+|---|---|---|
+| `CORS_ORIGENES` | `http://localhost:5173,http://127.0.0.1:5173` | Orígenes del frontend, separados por coma. Agrega aquí el de otra máquina o dominio. |
+| `CORS_ORIGENES_REGEX` | cualquier puerto de `localhost` y `127.0.0.1` | Además de la lista: `npm run dev` en 5174 o `npm run preview` (4173) funcionan sin tocar nada. Vacía, solo cuenta la lista. |
+| `OLLAMA_TIMEOUT_S` | `300` | Tiempo máximo de cada llamada a Ollama. Si se agota, el requisito termina en `error` con la explicación en la traza, en vez de detener la cola. |
+| `SSE_INTERVALO_S` | `0.3` | Cada cuánto `/eventos` revisa la traza. |
+
+Al arrancar (también tras `--reload` o una caída), el servidor retoma lo que
+quedó a medias: vuelve a encolar lo que no empezó, continúa los grafos desde su
+último checkpoint y reanuda las validaciones que ya había aceptado (ADR 0008).
+Los requisitos que esperan validación siguen esperando.
+
 Endpoints principales (todo lo que llama a un LLM pasa por la cola de un solo
 trabajador, ADR 0008):
 
@@ -65,6 +79,10 @@ python ..\scripts\casos_aceptacion.py
 
 Corre los tres requisitos de la fase hasta la validación humana, imprime filtros,
 interpretaciones y similitudes, y guarda el reporte en `data/resultados/aceptacion/`.
+Puede correr con la API arriba, también con el respaldo JSON (las escrituras se
+serializan con un candado de archivo, ADR 0006); lo que no conviene es arrancar
+la API mientras el script está a mitad de un requisito, porque lo retomaría en
+paralelo.
 
 ## Estructura
 

@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.models import PROYECTO_GENERAL, ESTADOS_TERMINALES, Estado, Traza, Validacion
 from app.orchestration import ConflictoDeEstado, Servicio
 
-from ..dependencias import obtener_servicio, traza_existente
+from ..dependencias import apagando, obtener_servicio, traza_existente
 
 router = APIRouter(tags=["requisitos"])
 ServicioDep = Annotated[Servicio, Depends(obtener_servicio)]
@@ -67,7 +67,8 @@ async def eventos(
 ) -> AsyncIterable[ServerSentEvent]:
     """SSE: `mensaje` por cada mensaje nuevo (id = secuencia), `estado` en cada
     cambio de estado y `fin` al llegar a un estado terminal. Sondea el repositorio
-    (ADR 0006). Al reconectar, `Last-Event-ID` evita repetir mensajes."""
+    (ADR 0006). Al reconectar, `Last-Event-ID` evita repetir mensajes. Si el servidor
+    se apaga, el stream termina sin `fin` y el navegador reconecta cuando vuelva."""
     enviados = desde
     if last_event_id and last_event_id.isdigit():
         enviados = max(enviados, int(last_event_id))
@@ -84,7 +85,7 @@ async def eventos(
         if actual.estado in ESTADOS_TERMINALES:
             yield ServerSentEvent(data={"estado": actual.estado.value}, event="fin")
             return
-        if await request.is_disconnected():
+        if await request.is_disconnected() or apagando(request):
             return
         await asyncio.sleep(srv.deps.settings.sse_intervalo_s)
 

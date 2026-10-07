@@ -9,6 +9,12 @@ def obtener_servicio(request: Request) -> Servicio:
     return request.app.state.servicio
 
 
+def apagando(request: Request) -> bool:
+    """El servidor recibió la orden de apagarse (lo marca `main.py`): los SSE abiertos terminan."""
+    evento = getattr(request.app.state, "apagando", None)
+    return bool(evento and evento.is_set())
+
+
 def traza_existente(req_id: str, request: Request) -> Traza:
     traza = obtener_servicio(request).traza(req_id)
     if traza is None:

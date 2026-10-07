@@ -308,7 +308,10 @@ class EntradaLELFormalizada(EntradaLEL):
     proyecto_id: str = "P00"
     req_id: str
     termino: str
-    via: Via
+    via: Via  # cómo llegó el sistema a la interpretación que propuso
     interpretacion: Interpretacion
     editada_por_humano: bool = False
+    # qué hizo la persona con la propuesta: aceptarla, elegir otra interpretación o reescribirla.
+    # None en las entradas guardadas antes de que existiera el campo.
+    cambio: Literal["ninguno", "eleccion", "edicion"] | None = None
     fecha: str

@@ -11,6 +11,11 @@ después se puede validar desde la sandbox. El reporte se imprime y se guarda en
 
 No ajusta el umbral: usa SIMILARITY_THRESHOLD de la configuración. Si la
 similitud no separa los casos como se esperaba, eso es un hallazgo y se reporta.
+
+Puede correr con la API arriba, también con el respaldo JSON: las escrituras de
+los dos procesos se serializan con un candado de archivo y los req_id no se
+repiten (ADR 0006). No arranques la API mientras el script está a mitad de un
+requisito: al arrancar retoma lo que encuentra a medias y lo correría en paralelo.
 """
 from __future__ import annotations
 

@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import threading
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
@@ -52,6 +53,36 @@ def _coincide(doc: dict, filtro: dict) -> bool:
     return all(doc.get(k) == v for k, v in filtro.items())
 
 
+def _sin_repetir(actuales: list[EntradaLELFormalizada], nuevas: list[EntradaLELFormalizada]) -> list[EntradaLELFormalizada]:
+    """Las actuales menos las que las nuevas reemplazan (mismo req_id y término)."""
+    claves = {(e.req_id, e.termino) for e in nuevas}
+    return [e for e in actuales if (e.req_id, e.termino) not in claves]
+
+
+@contextmanager
+def _candado_de_archivo(ruta: Path):
+    """Exclusión entre procesos: la API y un script sobre la misma carpeta."""
+    with open(ruta, "a+b") as f:
+        if os.name == "nt":
+            import msvcrt
+
+            f.seek(0)
+            msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)  # reintenta durante unos 10 s
+            try:
+                yield
+            finally:
+                f.seek(0)
+                msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+
+
 class Repositorio(Protocol):
     descripcion: str
 
@@ -63,7 +94,8 @@ class Repositorio(Protocol):
     def obtener_traza(self, req_id: str) -> Traza | None: ...
     def listar_trazas(self, proyecto_id: str | None = None) -> list[dict]: ...
     def trazas_completas(self, proyecto_id: str | None = None) -> list[Traza]: ...
-    # LEL
+    # LEL. Una entrada del mismo req_id y término reemplaza a la anterior: si el proceso
+    # cae dentro de `formalizado`, el nodo se reejecuta y no debe duplicar el LEL.
     def guardar_lel(self, entradas: list[EntradaLELFormalizada]) -> None: ...
     def listar_lel(self, proyecto_id: str | None = None) -> list[EntradaLELFormalizada]: ...
     # documentos genéricos por colección
@@ -78,8 +110,10 @@ class Repositorio(Protocol):
 class RepositorioJson:
     """Un archivo por traza (`trazas/R01.json`) y un archivo para el LEL (`lel.json`).
 
-    Escrituras atómicas (archivo temporal + `os.replace`) bajo un candado: el
-    servidor es un solo proceso y el grafo escribe desde hilos de fondo.
+    Escrituras atómicas (archivo temporal + `os.replace`). Un candado de hilo (el
+    grafo escribe desde hilos de fondo) y, para escribir, además un candado de
+    archivo (`trazas/.candado`): un script que corre junto a la API sobre la misma
+    carpeta no repite ids ni pisa archivos (ADR 0006).
     """
 
     def __init__(self, directorio: Path):
@@ -88,7 +122,21 @@ class RepositorioJson:
         self.archivo_lel = self.dir / "lel.json"
         self.dir_trazas.mkdir(parents=True, exist_ok=True)
         self._candado = threading.RLock()
+        self._anidadas = 0  # escrituras en curso en este hilo: el candado de archivo se toma una vez
         self.descripcion = f"json:{self.dir}"
+
+    @contextmanager
+    def _escritura(self):
+        with self._candado:
+            self._anidadas += 1
+            try:
+                if self._anidadas == 1:
+                    with _candado_de_archivo(self.dir_trazas / ".candado"):
+                        yield
+                else:
+                    yield
+            finally:
+                self._anidadas -= 1
 
     # utilidades
     def _ruta(self, req_id: str) -> Path:
@@ -115,14 +163,14 @@ class RepositorioJson:
     # interfaz
     def crear_traza(self, texto: str, config: dict[str, Any], proyecto_id: str = PROYECTO_GENERAL,
                     origen: Origen | None = None, ciclo: int = 1) -> Traza:
-        with self._candado:
+        with self._escritura():
             usados = [int(m.group(1)) for p in self.dir_trazas.glob("R*.json") if (m := _PATRON_REQ.match(p.stem))]
             traza = _nueva_traza(formato_req_id(max(usados, default=0) + 1), texto, config, proyecto_id, origen, ciclo)
             self._guardar(traza)
             return traza
 
     def agregar_mensaje(self, req_id: str, **campos: Any) -> Mensaje:
-        with self._candado:
+        with self._escritura():
             traza = self._leer(req_id)
             msg = Mensaje(req_id=req_id, secuencia=len(traza.mensajes) + 1, **campos)
             traza.mensajes.append(msg)
@@ -130,7 +178,7 @@ class RepositorioJson:
             return msg
 
     def cambiar_estado(self, req_id: str, estado: Estado) -> None:
-        with self._candado:
+        with self._escritura():
             traza = self._leer(req_id)
             traza.estado = estado
             traza.transiciones.append(Transicion(estado=estado, secuencia=len(traza.mensajes)))
@@ -163,9 +211,9 @@ class RepositorioJson:
             return [Traza.model_validate(d) for d in self._todas(proyecto_id)]
 
     def guardar_lel(self, entradas: list[EntradaLELFormalizada]) -> None:
-        with self._candado:
-            actuales = [e.model_dump(mode="json") for e in self.listar_lel()]
-            self._escribir(self.archivo_lel, actuales + [e.model_dump(mode="json") for e in entradas])
+        with self._escritura():
+            todas = _sin_repetir(self.listar_lel(), entradas) + entradas
+            self._escribir(self.archivo_lel, [e.model_dump(mode="json") for e in todas])
 
     def listar_lel(self, proyecto_id: str | None = None) -> list[EntradaLELFormalizada]:
         with self._candado:
@@ -187,7 +235,7 @@ class RepositorioJson:
         return bool(re.fullmatch(r"[A-Za-z]+\d+", str(doc_id)))
 
     def crear_doc(self, coleccion: str, prefijo: str, fabricar: Callable[[str], dict]) -> dict:
-        with self._candado:
+        with self._escritura():
             d = self._dir_coleccion(coleccion)
             usados = [n for p in d.glob(f"{prefijo}*.json") if (n := _numero(p.stem, prefijo)) is not None]
             doc_id = formato_id(prefijo, max(usados, default=0) + 1)
@@ -198,7 +246,7 @@ class RepositorioJson:
     def guardar_doc(self, coleccion: str, doc_id: str, datos: dict) -> None:
         if not self._id_valido(doc_id):
             raise ValueError(f"id inválido: {doc_id}")
-        with self._candado:
+        with self._escritura():
             self._escribir(self._dir_coleccion(coleccion) / f"{doc_id}.json", datos)
 
     def obtener_doc(self, coleccion: str, doc_id: str) -> dict | None:
@@ -301,6 +349,8 @@ class RepositorioMongo:
         return sorted((self._a_traza(d) for d in docs), key=lambda t: int(t.req_id[1:]))
 
     def guardar_lel(self, entradas: list[EntradaLELFormalizada]) -> None:
+        for e in entradas:
+            self.lel.delete_many({"req_id": e.req_id, "termino": e.termino})
         if entradas:
             self.lel.insert_many([e.model_dump(mode="json") for e in entradas])
 

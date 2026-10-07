@@ -348,7 +348,8 @@ def construir_grafo(deps: Dependencias, checkpointer):
             entrada = EntradaLELFormalizada(
                 **m.valor.entrada_lel.model_dump(), proyecto_id=proyecto_id,
                 req_id=req_id, termino=termino, via=c["via"],
-                interpretacion=interp, editada_por_humano=c.get("cambio") == "edicion", fecha=date.today().isoformat())
+                interpretacion=interp, editada_por_humano=c.get("cambio") == "edicion", cambio=c.get("cambio"),
+                fecha=date.today().isoformat())
             hechas.append((entrada, m))
 
         resoluciones = [{"termino": k, "tipo_ambiguedad": c.get("tipo_ambiguedad") or TipoAmbiguedad.LEXICA.value,
@@ -359,7 +360,8 @@ def construir_grafo(deps: Dependencias, checkpointer):
             texto, [{k: r[k] for k in ("termino", "tipo_ambiguedad", "interpretacion")} for r in resoluciones],
             vaguedad, simbolos)
 
-        # todo o nada: se guarda después de que el Modelador terminó con todo
+        # todo o nada: se guarda después de que el Modelador terminó con todo. Si el proceso
+        # cae después de aquí, el nodo se reejecuta: guardar_lel reemplaza las de este req_id.
         repo.guardar_lel([e for e, _ in hechas])
         formalizado_doc = {
             "req_id": req_id, "proyecto_id": proyecto_id, "requisito_original": texto,

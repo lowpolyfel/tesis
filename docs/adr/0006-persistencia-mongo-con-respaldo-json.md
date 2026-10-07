@@ -21,8 +21,13 @@ corriendo, y debe mostrar los mensajes en vivo.
 3. **Identificadores** `R01`, `R02`, … consecutivos. En Mongo `_id = req_id`; si
    dos procesos chocan, el índice único de `_id` obliga a tomar el siguiente.
 4. **Secuencia de mensajes atómica:** en Mongo, `$inc` sobre `ultima_secuencia`
-   del documento; en JSON, un candado de proceso y escritura atómica
-   (archivo temporal + `os.replace`).
+   del documento; en JSON, un candado de hilo, escritura atómica (archivo
+   temporal + `os.replace`) y, en cada escritura, un candado de archivo entre
+   procesos (`trazas/.candado`: `flock` en Linux y macOS, `msvcrt.locking` en
+   Windows). Así un script (`scripts/casos_aceptacion.py`) puede escribir junto
+   a la API en la misma carpeta sin repetir ids ni pisar archivos (añadido el
+   2026-10-07: antes dos procesos tomaban el mismo `R##` y uno fallaba en
+   `os.replace`).
 5. **Transiciones de estado** en la traza (`transiciones`: estado, último
    mensaje previo, fecha), además del estado actual. Con mensajes y transiciones
    se reconstruye el camino completo.
@@ -39,6 +44,10 @@ corriendo, y debe mostrar los mensajes en vivo.
 
 ## Consecuencias
 
-- El respaldo JSON es para un solo proceso (un candado de hilo); no está pensado
-  para varios servidores sobre la misma carpeta.
+- El respaldo JSON admite varios procesos que escriben (las escrituras se
+  serializan con el candado de archivo; las lecturas no lo toman porque
+  `os.replace` es atómico), pero no varios servidores sobre la misma carpeta:
+  cada uno recuperaría al arrancar los mismos requisitos pendientes (ADR 0008).
+  Por la misma razón, la API no debe arrancar mientras el script de casos está
+  a mitad de un requisito: lo continuaría en paralelo.
 - `data/resultados/trazas/` y `lel.json` no se versionan (están en `.gitignore`).

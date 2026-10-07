@@ -7,7 +7,7 @@
 
 Dudamel (el frontend en React) nació como prototipo con datos simulados
 (`mockDb.js`, `simulacion.js`, `fixtures/`): un requisito tenía **una**
-divergencia con dos lecturas fijas *A* y *B*, y la escena animaba un guion
+divergencia con dos interpretaciones fijas *A* y *B*, y la escena animaba un guion
 inventado. El backend no trabaja así: la divergencia se mide por término
 (ADR 0002), cada término tiene N interpretaciones `I1..In` que el Clasificador
 refina o retira en cada ronda (ADR 0005) y cada paso queda como un `Mensaje`
@@ -44,6 +44,14 @@ y que se **viera qué hace cada agente**.
 7. **Sin datos simulados en el repositorio.** Se borran `mockDb.js`,
    `simulacion.js`, `polling.js` y los fixtures (queda solo el documento de
    ejemplo de la pantalla de carga).
+8. **Errores y conexión** (añadido el 2026-10-07). El backend admite por omisión
+   cualquier puerto de `localhost` y `127.0.0.1` (`CORS_ORIGENES` más
+   `CORS_ORIGENES_REGEX`), para que `npm run preview` o Vite en otro puerto no
+   queden sin backend. Todo error sale como `{detail}` con cabeceras CORS,
+   también un 500 inesperado, así que `http.js` muestra el error del servidor y
+   reserva «No hay conexión» para cuando de verdad no la hay. El SSE termina sin
+   `fin` cuando el servidor se apaga (Ctrl+C, `--reload`); el navegador reconecta
+   solo y `Last-Event-ID` evita repetir mensajes.
 
 ## Justificación
 
@@ -78,3 +86,10 @@ y que se **viera qué hace cada agente**.
   persona controla la lectura sin perder mensajes.
 - Cualquier cambio de forma en `app/analisis/formas.py` u otras respuestas
   obliga a revisar la pantalla que la usa.
+- Admitir cualquier puerto local es cómodo porque el backend es una herramienta
+  local sin autenticación; para exponerlo fuera de la máquina hay que vaciar
+  `CORS_ORIGENES_REGEX` y listar los orígenes en `CORS_ORIGENES`.
+- El SSE se entera del apagado por las señales que atiende uvicorn (SIGINT,
+  SIGTERM) en el hilo principal. Si uvicorn corre en un hilo (pruebas, scripts)
+  no hay señales, y el stream de un requisito en pausa dura hasta que el
+  cliente se desconecta.
