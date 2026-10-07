@@ -2,6 +2,7 @@
 import pytest
 
 from app.documentos import leer, separar_paginas, separar_texto
+from app.documentos.separacion import LARGO_ADVERTENCIA, MAX_CARACTERES_REQUISITO
 from app.documentos.patrones import (
     detectar_marca,
     dividir_oraciones,
@@ -136,6 +137,31 @@ def test_advertencia_de_requisito_largo():
     largo = "El sistema debe registrar " + ", ".join(f"el dato {n}" for n in range(60)) + "."
     r, = separar_texto(largo).requisitos_propuestos
     assert len(r.texto) > 400 and "más de 400 caracteres: puede contener más de un requisito" in r.advertencias
+
+
+def test_requisito_mas_largo_de_lo_que_acepta_la_carga_se_advierte():
+    """Lo propuesto no se recorta, pero el humano sabe que debe editarlo antes de analizar:
+    tal cual, POST /proyectos/{id}/requisitos rechazaría el lote entero con 422."""
+    def oracion(n: int) -> str:
+        return "El sistema debe registrar " + ", ".join(f"el campo {i} del formulario" for i in range(n)) + "."
+
+    s = separar_texto(f"RF-01 {oracion(100)}\nRF-02 El usuario podrá salir.\nRF-03 {oracion(20)}")
+    largo, corto, medio = s.requisitos_propuestos
+    assert len(largo.texto) > MAX_CARACTERES_REQUISITO > len(medio.texto) > LARGO_ADVERTENCIA
+    assert largo.advertencias == [f"más de {MAX_CARACTERES_REQUISITO} caracteres, lo más que acepta la carga: "
+                                  "recórtalo o pártelo antes de analizar"]
+    assert medio.advertencias == [f"más de {LARGO_ADVERTENCIA} caracteres: puede contener más de un requisito"]
+    assert corto.advertencias == []
+    assert s.advertencias == [f"Requisitos propuestos con más de {MAX_CARACTERES_REQUISITO} caracteres, lo más que "
+                              "acepta la carga (recórtalos o pártelos antes de analizar): 1."]
+
+
+def test_el_maximo_es_el_que_acepta_la_carga():
+    from annotated_types import MaxLen
+
+    from app.api.routes.proyectos import RequisitoNuevo
+    maximo = next(m.max_length for m in RequisitoNuevo.model_fields["texto"].metadata if isinstance(m, MaxLen))
+    assert MAX_CARACTERES_REQUISITO == maximo
 
 
 def test_frase_introductoria_con_lista_compone_cada_elemento():

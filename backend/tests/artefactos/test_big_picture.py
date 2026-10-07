@@ -265,3 +265,15 @@ def test_ciclo_de_contribuciones_en_el_grafo():
     bp = big_picture_proyecto([d], [], None)
     assert [(a["origen"], a["destino"]) for a in bp["aristas"] if a["relacion"] == "contribuye_a"] == [
         ("R01.M1", "R01.M2")]
+
+
+def test_termino_resuelto_solo_en_el_lel_dice_si_la_persona_eligio_otra():
+    """Las entradas del LEL guardan el cambio de la persona (ninguno, elección o edición):
+    elegir otra interpretación ya no se pierde ni se reporta como edición."""
+    from app.artefactos.big_picture import _terminos_resueltos
+    from tests.artefactos.ayudantes import lel
+
+    entradas = [e.model_copy(update={"cambio": "eleccion"}) if e.termino == "sesión" else e for e in lel()]
+    fuera = [{"req_id": r, "motivo": "sin_formalizacion"} for r in ("R01", "R02")]
+    cambios = {t["termino"]: t["cambio"] for t in _terminos_resueltos([], entradas, fuera)}
+    assert cambios == {"sesión": "eleccion", "usuario": None, "bitácora": "edicion"}

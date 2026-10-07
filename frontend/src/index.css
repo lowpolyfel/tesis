@@ -52,7 +52,10 @@
 }
 .tema-oscuro h2 { font-family: var(--font-mono); letter-spacing: 0.14em; font-weight: 500; font-size: 11px; }
 .tema-oscuro option { background: #16130f; color: #efe9de; }
-.tema-oscuro input, .tema-oscuro textarea, .tema-oscuro select { color: inherit; }
+/* En una capa: fuera de capa ganaría a cualquier utilidad de color (text-…) de los campos */
+@layer base {
+  .tema-oscuro input, .tema-oscuro textarea, .tema-oscuro select { color: inherit; }
+}
 .tema-oscuro ::placeholder { color: rgba(239, 233, 222, 0.32); }
 
 @media print {

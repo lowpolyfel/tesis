@@ -71,7 +71,7 @@ def _terminos_resueltos(docs: list[dict], lel: list[EntradaLELFormalizada], fuer
             continue
         vistos.add((e.req_id, normalizar(e.termino)))
         salida.append({"termino": e.termino, "significado": e.interpretacion.significado, "via": e.via.value,
-                       "tipo_ambiguedad": "lexica", "cambio": "edicion" if e.editada_por_humano else None,
+                       "tipo_ambiguedad": "lexica", "cambio": e.cambio or ("edicion" if e.editada_por_humano else None),
                        "req_id": e.req_id})
     return sorted(salida, key=lambda t: (numero_req(t["req_id"]), t["req_id"]))  # estable: cada requisito en su orden
 

@@ -11,7 +11,7 @@ Lenguaje (LEL).
 | Agente | Rol | LLM |
 |---|---|---|
 | Extractor | Separa el vocabulario del dominio del requisito crudo | Ollama local |
-| Clasificador | Genera interpretaciones candidatas de términos con más de una lectura | Ollama local |
+| Clasificador | Genera interpretaciones candidatas de los términos que admiten más de una interpretación | Ollama local |
 | Crítico | Conduce el debate acotado y arbitra si se agotan las rondas | API externa |
 | Modelador | Genera los artefactos desde la interpretación validada | Ollama local |
 
@@ -82,6 +82,8 @@ tesis/
 
 Copia `.env.example` como `.env` y completa los valores. Parámetros calibrables
 principales: `SIMILARITY_THRESHOLD` (0.75 inicial) y `MAX_DEBATE_ROUNDS` (2 inicial).
+Las variables de operación (orígenes CORS del frontend, tiempo máximo de cada
+llamada a Ollama) están descritas en [`backend/README.md`](backend/README.md).
 
 Instalación, arranque del backend, sandbox (`/sandbox`) y pruebas: ver
 [`backend/README.md`](backend/README.md). La interfaz: [`frontend/README.md`](frontend/README.md)

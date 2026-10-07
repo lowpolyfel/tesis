@@ -4,13 +4,14 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.routes import documentos, proyectos
+from app.documentos import almacen, extraccion
 from tests.documentos.muestras import (
     DESCARTADOS_SRS,
     ENCABEZADO,
     REQUISITOS_SRS,
     pdf_srs,
 )
-from tests.documentos.pdf_prueba import pdf_sin_texto
+from tests.documentos.pdf_prueba import pdf_con_operadores, pdf_con_tounicode, pdf_sin_texto
 from tests.escenarios import montar
 
 CAMPOS_DOCUMENTO = {"documento_id", "proyecto_id", "archivo", "tipo", "paginas", "caracteres", "creado",
@@ -142,3 +143,40 @@ def test_separar_texto_sin_guardar(cliente):
     assert cliente.srv.repo.listar_docs("documentos") == []
     assert cliente.post("/requisitos/separar", json={"texto": ""}).status_code == 422
     assert cliente.post("/requisitos/separar", json={"texto": "x", "otro": 1}).status_code == 422
+
+
+def test_lo_que_la_separacion_advierte_por_largo_es_lo_que_la_carga_rechaza(cliente):
+    def oracion(n: int) -> str:
+        return "El sistema debe registrar " + ", ".join(f"el campo {i} del formulario" for i in range(n)) + "."
+
+    propuestos = cliente.post("/requisitos/separar", json={"texto": f"{oracion(100)}\n{oracion(60)}\n{oracion(3)}"}
+                              ).json()["requisitos_propuestos"]
+    largos = [p for p in propuestos if any("lo más que acepta la carga" in a for a in p["advertencias"])]
+    aceptables = [p for p in propuestos if p not in largos]
+    assert len(largos) == 1 and len(aceptables) == 2
+    cargar = cliente.post("/proyectos/P01/requisitos", json={"requisitos": [{"texto": p["texto"]} for p in aceptables]})
+    assert cargar.status_code == 202
+    assert cliente.post("/proyectos/P01/requisitos", json={"requisitos": [{"texto": largos[0]["texto"]}]}).status_code == 422
+
+
+def test_pdf_con_media_pareja_sustituta_201(cliente):
+    r = _subir(cliente, "emoji.pdf", pdf_con_tounicode("El sistema debe registrar A usuarios.", {"A": 0xD83D}))
+    assert r.status_code == 201
+    d = r.json()
+    assert d["requisitos_propuestos"][0]["texto"] == "El sistema debe registrar � usuarios."
+    assert cliente.get(f"/documentos/{d['documento_id']}").json() == d
+
+
+def test_documento_que_no_cabe_413_sin_guardar(cliente, monkeypatch):
+    monkeypatch.setattr(almacen, "MAX_BYTES_GUARDADOS", 20_000)
+    lista = ("El sistema deberá permitir:\n" + "- registrar usuarios\n" * 200).encode()
+    r = _subir(cliente, "lista.txt", lista, "text/plain")
+    assert r.status_code == 413 and "divide el archivo" in r.json()["detail"]
+    assert cliente.get("/proyectos/P01/documentos").json() == []
+
+
+def test_pdf_pesado_422_explicado(cliente, monkeypatch):
+    monkeypatch.setattr(extraccion, "MAX_BYTES_OPERADORES_PAGINA", 2**19)
+    r = _subir(cliente, "dibujo.pdf", pdf_con_operadores([b"0 0 m\n" * 100_000]))
+    assert r.status_code == 422 and "operadores de dibujo" in r.json()["detail"]
+    assert "escaneo" not in r.json()["detail"]

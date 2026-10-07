@@ -36,6 +36,17 @@ export default function Evaluacion() {
     listarEvaluaciones().then(setLista).catch((e) => setAviso(e.message));
   }, []);
 
+  // Mientras alguna corrida siga, la lista se vuelve a pedir (no solo la elegida)
+  const algunaEnCurso = Boolean(lista?.some((e) => e.estado !== "terminada"));
+  useEffect(() => {
+    if (!algunaEnCurso) return undefined;
+    let activo = true;
+    const t = setTimeout(() => {
+      listarEvaluaciones().then((l) => { if (activo) setLista(l); }).catch(() => {});
+    }, SONDEO_MS);
+    return () => { activo = false; clearTimeout(t); };
+  }, [lista, algunaEnCurso]);
+
   const id = elegida ?? lista?.[0]?.evaluacion_id ?? null;
 
   useEffect(() => {

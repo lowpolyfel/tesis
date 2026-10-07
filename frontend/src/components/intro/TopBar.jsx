@@ -3,8 +3,6 @@ import { useApp } from "./useApp";
 const STATUS = {
   welcome: "En espera",
   landing: "Bienvenida",
-  login: "Acceso",
-  register: "Nueva cuenta",
 };
 
 export default function TopBar({ screen }) {

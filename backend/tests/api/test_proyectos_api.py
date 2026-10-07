@@ -43,3 +43,25 @@ def test_errores_de_proyecto(cliente):
     assert cliente.post("/proyectos/P42/requisitos", json={"requisitos": [{"texto": "x"}]}).status_code == 404
     assert cliente.post("/proyectos", json={"nombre": " "}).status_code == 422
     assert cliente.post("/proyectos/P00/requisitos", json={"requisitos": []}).status_code == 422
+
+
+def test_el_origen_no_puede_ser_de_otro_proyecto(cliente):
+    """Antes la API aceptaba un documento_id o un reproceso_de de otro proyecto (la interfaz ya
+    no lo permite, pero un script sí): la traza quedaba ligada a un documento ajeno."""
+    from app.documentos.almacen import COLECCION
+
+    srv = cliente.app.state.servicio
+    a = cliente.post("/proyectos", json={"nombre": "A"}).json()["proyecto_id"]
+    b = cliente.post("/proyectos", json={"nombre": "B"}).json()["proyecto_id"]
+    srv.repo.guardar_doc(COLECCION, "D01", {"documento_id": "D01", "proyecto_id": a})
+    r = cliente.post(f"/proyectos/{b}/requisitos", json={"requisitos": [
+        {"texto": SESION, "origen": {"documento_id": "D01", "archivo": "srs.pdf"}}]})
+    assert r.status_code == 422 and "es del proyecto P01" in r.json()["detail"]
+
+    req = cliente.post(f"/proyectos/{a}/requisitos", json={"requisitos": [{"texto": SESION}]}).json()["req_ids"][0]
+    cliente.esperar()
+    r = cliente.post(f"/proyectos/{b}/requisitos", json={"requisitos": [{"texto": SESION, "origen": {"reproceso_de": req}}]})
+    assert r.status_code == 422 and f"{req} es del proyecto P01" in r.json()["detail"]
+    assert cliente.post(f"/proyectos/{a}/requisitos", json={"requisitos": [
+        {"texto": SESION, "origen": {"documento_id": "D01", "reproceso_de": req}}]}).status_code == 202
+    cliente.esperar()

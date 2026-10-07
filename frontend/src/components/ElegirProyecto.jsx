@@ -14,11 +14,17 @@ export function useProyectoElegido() {
   const { datos: proyectos, error } = useApi(listarProyectos);
   const proyectoId = params.get("proyecto");
 
-  const elegir = (id) => {
+  /*
+   * `quitar`: parámetros que dejan de valer en otro proyecto (p. ej. la
+   * comparación elegida). Va en la misma actualización de la URL: dos llamadas
+   * seguidas a setParams parten de la misma URL y la segunda pisa a la primera.
+   */
+  const elegir = (id, { quitar = [] } = {}) => {
     recordarProyecto(id);
     setParams((prev) => {
       const p = new URLSearchParams(prev);
       p.set("proyecto", id);
+      quitar.forEach((k) => p.delete(k));
       return p;
     }, { replace: true });
   };

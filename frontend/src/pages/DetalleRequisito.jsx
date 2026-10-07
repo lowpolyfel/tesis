@@ -6,7 +6,7 @@ import { reprocesarRequisito } from "../services/backend";
 import { ESTADOS as E, INFO_VIA } from "../constants/estados";
 import { TIPOS } from "../constants/agentes";
 import EstadoBadge from "../components/EstadoBadge";
-import TextoMarcado, { TONO_AMBIGUEDAD } from "../components/TextoMarcado";
+import TextoMarcado, { tonoMarcado } from "../components/TextoMarcado";
 import RutaEstados from "../components/traza/RutaEstados";
 import TerminoTraza from "../components/traza/TerminoTraza";
 import Bitacora from "../components/traza/Bitacora";
@@ -59,8 +59,11 @@ export default function DetalleRequisito() {
   if (error) return <p className="text-sm text-rose-600">No pude cargar {id}: {error.message}</p>;
   if (!v) return <p className="text-sm text-slate-500">Cargando {id}…</p>;
 
-  const ambiguos = v.terminos.filter((t) => !t.univoco);
-  const univocos = v.terminos.filter((t) => t.univoco);
+  // con el caso terminado, un término que el Clasificador no vio ya no lo verá (p. ej. falló)
+  const sinClasificar = (t) => t.univoco == null && v.terminal;
+  const ambiguos = v.terminos.filter((t) => !t.univoco && !sinClasificar(t));
+  const univocos = v.terminos.filter((t) => t.univoco || sinClasificar(t));
+  const enError = v.estado === E.ERROR;
   const tiposPresentes = [...new Set(v.marcados.map((m) => m.tipo).filter(Boolean))];
   const via = v.resumen.via ? INFO_VIA[v.resumen.via] : null;
 
@@ -103,12 +106,12 @@ export default function DetalleRequisito() {
             </span>
           )}
         </div>
-        <p className="font-serif text-2xl leading-snug">«<TextoMarcado texto={v.texto} marcados={v.marcados} />»</p>
+        <p className="font-serif text-2xl leading-snug">«<TextoMarcado texto={v.texto} marcados={v.marcados} claro={figura} />»</p>
         {tiposPresentes.length > 0 && (
           <p className="flex flex-wrap gap-3 text-xs text-slate-600">
             {tiposPresentes.map((k) => (
               <span key={k} className="flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full" style={{ background: TONO_AMBIGUEDAD[k] }} />{TIPOS[k]?.etiqueta ?? k}
+                <span className="h-2 w-2 rounded-full" style={{ background: tonoMarcado(k, figura) }} />{TIPOS[k]?.etiqueta ?? k}
               </span>
             ))}
           </p>
@@ -168,10 +171,10 @@ export default function DetalleRequisito() {
       <Fase n="2–3" titulo="Generación y discusión del modelo" quien="Clasificador · Divergencia · Crítico"
         vacia={!v.terminos.length && (v.en_proceso ? "Esperando al Clasificador…" : "Sin términos candidatos.")}>
         <div className="space-y-4">
-          {ambiguos.map((t) => <TerminoTraza key={t.termino} t={t} umbral={v.config.umbral} />)}
+          {ambiguos.map((t) => <TerminoTraza key={t.termino} t={t} umbral={v.config.umbral} terminal={v.terminal} />)}
           {univocos.length > 0 && (
             <ul className="space-y-1 rounded-xl border border-slate-200 p-3">
-              {univocos.map((t) => <TerminoTraza key={t.termino} t={t} umbral={v.config.umbral} />)}
+              {univocos.map((t) => <TerminoTraza key={t.termino} t={t} umbral={v.config.umbral} terminal={v.terminal} enError={enError} />)}
             </ul>
           )}
           {v.resumen.vaguedad.length > 0 && (
@@ -184,7 +187,8 @@ export default function DetalleRequisito() {
 
       {/* ---------------------------------------------------------------- fase 4 */}
       <Fase n="4" titulo="Validación del modelo" quien="Humano"
-        vacia={!v.validacion && (v.estado === E.PENDIENTE_VALIDACION ? "Esperando la validación de una persona." : "Aún no llega a validación.")}>
+        vacia={!v.validacion && (v.estado === E.PENDIENTE_VALIDACION ? "Esperando la validación de una persona."
+          : enError ? "No llegó a validación: el caso terminó en error." : "Aún no llega a validación.")}>
         {v.validacion && (
           <div className="space-y-1 text-sm">
             <p><b>{v.validacion.decision === "aprobar" ? "Aprobado" : "Rechazado"}</b> · {hora(v.validacion.timestamp)}{v.validacion.comentario && <> · «{v.validacion.comentario}»</>}</p>
@@ -199,7 +203,9 @@ export default function DetalleRequisito() {
 
       {/* ---------------------------------------------------------------- fase 5 */}
       <Fase n="5" titulo="Enriquecimiento (cierre)" quien="Modelador"
-        vacia={!v.formalizacion && (v.estado === E.VALIDADO ? "El Modelador está formalizando…" : "Se formaliza al aprobar.")}>
+        vacia={!v.formalizacion && (v.estado === E.VALIDADO ? "El Modelador está formalizando…"
+          : enError ? "No se formalizó: el caso terminó en error." : v.estado === E.RECHAZADO ? "No se formaliza: la persona rechazó el requisito."
+            : "Se formaliza al aprobar.")}>
         {v.formalizacion && (
           <div className="space-y-3 text-sm">
             <p className="font-serif text-lg">«{v.formalizacion.requisito_reescrito}»</p>
@@ -218,7 +224,7 @@ export default function DetalleRequisito() {
 
       {!figura && (
         <Fase n="·" titulo="Bitácora del protocolo" quien={`${v.n_mensajes} mensajes`}>
-          <Bitacora reqId={id} total={v.n_mensajes} />
+          <Bitacora reqId={id} total={v.n_mensajes} ultima={v.ultima_secuencia} />
         </Fase>
       )}
     </div>

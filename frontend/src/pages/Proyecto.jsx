@@ -68,12 +68,13 @@ export default function Proyecto() {
           {enProceso > 0 && <span className="text-[var(--bone)]"> · <span className="gira" /> {enProceso} en proceso</span>}
         </p>
         <div className="flex flex-wrap gap-2 pt-1">
-          <Link className="pill" to={`/inicio?proyecto=${p.proyecto_id}`}>Cargar requisitos aquí</Link>
+          {/* un proyecto de evaluación solo lo llena la evaluación del corpus */}
+          {p.tipo !== "evaluacion" && <Link className="pill" to={`/inicio?proyecto=${p.proyecto_id}`}>Cargar requisitos aquí</Link>}
           {porValidar.length > 0 && (
             <Link className="pill ghost" to={`/requisitos/${porValidar[0].req_id}/validacion`}>Validar ({porValidar.length})</Link>
           )}
           <Link className="pill ghost" to={`/ambiguedades?proyecto=${p.proyecto_id}`}>Ambigüedades</Link>
-          <Link className="pill ghost" to={`/comparaciones?proyecto=${p.proyecto_id}`}>Comparar requisitos</Link>
+          <Link className="pill ghost" to={`/comparaciones?proyecto=${p.proyecto_id}`}>Comparar requisitos (exploratorio)</Link>
           <Link className="pill ghost" to={`/big-picture?proyecto=${p.proyecto_id}`}>Metas y Big Picture</Link>
           <Link className="pill ghost" to={`/flujo?proyecto=${p.proyecto_id}`}>Flujo</Link>
           <Link className="pill ghost" to={`/calibracion?proyecto=${p.proyecto_id}`}>Calibración</Link>
@@ -94,7 +95,7 @@ export default function Proyecto() {
         ))}
       </div>
 
-      {vista === "requisitos" && <Requisitos ciclos={ciclos} porCiclo={r.por_ciclo} proyectoId={p.proyecto_id} />}
+      {vista === "requisitos" && <Requisitos ciclos={ciclos} porCiclo={r.por_ciclo} proyectoId={p.proyecto_id} evaluacion={p.tipo === "evaluacion"} />}
       {vista === "documentos" && <Documentos proyectoId={p.proyecto_id} />}
       {vista === "lel" && <LelProyecto proyectoId={p.proyecto_id} />}
     </div>
@@ -164,11 +165,12 @@ function BarraEstados({ porEstado, total }) {
   );
 }
 
-function Requisitos({ ciclos, porCiclo, proyectoId }) {
+function Requisitos({ ciclos, porCiclo, proyectoId, evaluacion }) {
   if (ciclos.length === 0) {
     return (
       <p className="text-sm text-[var(--bone-dim)]">
-        Este proyecto aún no tiene requisitos. <Link className="underline" to={`/inicio?proyecto=${proyectoId}`}>Sube un PDF o pega el texto</Link>.
+        Este proyecto aún no tiene requisitos.{" "}
+        {evaluacion ? "Los carga la evaluación del corpus." : <Link className="underline" to={`/inicio?proyecto=${proyectoId}`}>Sube un PDF o pega el texto</Link>}
       </p>
     );
   }
@@ -185,7 +187,7 @@ function Requisitos({ ciclos, porCiclo, proyectoId }) {
                   {Object.entries(resumen.por_estado).filter(([, n]) => n).map(([e, n]) => `${infoEstado(e).etiqueta.toLowerCase()} ${n}`).join(" · ")}
                 </p>
               )}
-              <Link className="mono ml-auto text-[9.5px] text-[var(--bone-faint)] hover:text-[var(--bone)]" to={`/analisis?proyecto=${proyectoId}&ids=${reqs.map((q) => q.req_id).join(",")}`}>
+              <Link className="mono ml-auto text-[9.5px] text-[var(--bone-faint)] hover:text-[var(--bone)]" to={`/analisis?proyecto=${proyectoId}&ids=${reqs.map((q) => q.req_id).join(",")}&escena=1`}>
                 ver el ciclo en la escena →
               </Link>
             </div>
@@ -277,8 +279,12 @@ export function LelProyecto({ proyectoId }) {
   );
 }
 
+/* Lo que hizo la persona con la propuesta (la vía dice cómo llegaron los agentes) */
+const CAMBIO_LEL = { eleccion: "la persona eligió otra interpretación", edicion: "reescrita por la persona" };
+
 export function EntradaLel({ e, conProyecto = null }) {
   const via = INFO_VIA[e.via];
+  const cambio = e.cambio ?? (e.editada_por_humano ? "edicion" : null); // entradas anteriores no traen `cambio`
   return (
     <li className="rounded-2xl border border-[var(--line)] bg-white/[0.02] p-4 text-sm">
       <div className="flex flex-wrap items-baseline gap-2">
@@ -289,7 +295,7 @@ export function EntradaLel({ e, conProyecto = null }) {
       <p className="mono mt-1 flex flex-wrap items-center gap-2 text-[9px] text-[var(--bone-faint)]">
         {e.termino !== e.simbolo && <span>término «{e.termino}»</span>}
         {via && <span className="flex items-center gap-1"><span className="punto" style={{ background: via.tono }} />{via.etiqueta}</span>}
-        {e.editada_por_humano && <span>editada por una persona</span>}
+        {CAMBIO_LEL[cambio] && <span>{CAMBIO_LEL[cambio]}</span>}
         <span>{e.fecha?.slice(0, 10)}</span>
         {conProyecto}
       </p>

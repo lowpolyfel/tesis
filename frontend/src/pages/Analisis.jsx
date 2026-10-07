@@ -2,12 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { useOrb } from "../components/orb/useOrb";
 import { isMobile } from "../components/orb/poses";
-import { obtenerCola, requisitosDeProyecto } from "../services/backend";
+import { obtenerCola, obtenerRequisito, requisitosDeProyecto } from "../services/backend";
 import { ESTADOS as E, estaEnProceso, esTerminal, infoEstado } from "../constants/estados";
 import { nodo } from "../constants/agentes";
 import { crearCoreografia } from "../escena/coreografia";
 import { useEnVivo } from "../escena/useEnVivo";
-import { marcasDesdeMensajes, resumenMensaje } from "../escena/resumenMensaje";
+import { resumenMensaje } from "../escena/resumenMensaje";
 import TextoMarcado from "../components/TextoMarcado";
 
 /*
@@ -167,7 +167,7 @@ export default function Analisis() {
   return (
     <main className="relative z-10 min-h-screen">
       {fase === "trabajo" && focoInfo && (
-        <Foco r={focoInfo} i={lista.indexOf(focoInfo)} total={lista.length} mensajes={vivo.mensajes} estado={vivo.estado ?? focoInfo.estado} />
+        <Foco r={focoInfo} i={lista.indexOf(focoInfo)} total={lista.length} mensajes={vivo.mensajes} animados={vivo.animados} estadoVivo={vivo.estado} />
       )}
       {fase === "trabajo" && (
         <Panel
@@ -188,13 +188,36 @@ export default function Analisis() {
 
 /* ---------------------------------------------------------------- */
 
-function Foco({ r, i, total, mensajes, estado }) {
-  const marcas = marcasDesdeMensajes(mensajes);
+/* Decisiones de los filtros que no pasan por el Clasificador: su marca ya es final */
+const SIN_CLASIFICADOR = ["resuelto_por_lel", "vaguedad"];
+
+/*
+ * El requisito en foco. Marcas y estado salen de la vista del backend
+ * (GET /requisitos/{id}), no se recalculan aquí, y van al paso de la
+ * animación: el estado es el de la última transición anterior al último
+ * mensaje animado, y las marcas del Clasificador aparecen cuando se anima.
+ */
+function Foco({ r, i, total, mensajes, animados, estadoVivo }) {
+  const [vista, setVista] = useState(null);
+  useEffect(() => {
+    let activo = true;
+    const t = setTimeout(() => obtenerRequisito(r.req_id).then((v) => { if (activo) setVista(v); }).catch(() => {}),
+      mensajes.length ? 400 : 0);
+    return () => { activo = false; clearTimeout(t); };
+  }, [r.req_id, mensajes.length]);
+  const v = vista?.req_id === r.req_id ? vista : null;
+
+  const animadas = mensajes.slice(0, animados);
+  const ultima = animadas.at(-1)?.secuencia ?? 0;
+  const estado = v?.transiciones.filter((t) => t.secuencia <= ultima).at(-1)?.estado ?? estadoVivo;
+  const vio = (tipo) => animadas.some((m) => m.tipo === tipo);
+  const marcas = !v || !vio("filtrado") ? []
+    : v.marcados.filter((m) => m.tipo && (vio("interpretaciones") || SIN_CLASIFICADOR.includes(m.decision_filtro)));
   const largo = r.texto.length > 110;
   return (
-    <section key={r.req_id} className="pointer-events-none fixed inset-x-0 top-[9vh] z-10 px-6 text-center">
+    <section key={r.req_id} className="pointer-events-none fixed inset-x-0 top-[max(9vh,92px)] z-10 px-6 text-center">
       <p className="mono sube text-[10px] text-[var(--bone-faint)]">
-        Requisito {i + 1} de {total} · {r.req_id} · ciclo {r.ciclo ?? 1} · <span className="text-[var(--bone-dim)]">{infoEstado(estado).etiqueta}</span>
+        Requisito {i + 1} de {total} · {r.req_id} · ciclo {r.ciclo ?? 1}{estado && <> · <span className="text-[var(--bone-dim)]">{infoEstado(estado).etiqueta}</span></>}
       </p>
       <p
         className={`serif sube mx-auto mt-2 line-clamp-2 max-w-4xl leading-tight ${largo ? "text-[clamp(16px,1.5vw,21px)]" : "text-[clamp(19px,2vw,28px)]"}`}
@@ -218,10 +241,11 @@ function Panel({ vivo, lista, foco, pendientes, proyecto, onSeguir }) {
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-10 px-4 pb-4 md:px-8">
-      <div className="mx-auto grid max-w-6xl gap-3 md:grid-cols-[1fr_300px]">
+      {/* una sola columna en móvil: sin `grid-cols-1` la columna implícita crece con el texto */}
+      <div className="mx-auto grid max-w-6xl grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_300px]">
         {/* Bitácora: un renglón por mensaje del protocolo */}
-        <section className="rounded-2xl border border-[var(--line)] bg-[color-mix(in_oklab,var(--bg)_82%,transparent)] backdrop-blur-xl">
-          <header className="flex items-center gap-3 border-b border-[var(--line)] px-4 py-2">
+        <section className="min-w-0 rounded-2xl border border-[var(--line)] bg-[color-mix(in_oklab,var(--bg)_82%,transparent)] backdrop-blur-xl">
+          <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--line)] px-4 py-2">
             <button className="mono text-[9.5px] text-[var(--bone-dim)] hover:text-[var(--bone)]" onClick={() => setAbierta((x) => !x)}>
               Bitácora · {visibles.length}/{vivo.mensajes.length} {abierta ? "▾" : "▸"}
             </button>
@@ -264,7 +288,7 @@ function Panel({ vivo, lista, foco, pendientes, proyecto, onSeguir }) {
         </section>
 
         {/* Lote: quién está en proceso, quién espera validación */}
-        <section className="rounded-2xl border border-[var(--line)] bg-[color-mix(in_oklab,var(--bg)_82%,transparent)] p-3 backdrop-blur-xl">
+        <section className="min-w-0 rounded-2xl border border-[var(--line)] bg-[color-mix(in_oklab,var(--bg)_82%,transparent)] p-3 backdrop-blur-xl">
           <p className="mono text-[9.5px] text-[var(--bone-faint)]">
             Lote · {lista.filter((r) => enReposo(r.estado)).length} de {lista.length} listos
           </p>

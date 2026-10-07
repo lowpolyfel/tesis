@@ -15,7 +15,10 @@ import { nodo } from "../constants/agentes";
  *   - un punto por fase en cada anillo: su tamaño es cuántos mensajes produjo esa fase
  *   - el ciclo elegido muestra sus números; los demás solo sus puntos
  * Las cifras vienen de GET /proyectos/{id}/flujo (app/analisis/proyecto.py):
- * mensajes sin repetidos y requisitos que pasaron por cada estado.
+ * mensajes sin repetidos y requisitos que pasaron por cada estado. El flujo
+ * cuenta mensajes por tipo: el Crítico emite un mensaje `objecion` por término
+ * y ronda aunque no objete nada, así que esa cifra son evaluaciones del
+ * Crítico, no objeciones.
  */
 
 const tipo = (c, t) => c.mensajes_por_tipo?.[t] ?? 0;
@@ -30,15 +33,15 @@ const FASES = [
   {
     id: "generacion", n: 2, nombre: "Generación", rol: "Clasificador", tono: "#a99bff", desde: -18,
     cifra: (c) => fase(c, 2).requisitos_que_pasaron, unidad: "req",
-    detalle: (c) => `${fase(c, 2).requisitos_que_pasaron} requisitos con interpretaciones por término (${tipo(c, "interpretaciones")} mensajes)`,
+    detalle: (c) => `${fase(c, 2).requisitos_que_pasaron} requisitos pasaron por el Clasificador (${tipo(c, "interpretaciones")} mensajes; incluye los que no tuvieron términos ambiguos)`,
   },
   {
     id: "discusion", n: 3, nombre: "Discusión", rol: "Similitud · Crítico · Clasificador", tono: "#ffc457", desde: 54,
     cifra: (c) => c.rondas_totales, unidad: "R",
-    detalle: (c) => `${c.directos} aceptados directo, ${c.debates} con debate, ${c.rondas_totales} rondas, ${tipo(c, "objecion")} objeciones, ${c.consensos} consensos, ${c.arbitrajes} arbitrajes`,
+    detalle: (c) => `${c.directos} aceptados directo, ${c.debates} con debate, ${c.rondas_totales} rondas, ${tipo(c, "objecion")} evaluaciones del Crítico, ${c.consensos} consensos, ${c.arbitrajes} arbitrajes`,
   },
   {
-    id: "validacion", n: 4, nombre: "Validación", rol: "Analista humano", tono: "#efe9de", desde: 126,
+    id: "validacion", n: 4, nombre: "Validación", rol: "Humano · especialista del dominio", tono: "#efe9de", desde: 126,
     cifra: (c) => c.validados, unidad: "✓",
     detalle: (c) => `${fase(c, 4).requisitos_que_pasaron} llegaron a validación; ${c.validados} aprobados, ${c.rechazados} rechazados`,
   },
@@ -55,7 +58,7 @@ const FRONTERAS = {
   enriquecimiento: { pregunta: "¿Suficiente?", nombre: "Retroalimentación: nuevo ciclo con el LEL enriquecido" },
   generacion: { pregunta: "¿Ambiguo?", nombre: "Verificación de términos (unívocos no se debaten)" },
   discusion: { pregunta: "¿Sim ≥ umbral?", nombre: "Similitud contra umbral" },
-  validacion: { pregunta: "¿Consenso?", nombre: "Discusión y arbitraje" },
+  validacion: { pregunta: "¿Resuelto?", nombre: "Aceptación directa, consenso o arbitraje" },
   cierre: { pregunta: "¿Válido?", nombre: "Verificación y reflexión" },
 };
 
@@ -104,14 +107,22 @@ export default function Flujo() {
     return () => { activo = false; clearInterval(t); };
   }, [proyectoId]);
 
-  // La esfera se coloca exactamente en el centro de la espiral
+  // La esfera se coloca exactamente en el centro de la espiral; en móvil la
+  // página se desplaza y la esfera (fija en la ventana) la sigue
   useEffect(() => {
-    if (!caja) return;
-    const cx = caja.x + caja.w / 2, cy = caja.y + caja.h / 2;
-    orb.setPose({ x: cx / innerWidth - 0.5, y: cy / innerHeight - 0.5, s: movil ? 0.13 : 0.22 });
+    if (!caja) return undefined;
+    const colocar = () => {
+      const r = area.current?.getBoundingClientRect();
+      if (r) orb.setPose({ x: (r.left + r.width / 2) / innerWidth - 0.5, y: (r.top + r.height / 2) / innerHeight - 0.5, s: movil ? 0.13 : 0.22 });
+    };
+    colocar();
+    addEventListener("scroll", colocar, { passive: true });
+    return () => removeEventListener("scroll", colocar);
+  }, [orb, caja, movil]);
+  useEffect(() => {
     orb.setMood("idle");
     orb.update("core", { label: null, sub: null });
-  }, [orb, caja, movil]);
+  }, [orb]);
 
   const ciclos = datos?.ciclos.slice(-MAX_ANILLOS) ?? [];
   const actual = ciclos.find((c) => c.ciclo === elegido) ?? ciclos.at(-1);
@@ -191,7 +202,7 @@ export default function Flujo() {
                   ))}
                 </ul>
                 {actual.duracion_s != null && (
-                  <p className="mono mt-3 text-[9.5px] text-[var(--bone-faint)]">duración {formatoDuracion(actual.duracion_s)} (incluye la espera del analista)</p>
+                  <p className="mono mt-3 text-[9.5px] text-[var(--bone-faint)]">duración {formatoDuracion(actual.duracion_s)} (incluye la espera de la validación humana)</p>
                 )}
               </section>
             )}
@@ -209,7 +220,8 @@ export default function Flujo() {
 
         {proyectoId && (
           <div className="flex flex-wrap gap-2">
-            <Link to={`/inicio?proyecto=${proyectoId}`} className="pill">Nuevo ciclo</Link>
+            {/* un proyecto de evaluación solo lo llena la evaluación del corpus */}
+            {proyecto?.tipo !== "evaluacion" && <Link to={`/inicio?proyecto=${proyectoId}`} className="pill">Nuevo ciclo</Link>}
             <Link to={`/proyectos/${proyectoId}`} className="pill ghost">Proyecto</Link>
           </div>
         )}

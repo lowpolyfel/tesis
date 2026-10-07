@@ -31,6 +31,9 @@ from .patrones import (
 )
 
 LARGO_ADVERTENCIA = 400  # caracteres; más largo suele ser más de un requisito
+# Lo más largo que acepta la carga (RequisitoNuevo en POST /proyectos/{id}/requisitos);
+# una prueba comprueba que coinciden. Lo propuesto no se recorta: el humano lo edita.
+MAX_CARACTERES_REQUISITO = 2000
 MAX_FRAGMENTOS = 50  # fragmentos descartados que se devuelven; el total siempre se reporta
 
 
@@ -74,7 +77,10 @@ def _como_continuacion(elemento: str) -> str:
 
 def _advertencias_finales(texto: str) -> list[str]:
     salida = []
-    if len(texto) > LARGO_ADVERTENCIA:
+    if len(texto) > MAX_CARACTERES_REQUISITO:
+        salida.append(f"más de {MAX_CARACTERES_REQUISITO} caracteres, lo más que acepta la carga: "
+                      "recórtalo o pártelo antes de analizar")
+    elif len(texto) > LARGO_ADVERTENCIA:
         salida.append(f"más de {LARGO_ADVERTENCIA} caracteres: puede contener más de un requisito")
     if empieza_con_verbo(texto):
         salida.append("sin sujeto explícito: empieza con el verbo")
@@ -159,8 +165,14 @@ def separar_parrafos(parrafos: list[Parrafo], max_fragmentos: int = MAX_FRAGMENT
         vistos.setdefault(clave, indice)
         requisitos.append(RequisitoPropuesto(indice=indice, texto=c.texto, pagina=c.pagina, marca=c.marca,
                                              texto_original=c.original, advertencias=advertencias))
+    generales = []
+    largos = [r.indice for r in requisitos if len(r.texto) > MAX_CARACTERES_REQUISITO]
+    if largos:
+        generales.append(f"Requisitos propuestos con más de {MAX_CARACTERES_REQUISITO} caracteres, lo más que "
+                         f"acepta la carga (recórtalos o pártelos antes de analizar): "
+                         f"{', '.join(map(str, largos[:20]))}{'…' if len(largos) > 20 else ''}.")
     return Separacion(requisitos_propuestos=requisitos, fragmentos_descartados=descartados[:max_fragmentos],
-                      total_descartados=len(descartados))
+                      total_descartados=len(descartados), advertencias=generales)
 
 
 def separar_paginas(paginas: list[str], con_paginas: bool, maquetado: bool,

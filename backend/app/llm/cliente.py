@@ -20,13 +20,15 @@ class ClienteLLM(Protocol):
 
 
 class ClienteOllama:
-    def __init__(self, modelo: str, base_url: str, temperatura: float, seed: int | None):
+    def __init__(self, modelo: str, base_url: str, temperatura: float, seed: int | None, timeout_s: float | None = None):
         self.modelo = modelo
         self.base_url = base_url
         self.temperatura = temperatura
         self.seed = seed
+        self.timeout_s = timeout_s
 
     def completar(self, prompt: PromptRenderizado, esquema: dict) -> str:
+        import httpx
         from langchain_ollama import ChatOllama
 
         # `format` con el JSON schema restringe la decodificación de Ollama al esquema
@@ -36,8 +38,13 @@ class ClienteOllama:
             temperature=self.temperatura,
             seed=self.seed,
             format=esquema,
+            client_kwargs={"timeout": self.timeout_s},
         )
-        respuesta = chat.invoke([("system", prompt.sistema), ("human", prompt.usuario)])
+        try:
+            respuesta = chat.invoke([("system", prompt.sistema), ("human", prompt.usuario)])
+        except httpx.TimeoutException as e:  # el nodo lo registra como error en la traza
+            raise TimeoutError(f"Ollama ({self.modelo} en {self.base_url}) no respondió en {self.timeout_s} s "
+                               "(OLLAMA_TIMEOUT_S)") from e
         return respuesta.content if isinstance(respuesta.content, str) else json.dumps(respuesta.content)
 
 
@@ -73,7 +80,8 @@ class ClienteOpenAI(_ClienteChatGenerico):
 
 def crear_cliente(proveedor: str, modelo: str, settings) -> ClienteLLM:
     if proveedor == "ollama":
-        return ClienteOllama(modelo, settings.ollama_base_url, settings.llm_temperature, settings.llm_seed)
+        return ClienteOllama(modelo, settings.ollama_base_url, settings.llm_temperature, settings.llm_seed,
+                             settings.ollama_timeout_s)
     if proveedor == "anthropic":
         return ClienteAnthropic(modelo, settings.critico_api_key, settings.llm_temperature)
     if proveedor == "openai":

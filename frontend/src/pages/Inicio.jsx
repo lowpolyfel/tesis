@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useOrb, usePoseEsfera } from "../components/orb/useOrb";
-import { cargarRequisitos, separarRequisitos, subirDocumento } from "../services/backend";
+import { LIMITES_CARGA, cargarRequisitos, separarRequisitos, subirDocumento } from "../services/backend";
 import { documentoEjemplo } from "../fixtures/documentoEjemplo";
 import SelectorProyecto, { proyectoRecordado } from "../components/SelectorProyecto";
 
@@ -14,7 +14,9 @@ import SelectorProyecto, { proyectoRecordado } from "../components/SelectorProye
  *
  * El backend lee el PDF (texto extraíble; sin OCR por alcance) y lo separa en
  * requisitos candidatos con su página y numeración original. Lo que descarta
- * se muestra: nada se pierde en silencio. La persona confirma antes de analizar.
+ * se muestra (aunque no proponga ninguno) y lo que la limpieza quitó también:
+ * nada se pierde en silencio. La persona confirma antes de analizar; un
+ * documento subido ya quedó en su proyecto, así que ahí el proyecto no cambia.
  */
 const POSES = {
   inicio: { d: { x: 0, y: -0.08, s: 1.05 }, m: { x: 0, y: -0.16, s: 0.8 } },
@@ -24,6 +26,16 @@ const POSES = {
   confirmar: { d: { x: -0.29, y: 0.02, s: 0.78 }, m: { x: 0, y: -0.36, s: 0.4 } },
 };
 const MIN_LECTURA_MS = 1400;
+
+/* Un 422 del backend señala el requisito por su posición (base 0) en lo enviado; aquí se numeran desde 1 */
+function explicar(e, enviadas) {
+  if (!Array.isArray(e.detalle)) return e.message;
+  return e.detalle.map((x) => {
+    const [, campo, i] = x.loc ?? [];
+    if (campo === "requisitos" && Number.isInteger(i)) return `Requisito ${enviadas[i]?.n ?? i + 1}: ${x.msg}`;
+    return `${(x.loc ?? []).slice(1).join(".")}: ${x.msg}`;
+  }).join(" · ");
+}
 
 export default function Inicio() {
   const orb = useOrb();
@@ -35,8 +47,9 @@ export default function Inicio() {
   const [texto, setTexto] = useState("");
   const [origen, setOrigen] = useState("texto pegado");
   const [piezas, setPiezas] = useState([]);
-  const [documento, setDocumento] = useState(null); // { documento_id, archivo, paginas } si vino de un archivo
+  const [documento, setDocumento] = useState(null); // { documento_id, proyecto_id, archivo, paginas } si vino de un archivo
   const [descartados, setDescartados] = useState({ lista: [], total: 0 });
+  const [advertencias, setAdvertencias] = useState([]); // lo que la limpieza quitó o no pudo leer
   const [error, setError] = useState(null);
   const [saliendo, setSaliendo] = useState(false);
   const archivo = useRef(null);
@@ -53,6 +66,8 @@ export default function Inicio() {
   useEffect(() => () => orb.update("core", { label: null, sub: null }), [orb]);
 
   /* ---- arrastrar y soltar sobre toda la pantalla (la esfera lo "atrae") ---- */
+  // el manejador lee siempre la versión vigente (con el proyecto elegido ahora)
+  const leerVigente = useRef(null);
   useEffect(() => {
     if (fase !== "inicio" && fase !== "pegar") return;
     let profundidad = 0;
@@ -64,7 +79,7 @@ export default function Inicio() {
       profundidad = 0;
       setArrastrando(false);
       const f = e.dataTransfer.files?.[0];
-      if (f) leerArchivo(f);
+      if (f) leerVigente.current?.(f);
     };
     window.addEventListener("dragenter", entra);
     window.addEventListener("dragleave", sale);
@@ -76,18 +91,21 @@ export default function Inicio() {
       window.removeEventListener("dragover", sobre);
       window.removeEventListener("drop", suelta);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fase]);
 
-  const mostrar = (propuestos, descartes, total, volverA) => {
-    setDescartados({ lista: descartes ?? [], total: total ?? 0 });
-    if (!propuestos.length) {
+  /* r: una Separacion (texto pegado) o un Documento (archivo); los dos traen lo mismo */
+  const mostrar = (r, volverA) => {
+    const propuestos = r.requisitos_propuestos ?? [];
+    setDescartados({ lista: r.fragmentos_descartados ?? [], total: r.total_descartados ?? 0 });
+    setAdvertencias(r.advertencias ?? []);
+    if (!propuestos.length && !r.total_descartados) {
       orb.setMood("error", { revertAfter: 1600 });
       setError("No encontré requisitos. Cada uno debería decir qué «debe», «podrá» o «permitirá» hacer el sistema.");
       setFase(volverA);
       return;
     }
-    orb.poke(1.2);
+    // sin propuestos pero con descartados: se confirma igual, para rescatar los que sí son requisitos
+    orb.poke(propuestos.length ? 1.2 : 0.4);
     setPiezas(propuestos.map((p, i) => ({ ...p, clave: `${Date.now()}-${i}` })));
     setFase("confirmar");
   };
@@ -98,7 +116,7 @@ export default function Inicio() {
     setFase("leyendo");
     try {
       const [r] = await Promise.all([separarRequisitos(contenido), new Promise((ok) => setTimeout(ok, MIN_LECTURA_MS))]);
-      mostrar(r.requisitos_propuestos, r.fragmentos_descartados, r.total_descartados, "pegar");
+      mostrar(r, "pegar");
     } catch (e) {
       orb.setMood("error", { revertAfter: 1600 });
       setError(e.message);
@@ -113,22 +131,30 @@ export default function Inicio() {
     setFase("leyendo");
     try {
       const [doc] = await Promise.all([subirDocumento(proyectoId, f), new Promise((ok) => setTimeout(ok, MIN_LECTURA_MS))]);
-      setDocumento({ documento_id: doc.documento_id, archivo: doc.archivo, paginas: doc.paginas, advertencias: doc.advertencias ?? [] });
-      mostrar(doc.requisitos_propuestos, doc.fragmentos_descartados, doc.total_descartados, "inicio");
+      setDocumento({ documento_id: doc.documento_id, proyecto_id: doc.proyecto_id, archivo: doc.archivo, paginas: doc.paginas });
+      mostrar(doc, "inicio");
     } catch (e) {
       orb.setMood("error", { revertAfter: 1600 });
       setError(e.message);
       setFase("inicio");
     }
   };
+  leerVigente.current = leerArchivo;
 
   const editar = (i, v) => setPiezas((ps) => ps.map((p, j) => (j === i ? { ...p, texto: v } : p)));
   const quitar = (i) => { setPiezas((ps) => ps.filter((_, j) => j !== i)); orb.poke(-0.4); };
   const unir = (i) => setPiezas((ps) => [...ps.slice(0, i), { ...ps[i], texto: `${ps[i].texto} ${ps[i + 1].texto}` }, ...ps.slice(i + 2)]);
-  const validas = piezas.filter((p) => p.texto.trim());
+  const validas = piezas.map((p, i) => ({ ...p, n: i + 1 })).filter((p) => p.texto.trim());
+  // límites del backend: se avisa antes de enviar en lugar de recibir un 422
+  const largo = (p) => p.texto.trim().length > LIMITES_CARGA.caracteres;
+  const largos = validas.filter(largo);
+  const sobran = Math.max(0, validas.length - LIMITES_CARGA.requisitos);
+  // un documento ya quedó guardado en su proyecto: sus requisitos van ahí
+  const destino = documento?.proyecto_id ?? proyectoId;
 
   const analizar = async () => {
     setSaliendo(true);
+    setError(null);
     orb.poke(1.4);
     try {
       const requisitos = validas.map((p) => ({
@@ -142,12 +168,12 @@ export default function Inicio() {
           texto_original: p.texto_original ?? null,
         },
       }));
-      const { req_ids: ids } = await cargarRequisitos(proyectoId, requisitos);
-      navigate(`/analisis?proyecto=${proyectoId}&ids=${ids.join(",")}`);
+      const { req_ids: ids } = await cargarRequisitos(destino, requisitos);
+      navigate(`/analisis?proyecto=${destino}&ids=${ids.join(",")}`);
     } catch (e) {
       setSaliendo(false);
       orb.setMood("error", { revertAfter: 1600 });
-      setError(e.message);
+      setError(explicar(e, validas));
     }
   };
 
@@ -211,14 +237,24 @@ export default function Inicio() {
           <p className="mono sube text-[10px] text-[var(--bone-faint)]" style={{ "--i": 0 }}>
             Paso 2 · confirma la separación · {origen}{documento ? ` · ${documento.paginas} pág. · ${documento.documento_id}` : ""}
           </p>
-          <div className="sube -mt-2 [&>div]:justify-start" style={{ "--i": 0 }}><SelectorProyecto valor={proyectoId} onCambio={setProyectoId} /></div>
+          {documento ? (
+            <p className="mono sube -mt-2 text-[10px] text-[var(--bone-faint)]" style={{ "--i": 0 }}>
+              Proyecto <span className="text-[var(--bone)]">{documento.proyecto_id}</span> · el documento quedó guardado ahí; para cargarlo en otro proyecto, empieza de nuevo y elígelo antes de subirlo
+            </p>
+          ) : (
+            <div className="sube -mt-2 [&>div]:justify-start" style={{ "--i": 0 }}><SelectorProyecto valor={proyectoId} onCambio={setProyectoId} /></div>
+          )}
           <h1 className="serif sube text-[clamp(40px,4vw,64px)] leading-[.95]" style={{ "--i": 1 }}>
             Encontré <em>{validas.length}</em> {validas.length === 1 ? "requisito" : "requisitos"}.
           </h1>
-          <p className="sube text-sm text-[var(--bone-dim)]" style={{ "--i": 2 }}>Corrige el texto, une los que se partieron mal o quita los que sobran.</p>
-          {documento?.advertencias?.length > 0 && (
+          <p className="sube text-sm text-[var(--bone-dim)]" style={{ "--i": 2 }}>
+            {piezas.length
+              ? "Corrige el texto, une los que se partieron mal o quita los que sobran."
+              : "Ninguna oración dice qué «debe», «podrá» o «permitirá» hacer el sistema. Revisa los fragmentos descartados: los que sí sean requisitos se rescatan con «+ usar»."}
+          </p>
+          {advertencias.length > 0 && (
             <ul className="sube text-[12px] text-amber-200/80" style={{ "--i": 2 }}>
-              {documento.advertencias.map((a) => <li key={a}>⚠ {a}</li>)}
+              {advertencias.map((a) => <li key={a}>⚠ {a}</li>)}
             </ul>
           )}
           <ol className="space-y-1">
@@ -241,6 +277,11 @@ export default function Inicio() {
                 {p.advertencias?.length > 0 && (
                   <span className="text-[11.5px] text-amber-200/70">{p.advertencias.join(" · ")}</span>
                 )}
+                {largo(p) && (
+                  <span className="text-[11.5px] text-[var(--danger)]">
+                    Tiene {p.texto.trim().length} caracteres; el backend acepta hasta {LIMITES_CARGA.caracteres} por requisito. Pártelo («+ agregar requisito») o recórtalo.
+                  </span>
+                )}
                 </span>
                 <span className="flex gap-3 pt-2.5 opacity-40 transition-opacity group-hover:opacity-100">
                   {i < piezas.length - 1 && (
@@ -259,7 +300,7 @@ export default function Inicio() {
             + agregar requisito
           </button>
           {descartados.total > 0 && (
-            <details className="sube text-[12.5px] text-[var(--bone-dim)]" style={{ "--i": 4 + piezas.length }}>
+            <details open={!piezas.length} className="sube text-[12.5px] text-[var(--bone-dim)]" style={{ "--i": 4 + piezas.length }}>
               <summary className="mono cursor-pointer text-[10px] text-[var(--bone-faint)] hover:text-[var(--bone)]">
                 {descartados.total} fragmento{descartados.total === 1 ? "" : "s"} no parece{descartados.total === 1 ? "" : "n"} requisito · ver
               </summary>
@@ -269,7 +310,7 @@ export default function Inicio() {
                     <span className="mono mr-2 text-[9.5px] text-[var(--bone-faint)]">{d.pagina ? `p. ${d.pagina}` : ""} {d.motivo}</span>
                     {d.texto}
                     <button className="mono ml-2 text-[9.5px] text-[var(--c1)]"
-                      onClick={() => setPiezas((ps) => [...ps, { texto: d.texto, pagina: d.pagina, clave: `d-${Date.now()}-${i}` }])}>
+                      onClick={() => setPiezas((ps) => [...ps, { texto: d.texto, pagina: d.pagina, marca: d.marca, clave: `d-${Date.now()}-${i}` }])}>
                       + usar
                     </button>
                   </li>
@@ -279,11 +320,18 @@ export default function Inicio() {
             </details>
           )}
           {/* Fija abajo: con muchos requisitos el botón no se pierde */}
-          <div className="sube sticky bottom-4 z-10 -mx-3 flex flex-wrap gap-3 rounded-full px-3 py-2 backdrop-blur-xl" style={{ "--i": 5 + Math.min(piezas.length, 8) }}>
-            <button className="pill" disabled={!validas.length || saliendo || !proyectoId} onClick={analizar} onPointerEnter={() => orb.poke(0.3)}>
+          <div className="sube sticky bottom-4 z-10 -mx-3 flex flex-wrap items-center gap-3 rounded-[28px] px-3 py-2 backdrop-blur-xl" style={{ "--i": 5 + Math.min(piezas.length, 8) }}>
+            {(error || sobran > 0 || largos.length > 0) && (
+              <div className="basis-full space-y-1 px-2 text-sm text-[var(--danger)]">
+                {sobran > 0 && <p>El backend acepta hasta {LIMITES_CARGA.requisitos} requisitos por carga (cada carga abre un ciclo): quita {sobran} o reparte el documento en varias cargas.</p>}
+                {largos.length > 0 && <p>{largos.length === 1 ? "El requisito" : "Los requisitos"} {largos.map((p) => p.n).join(", ")} {largos.length === 1 ? "pasa" : "pasan"} de {LIMITES_CARGA.caracteres} caracteres.</p>}
+                {error && <p>{error}</p>}
+              </div>
+            )}
+            <button className="pill" disabled={!validas.length || saliendo || !destino || sobran > 0 || largos.length > 0} onClick={analizar} onPointerEnter={() => orb.poke(0.3)}>
               Analizar {validas.length} {validas.length === 1 ? "requisito" : "requisitos"}
             </button>
-            <button className="pill ghost" onClick={() => { setPiezas([]); setFase("inicio"); }}>Empezar de nuevo</button>
+            <button className="pill ghost" onClick={() => { setPiezas([]); setError(null); setFase("inicio"); }}>Empezar de nuevo</button>
           </div>
         </section>
       )}

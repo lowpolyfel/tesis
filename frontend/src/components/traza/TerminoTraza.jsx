@@ -66,12 +66,22 @@ function Ronda({ r, umbral }) {
   );
 }
 
-export default function TerminoTraza({ t, umbral }) {
+export default function TerminoTraza({ t, umbral, terminal = false, enError = false }) {
   const info = tipo(t.tipo_ambiguedad);
   const res = t.resolucion;
   const via = res ? INFO_VIA[res.via] : null;
   const propuesta = res?.propuesta?.id;
   const final = t.validacion?.final?.id;
+
+  if (t.univoco == null && terminal) {
+    return (
+      <li className="flex flex-wrap items-baseline gap-2 text-sm">
+        <b>«{t.termino}»</b>
+        <span className="text-slate-500">sin clasificar: {enError ? "el caso terminó en error antes de que el Clasificador lo viera" : "el Clasificador no lo vio"}</span>
+        {t.origen && t.origen !== "extractor" && <span className="text-xs text-slate-500">· detectado por {t.origen}</span>}
+      </li>
+    );
+  }
 
   if (t.univoco) {
     return (

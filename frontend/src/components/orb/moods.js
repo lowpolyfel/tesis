@@ -76,16 +76,6 @@ export const MOODS = {
   interp4: { c1: "#6ee7b7", c2: "#10b981", bg: "#020b07", scale: 1, fog: 1.1, glow: 0.6, amp: 1.3, speed: 1.6, turbulence: 0.25, pulse: 0, breathe: 0.04, wobble: 0 },
   interp5: { c1: "#f9a8d4", c2: "#ec4899", bg: "#0e0309", scale: 1, fog: 1.1, glow: 0.6, amp: 1.3, speed: 1.6, turbulence: 0.25, pulse: 0, breathe: 0.04, wobble: 0 },
   interp6: { c1: "#fda4af", c2: "#f43f5e", bg: "#100205", scale: 1, fog: 1.1, glow: 0.6, amp: 1.3, speed: 1.6, turbulence: 0.25, pulse: 0, breathe: 0.04, wobble: 0 },
-  lecturaA: {
-    c1: "#5cc8ff", c2: "#3b82f6", bg: "#030812",
-    scale: 1, fog: 1.1, glow: 0.6,
-    amp: 1.4, speed: 1.7, turbulence: 0.3, pulse: 0, breathe: 0.04, wobble: 0,
-  },
-  lecturaB: {
-    c1: "#ffb347", c2: "#ff6a3d", bg: "#100602",
-    scale: 1, fog: 1.1, glow: 0.6,
-    amp: 1.4, speed: 1.7, turbulence: 0.3, pulse: 0, breathe: 0.04, wobble: 0,
-  },
 };
 
 export const NUM_KEYS = ["scale", "fog", "glow", "amp", "speed", "turbulence", "pulse", "breathe", "wobble"];

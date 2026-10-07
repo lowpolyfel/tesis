@@ -7,16 +7,14 @@ import { poseFor } from "../../components/orb/poses";
 import Loader from "./Loader";
 import Welcome from "./Welcome";
 import Landing from "./Landing";
-import Login from "./Login";
-import Register from "./Register";
 import "./intro.css";
 
 /*
- * Portada de Dudamel: carga en blanco, clic para empezar, bienvenida,
- * login y registro. El acceso no valida nada (monousuario local):
- * entrar o registrarse lleva directo a «Analizar».
+ * Portada de Dudamel: carga en blanco, clic para empezar y bienvenida, que
+ * lleva directo a «Analizar». No hay cuentas (monousuario local): una pantalla
+ * de registro o de inicio de sesión mostraría algo que el sistema no tiene.
  */
-const PAGES = { welcome: Welcome, landing: Landing, login: Login, register: Register };
+const PAGES = { welcome: Welcome, landing: Landing };
 const EXIT_MS = 420;
 
 export default function Intro() {

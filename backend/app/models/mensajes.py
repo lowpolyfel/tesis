@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .comunes import Estado, Nodo, TipoMensaje
 from .contratos import Interpretacion
@@ -15,6 +15,17 @@ from .contratos import Interpretacion
 
 def ahora() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def sin_sustitutos(valor: Any) -> Any:
+    """Rechaza un sustituto UTF-16 suelto (`\\ud800`, posible en un JSON): no se puede
+    guardar en UTF-8 ni en BSON, y fallaría después, con el trabajo a medias."""
+    if isinstance(valor, str):
+        try:
+            valor.encode("utf-8")
+        except UnicodeEncodeError:
+            raise ValueError("el texto tiene un carácter inválido (sustituto UTF-16 suelto)") from None
+    return valor
 
 
 class Mensaje(BaseModel):
@@ -73,6 +84,11 @@ class Origen(BaseModel):
     texto_original: str | None = None  # como venía en el documento, antes de que el humano lo editara
     reproceso_de: str | None = None  # req_id del requisito que este vuelve a procesar
 
+    @field_validator("*")
+    @classmethod
+    def _texto_valido(cls, v: Any) -> Any:
+        return sin_sustitutos(v)
+
 
 class Traza(BaseModel):
     """Documento por requisito: con esto se reconstruye todo el proceso."""
@@ -104,3 +120,10 @@ class Validacion(BaseModel):
     decision: Literal["aprobar", "rechazar"]
     interpretaciones_editadas: dict[str, Interpretacion] = {}
     comentario: str | None = None
+
+    @field_validator("comentario", "interpretaciones_editadas")
+    @classmethod
+    def _texto_valido(cls, v: Any) -> Any:
+        for texto in v if isinstance(v, dict) else [v]:  # en las ediciones, los términos (las claves)
+            sin_sustitutos(texto)
+        return v

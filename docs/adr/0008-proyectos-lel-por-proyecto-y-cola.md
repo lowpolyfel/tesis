@@ -29,13 +29,41 @@ revisión explícito de KMoS-SSA).
    nuevo > análisis de proyecto. Dentro de la misma prioridad, orden de llegada.
 5. **Validación uno por uno**: cada requisito pausa en `pendiente_validacion` y
    espera su propia validación; no hay aprobación en bloque.
-6. **Recuperación al arrancar:** los requisitos en `cargado` se vuelven a
-   encolar; los que quedaron a mitad del grafo continúan desde su último
-   checkpoint (`invoke(None)`); los que esperan validación siguen esperando.
+6. **Recuperación al arrancar** (`Servicio.recuperar`), según el checkpoint de
+   cada requisito no terminado (revisada el 2026-10-07 tras la revisión final):
+   - sin checkpoint (quedó en `cargado`): se vuelve a encolar;
+   - a mitad del grafo: continúa desde su último checkpoint (`invoke(None)`).
+     Incluye los que el repositorio ya marca `pendiente_validacion` pero cuyo
+     grafo no llegó a pausarse en `humano` (el proceso cayó entre cambiar el
+     estado y guardar el checkpoint) o ya pasó de `humano` con la validación
+     registrada (cayó antes de `validado`). Antes se saltaban todos los de
+     `pendiente_validacion` y esos quedaban atascados: `/validar` respondía 409
+     para siempre. LangGraph guarda los checkpoints en segundo plano
+     (`durability="async"`), así que el checkpoint puede ir uno o más nodos
+     detrás del repositorio; un checkpoint sin `next` pero con tareas
+     pendientes también se continúa;
+   - pausado en `humano`: si hay una validación aceptada esperando turno en esa
+     misma pausa (punto 8), se reanuda con ella; si no, sigue esperando a la
+     persona.
 7. **Almacén genérico** en el repositorio (`crear_doc`, `guardar_doc`,
    `obtener_doc`, `listar_docs` por colección) para proyectos, documentos,
    comparaciones y evaluaciones, con ids consecutivos por prefijo. Cada módulo
    valida sus datos con su propio modelo Pydantic.
+8. **La validación aceptada se guarda antes de encolarla** (colección
+   `validaciones`: un documento por `req_id` con la decisión, las ediciones, el
+   comentario, la fecha y el id del checkpoint de la pausa a la que responde).
+   `POST /validar` responde 202 solo después de guardarla, así que un reinicio
+   mientras espera turno no la pierde. Solo se aplica a esa misma pausa: si se
+   vacían las trazas y los checkpoints, el id `R01` se reutiliza y la decisión
+   sobre el R01 anterior no debe aplicarse sola al nuevo.
+9. **Reejecutar un nodo no duplica la memoria.** `guardar_lel` reemplaza la
+   entrada del mismo `req_id` y término (el documento de `formalizados` ya se
+   reemplazaba por `req_id`). Cada entrada del LEL guarda además el `cambio` de
+   la persona (`ninguno`, `eleccion`, `edicion`): `via` dice cómo llegó el
+   sistema a su propuesta, no qué interpretación quedó.
+10. **El ciclo se reserva sin carreras:** leer el último ciclo del proyecto y
+    crear la primera traza del nuevo ocurre bajo un candado del servicio; dos
+    cargas simultáneas abren ciclos distintos.
 
 ## Alternativas consideradas
 
@@ -51,5 +79,19 @@ revisión explícito de KMoS-SSA).
 - Al continuar un grafo interrumpido a mitad de un nodo, los mensajes que ese
   nodo ya había emitido pueden quedar repetidos en la traza (el nodo se reejecuta
   completo). Se acepta: la traza conserva ambos y el orden lo dice `secuencia`.
+  Esto incluye `solicitud_validacion` (caída al entrar a `pendiente_validacion`)
+  y `validacion` (caída dentro de `humano` después de registrarla).
+- Reejecutar `formalizado` vuelve a llamar al Modelador: con un LLM no
+  determinista, la entrada del LEL que queda es la de la última ejecución.
+- La colección `validaciones` conserva la última validación aceptada de cada
+  requisito aunque ya se haya aplicado; solo se usa si el grafo sigue pausado
+  en `humano` en la misma pausa. La fuente de verdad de la decisión sigue
+  siendo el mensaje `validacion` de la traza.
+- Las entradas del LEL guardadas antes de este cambio no tienen `cambio`
+  (queda vacío); `editada_por_humano` sigue marcando solo la edición.
+- Límites que se aceptan: el candado del ciclo es de proceso (un script con su
+  propio `Servicio` que carga a la vez que la API puede abrir el mismo ciclo,
+  ADR 0006), y si se pierde el archivo de checkpoints un requisito en
+  `pendiente_validacion` ya no se puede reanudar: hay que reprocesarlo.
 - Las pruebas y los scripts pueden seguir corriendo el grafo en el mismo hilo
   (`procesar`, `validar`); la API siempre encola.

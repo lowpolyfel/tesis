@@ -11,27 +11,33 @@
  *   - Retirar una interpretación la devuelve al Clasificador; en el consenso
  *     se funden en la propuesta; en el arbitraje el Crítico absorbe las demás.
  *
- * No decide nada del método: solo dibuja lo que dicen los mensajes.
+ * No decide nada del método: solo dibuja lo que dicen los mensajes. Un término
+ * se identifica por su forma normalizada, como en el grafo y en la vista del
+ * backend: el Clasificador puede escribir «Sesión» por el candidato «sesión».
  */
 import { ORDEN_NODOS, nodo, colorInterpretacion } from "../constants/agentes";
 import { isMobile } from "../components/orb/poses";
 
 const fmt = (x) => (x == null ? "—" : Number(x).toFixed(2));
 const corto = (t, n = 26) => (t && t.length > n ? `${t.slice(0, n - 1)}…` : t ?? "");
+/* Minúsculas y sin acentos (app.nlp.normalizar / app.analisis.traza.clave) */
+export const clave = (termino) => (termino ?? "").normalize("NFD").replace(/\p{Mn}/gu, "").toLowerCase().trim();
 
 function geometria() {
   const m = isMobile();
   const n = ORDEN_NODOS.length;
-  const ancho = m ? 0.86 : 0.74;
+  // en móvil los nodos alternan en dos filas: los de una misma fila quedan a ~100 px
+  // y sus rótulos (más estrechos, ver orb.css) no se enciman
+  const ancho = 0.74;
   const xs = ORDEN_NODOS.map((_, i) => -ancho / 2 + (ancho * i) / (n - 1));
   // arco suave: los extremos un poco más abajo que el centro
-  const ys = xs.map((x) => (m ? -0.12 : -0.11) + Math.abs(x) * 0.1);
+  const ys = xs.map((x, i) => (m ? -0.17 + (i % 2) * 0.11 : -0.11 + Math.abs(x) * 0.1));
   return {
     pos: Object.fromEntries(ORDEN_NODOS.map((id, i) => [id, { x: xs[i], y: ys[i] }])),
     s: m ? 0.14 : 0.22,
     sActivo: m ? 0.2 : 0.3,
     sistema: { x: 0, y: m ? -0.27 : -0.26, s: m ? 0.09 : 0.11 },
-    grupo: { x: 0, y: m ? 0.05 : 0.06 }, // centro de las interpretaciones
+    grupo: { x: 0, y: m ? 0.08 : 0.06 }, // centro de las interpretaciones
     radioMax: m ? 0.15 : 0.19,
     radioMin: m ? 0.035 : 0.045,
     sInterp: m ? 0.1 : 0.14,
@@ -43,7 +49,7 @@ export function crearCoreografia(orb) {
   let g = geometria();
   let montada = false;
   let particula = 0;
-  // estado visual por término: { ids: Map(interpId -> esferaId), similitud, centro }
+  // estado visual por término normalizado: { nombre, ids: Map(interpId -> esferaId), similitud }
   const terminos = new Map();
 
   const idNodo = (n) => (n === "sistema" ? "core" : `n:${n}`);
@@ -112,12 +118,13 @@ export function crearCoreografia(orb) {
   const distribuir = () => distribuirTodos();
 
   function nacerInterpretaciones(termino, interps) {
-    if (!terminos.has(termino)) terminos.set(termino, { ids: new Map(), similitud: null });
-    const t = terminos.get(termino);
+    const k = clave(termino);
+    if (!terminos.has(k)) terminos.set(k, { nombre: termino, ids: new Map(), similitud: null });
+    const t = terminos.get(k);
     const nuevas = [];
     for (const i of interps) {
       if (t.ids.has(i.id)) continue;
-      const esfera = `i:${termino}:${i.id}`;
+      const esfera = `i:${k}:${i.id}`;
       t.ids.set(i.id, esfera);
       nuevas.push({
         id: esfera, mood: colorInterpretacion(i.id).mood, s: g.sInterp, x: g.grupo.x, y: g.grupo.y,
@@ -129,16 +136,16 @@ export function crearCoreografia(orb) {
   }
 
   function retirar(termino, ids, hacia) {
-    const t = terminos.get(termino);
+    const t = terminos.get(clave(termino));
     if (!t) return;
     const esferas = ids.map((id) => t.ids.get(id)).filter(Boolean);
     ids.forEach((id) => t.ids.delete(id));
     if (esferas.length) fundir(esferas, idNodo(hacia));
-    distribuir(termino);
+    distribuir();
   }
 
   function resolver(termino, ganadora, absorbe, nota = "elegida") {
-    const t = terminos.get(termino);
+    const t = terminos.get(clave(termino));
     if (!t) return;
     const perdedoras = [...t.ids.keys()].filter((id) => id !== ganadora);
     const destino = t.ids.get(ganadora);
@@ -146,11 +153,11 @@ export function crearCoreografia(orb) {
     perdedoras.forEach((id) => t.ids.delete(id));
     if (esferas.length) fundir(esferas, absorbe ? idNodo(absorbe) : destino ?? idNodo("clasificador"));
     if (destino && orb.has(destino)) {
-      orb.update(destino, { mood: "success", sub: `${corto(termino, 12)} · ${nota}` });
+      orb.update(destino, { mood: "success", sub: `${corto(t.nombre, 12)} · ${nota}` });
       orb.poke(0.8, destino);
     }
     t.similitud = 1;
-    distribuir(termino);
+    distribuir();
   }
 
   /* ------------------------------------------------------------ mensajes */
@@ -188,8 +195,9 @@ export function crearCoreografia(orb) {
         etiquetar("divergencia", p.motivo === "sin_interpretaciones" ? "nada que comparar" : "—");
         return 700;
       }
-      const t = terminos.get(p.termino);
-      if (t) { t.similitud = p.similitud; distribuir(p.termino); }
+      const k = clave(p.termino);
+      const t = terminos.get(k);
+      if (t) { t.similitud = p.similitud; distribuir(); }
       const sobre = p.similitud >= p.umbral;
       // aceptado directo: se ven juntarse y luego quedan como una sola interpretación
       if (t && sobre && m.ronda === 0) {
@@ -197,9 +205,9 @@ export function crearCoreografia(orb) {
         setTimeout(() => resolver(p.termino, primera, null, "directo"), 900);
         // ya no se debate: la Divergencia lo absorbe y deja espacio a los que sí
         setTimeout(() => {
-          const sigue = terminos.get(p.termino);
-          if (!sigue) return;
-          terminos.delete(p.termino);
+          const sigue = terminos.get(k);
+          if (sigue !== t) return;
+          terminos.delete(k);
           fundir([...sigue.ids.values()], idNodo("divergencia"));
           distribuirTodos();
         }, 2600);
@@ -213,7 +221,7 @@ export function crearCoreografia(orb) {
       const p = m.payload;
       const ob = p.objeciones ?? [];
       etiquetar("critico", ob.length ? `ronda ${m.ronda}: ${ob.length} objeción${ob.length === 1 ? "" : "es"}` : `ronda ${m.ronda}: sin objeciones`);
-      const t = terminos.get(p.termino);
+      const t = terminos.get(clave(p.termino));
       for (const o of ob) {
         const esfera = t?.ids.get(o.interpretacion_id);
         if (esfera && orb.has(esfera)) {
@@ -229,7 +237,7 @@ export function crearCoreografia(orb) {
       const retiradas = (p.retiradas ?? []).map((r) => r.interpretacion_id);
       etiquetar("clasificador", retiradas.length ? `retira ${retiradas.join(", ")}` : `ronda ${m.ronda}: refina`);
       if (retiradas.length) retirar(p.termino, retiradas, "clasificador");
-      const t = terminos.get(p.termino);
+      const t = terminos.get(clave(p.termino));
       for (const i of p.interpretaciones ?? []) {
         const esfera = t?.ids.get(i.id);
         if (esfera && orb.has(esfera)) orb.update(esfera, { sub: corto(i.significado, 18) });
@@ -310,11 +318,15 @@ export function crearCoreografia(orb) {
       activar(null);
     },
 
-    /* Aplica un mensaje; devuelve cuánto dura su animación (ms) */
-    aplicar(m) {
+    /*
+     * Aplica un mensaje; devuelve cuánto dura su animación (ms). Con `rapido`
+     * («saltar») no viaja la partícula, pero el mensaje cambia la escena igual:
+     * lo que se salta se ve en su estado final, no en uno viejo.
+     */
+    aplicar(m, { rapido = false } = {}) {
       if (!montada) return 0;
       activar(m.emisor === "sistema" ? null : m.emisor);
-      if (m.emisor !== m.receptor) enviar(m.emisor, m.receptor, m.tipo === "error" ? "error" : undefined);
+      if (m.emisor !== m.receptor && !rapido) enviar(m.emisor, m.receptor, m.tipo === "error" ? "error" : undefined);
       const manejar = MANEJADORES[m.tipo];
       return manejar ? manejar(m) : 700;
     },

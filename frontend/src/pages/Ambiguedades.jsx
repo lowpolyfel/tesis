@@ -13,7 +13,10 @@ import { TIPOS, tipo as infoTipo } from "../constants/agentes";
  *   - un término es inconsistente si quedó validado con significados distintos
  *     en dos requisitos, o si su símbolo del LEL tiene nociones distintas;
  *   - las estructuras de alcance y anáfora que detectaron los filtros;
- *   - la vaguedad y los regionalismos, que se marcan pero no se debaten.
+ *   - la vaguedad, que se marca y no se debate, y los regionalismos, que pasan
+ *     al Clasificador como cualquier candidato;
+ *   - un término que los filtros dieron por resuelto con el LEL aparece con esa
+ *     marca: es la memoria funcionando, no un veredicto del Clasificador.
  * La contradicción ENTRE requisitos es otro módulo (Comparaciones, exploratorio).
  */
 const TIPOS_DEBATIDOS = ["lexica", "alcance", "anaforica", "sintactica"];
@@ -53,7 +56,7 @@ export default function Ambiguedades() {
         </p>
         <div className="flex flex-wrap items-center gap-3">
           <ElegirProyecto proyectoId={proyectoId} proyectos={proyectos} onCambio={elegir} />
-          {proyectoId && <Link className="pill ghost" to={`/comparaciones?proyecto=${proyectoId}`}>Contradicciones entre requisitos →</Link>}
+          {proyectoId && <Link className="pill ghost" to={`/comparaciones?proyecto=${proyectoId}`}>Contradicciones entre requisitos (exploratorio) →</Link>}
         </div>
       </header>
 
@@ -74,7 +77,7 @@ export default function Ambiguedades() {
               {tipo && <button className="mono text-[10px] text-[var(--bone-faint)] hover:text-[var(--bone)]" onClick={() => set("tipo", "")}>quitar filtro «{infoTipo(tipo).etiqueta}» ×</button>}
             </div>
             <ol className="space-y-4">
-              {visibles.map((g, i) => <Grupo key={g.clave} g={g} i={i} />)}
+              {visibles.map((g, i) => <Grupo key={g.clave} g={g} i={i} proyectoId={proyectoId} />)}
               {!visibles.length && (
                 <p className="text-sm text-[var(--bone-dim)]">
                   {a.terminos.length ? "Ningún término con este filtro." : `${proyecto?.nombre ?? "Este proyecto"} aún no tiene términos ambiguos analizados.`}
@@ -152,7 +155,7 @@ function Totales({ a, tipo, onTipo }) {
   );
 }
 
-function Grupo({ g, i }) {
+function Grupo({ g, i, proyectoId }) {
   return (
     <li className="sube rounded-2xl border border-[var(--line)] bg-white/[0.02] p-5" style={{ "--i": Math.min(i, 12) }}>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -177,13 +180,31 @@ function Grupo({ g, i }) {
           <tbody>
             {g.apariciones.map((ap) => {
               const via = ap.via ? INFO_VIA[ap.via] : null;
+              // el término ya tenía noción validada en el LEL: no llegó al Clasificador
+              if (ap.decision_filtro === "resuelto_por_lel") {
+                return (
+                  <tr key={`${ap.req_id}-lel`} className="border-t border-[var(--line)] align-top">
+                    <td className="py-2">
+                      <Link to={`/requisitos/${ap.req_id}`} className="mono text-[10px] hover:text-[var(--c1)]">{ap.req_id}</Link>
+                      <p className="mono text-[9px] text-[var(--bone-faint)]">C{ap.ciclo}</p>
+                    </td>
+                    <td className="py-2 text-[12px] text-emerald-400">resuelto por el LEL</td>
+                    <td className="mono py-2 text-[9.5px] text-[var(--bone-dim)]">memoria del LEL · no se debatió</td>
+                    <td className="py-2 pr-2">
+                      <Link className="text-[var(--bone-dim)] underline underline-offset-4 hover:text-[var(--bone)]" to={`/lel?proyecto=${proyectoId}&q=${encodeURIComponent(g.termino)}`}>
+                        la noción vigente en el LEL →
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              }
               return (
                 <tr key={`${ap.req_id}-${ap.tipo_ambiguedad}`} className="border-t border-[var(--line)] align-top">
                   <td className="py-2">
                     <Link to={`/requisitos/${ap.req_id}`} className="mono text-[10px] hover:text-[var(--c1)]">{ap.req_id}</Link>
                     <p className="mono text-[9px] text-[var(--bone-faint)]">C{ap.ciclo}</p>
                   </td>
-                  <td className="py-2 text-[12px] text-[var(--bone-dim)]">{ap.tipo_ambiguedad ? infoTipo(ap.tipo_ambiguedad).etiqueta : "unívoco"}</td>
+                  <td className="py-2 text-[12px] text-[var(--bone-dim)]">{ap.tipo_ambiguedad ? infoTipo(ap.tipo_ambiguedad).etiqueta : "—"}</td>
                   <td className="mono py-2 text-[9.5px] text-[var(--bone-dim)]">
                     {via ? <span className="flex items-center gap-1.5"><span className="punto" style={{ background: via.tono }} />{via.etiqueta}</span> : <span>{infoEstado(ap.estado).etiqueta.toLowerCase()}</span>}
                     {ap.similitud_inicial != null && <span className="block text-[var(--bone-faint)]">sim. {ap.similitud_inicial.toFixed(2)}{ap.rondas ? ` · ${ap.rondas}R` : ""}</span>}
