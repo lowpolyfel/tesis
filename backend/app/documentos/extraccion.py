@@ -129,35 +129,49 @@ def _falta_dependencia(e: DependencyError) -> Ilegible:
     return Ilegible(f"Al servidor le falta una dependencia para leer este PDF ({e}).")
 
 
+_DIBUJA = re.compile(rb"/([^\s/\[\]<>(){}%]+)\s*Do\b")  # «/Fm1 Do»: la página dibuja ese XObject
+
+
+def _nombre_pdf(crudo: bytes) -> str:
+    """Nombre de un operando tal como lo guarda pypdf (los «#xx» ya decodificados)."""
+    return "/" + re.sub(rb"#([0-9A-Fa-f]{2})", lambda m: bytes([int(m.group(1), 16)]), crudo).decode("latin-1")
+
+
 def _bytes_de_operadores(pagina: DictionaryObject) -> int:
     """Lo que pypdf leería para extraer el texto de la página: su contenido
-    descomprimido y el de los formularios (XObject /Form) que usa, cada uno una vez.
-    Se mide antes de extraer porque la lectura de un flujo no se puede interrumpir."""
+    descomprimido y el de los formularios (XObject /Form) que DIBUJA con «Do», cada
+    uno una vez y también los anidados. Solo cuentan los que se dibujan: LibreOffice o
+    matplotlib declaran todos los formularios del documento en un único diccionario de
+    recursos que heredan todas las páginas, y contarlos todos dejaba sin extraer
+    páginas que solo tienen texto. Se mide antes de extraer porque la lectura de un
+    flujo no se puede interrumpir."""
     vistos: set[int] = set()
 
-    def flujo(obj) -> int:
+    def datos(obj) -> bytes:
         obj = obj.get_object()
         if isinstance(obj, ArrayObject):
-            return sum(flujo(x) for x in obj)
-        return len(obj.get_data()) if hasattr(obj, "get_data") else 0
+            return b"\n".join(datos(x) for x in obj)  # los flujos se parten entre tokens
+        return obj.get_data() if hasattr(obj, "get_data") else b""
 
-    def formularios(recursos) -> int:
+    def medir(contenido: bytes, recursos) -> int:
+        total = len(contenido)
         recursos = recursos.get_object() if recursos is not None else None
         xobjetos = recursos.get("/XObject") if isinstance(recursos, DictionaryObject) else None
         xobjetos = xobjetos.get_object() if xobjetos is not None else None
         if not isinstance(xobjetos, DictionaryObject):
-            return 0
-        total = 0
-        for nombre in xobjetos:
-            x = xobjetos[nombre]
+            return total
+        for nombre in dict.fromkeys(_nombre_pdf(m) for m in _DIBUJA.findall(contenido)):
+            x = xobjetos.get(nombre)
+            x = x.get_object() if x is not None else None
             if id(x) in vistos or not isinstance(x, DictionaryObject) or x.get("/Subtype") != "/Form":
                 continue
             vistos.add(id(x))
-            total += flujo(x) + formularios(x.get("/Resources"))
+            # un formulario sin /Resources propios usa los de quien lo dibuja
+            total += medir(datos(x), x.get("/Resources") or recursos)
         return total
 
     contenido = pagina.get("/Contents")
-    return (flujo(contenido) if contenido is not None else 0) + formularios(pagina.get_inherited("/Resources"))
+    return medir(datos(contenido) if contenido is not None else b"", pagina.get_inherited("/Resources"))
 
 
 def _lista(paginas: list[int]) -> str:

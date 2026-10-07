@@ -251,6 +251,21 @@ def test_el_costo_cuenta_los_formularios_de_la_pagina(monkeypatch, lecturas):
     assert lecturas == []
 
 
+def test_formularios_que_la_pagina_no_dibuja_no_cuentan(monkeypatch, lecturas):
+    """LibreOffice y matplotlib declaran todos los formularios en un diccionario de recursos
+    que heredan todas las páginas: si se contaban todos, las páginas de solo texto se
+    saltaban y el documento entero respondía 422."""
+    monkeypatch.setattr(extraccion, "MAX_BYTES_OPERADORES_PAGINA", 2**19)
+    contenido = pdf_con_operadores([operadores_de_texto(["El sistema debe guardar."]),
+                                    operadores_de_texto(["El sistema debe salir."]) + b"\n/Fm1 Do"],
+                                   xobjetos={"Fm1": DIBUJO * 100_000, "Fm2": DIBUJO * 100_000})
+    extraido = leer("libreoffice.pdf", contenido, MAX)
+    assert extraido.paginas[0].strip() == "El sistema debe guardar." and extraido.paginas[1] == ""
+    assert len(lecturas) == 1  # solo la página que dibuja el formulario pesado se salta
+    assert extraido.advertencias == ["Páginas sin extraer por tener más de 0.5 MB de operadores de dibujo "
+                                     "(límite técnico; ¿diagramas vectoriales?): 2."]
+
+
 def test_tiempo_agotado_interrumpe_la_pagina_y_omite_las_siguientes(monkeypatch):
     monkeypatch.setattr(extraccion, "_reloj", _Reloj())
     monkeypatch.setattr(extraccion, "TIEMPO_MAX_EXTRACCION", 50)  # consultas: una por página y una por operador
