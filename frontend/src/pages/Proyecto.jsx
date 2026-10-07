@@ -279,8 +279,12 @@ export function LelProyecto({ proyectoId }) {
   );
 }
 
+/* Lo que hizo la persona con la propuesta (la vía dice cómo llegaron los agentes) */
+const CAMBIO_LEL = { eleccion: "la persona eligió otra interpretación", edicion: "reescrita por la persona" };
+
 export function EntradaLel({ e, conProyecto = null }) {
   const via = INFO_VIA[e.via];
+  const cambio = e.cambio ?? (e.editada_por_humano ? "edicion" : null); // entradas anteriores no traen `cambio`
   return (
     <li className="rounded-2xl border border-[var(--line)] bg-white/[0.02] p-4 text-sm">
       <div className="flex flex-wrap items-baseline gap-2">
@@ -291,7 +295,7 @@ export function EntradaLel({ e, conProyecto = null }) {
       <p className="mono mt-1 flex flex-wrap items-center gap-2 text-[9px] text-[var(--bone-faint)]">
         {e.termino !== e.simbolo && <span>término «{e.termino}»</span>}
         {via && <span className="flex items-center gap-1"><span className="punto" style={{ background: via.tono }} />{via.etiqueta}</span>}
-        {e.editada_por_humano && <span>editada por una persona</span>}
+        {CAMBIO_LEL[cambio] && <span>{CAMBIO_LEL[cambio]}</span>}
         <span>{e.fecha?.slice(0, 10)}</span>
         {conProyecto}
       </p>

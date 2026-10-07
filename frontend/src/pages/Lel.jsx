@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useApi } from "../hooks/useApi";
 import { listarProyectos, obtenerLel } from "../services/backend";
@@ -18,18 +18,29 @@ const ESPERA_URL_MS = 300;
 
 export default function Lel() {
   const [params, setParams] = useSearchParams();
-  const [q, setQ] = useState(() => params.get("q") ?? "");
+  const qUrl = params.get("q") ?? "";
+  const [q, setQ] = useState(qUrl);
+  const escrito = useRef(qUrl); // lo último que este campo escribió en la URL
   const tipo = params.get("tipo") ?? "";
   const proyecto = params.get("proyecto") ?? "";
   const { datos: entradas, error, cargando } = useApi(() => obtenerLel(proyecto || undefined), [proyecto]);
   const { datos: proyectos } = useApi(listarProyectos);
+  // sobre los parámetros vigentes: un filtro elegido mientras corre la espera no se pierde
+  // (el actualizador funcional de React Router recibe los del render en que se creó)
+  const vigentes = useRef(params);
+  vigentes.current = params;
   const actualizar = (cambios) => {
-    const p = Object.fromEntries(params);
-    setParams(Object.fromEntries(Object.entries({ ...p, ...cambios }).filter(([, v]) => v)), { replace: true });
+    const p = new URLSearchParams(vigentes.current);
+    for (const [k, v] of Object.entries(cambios)) { if (v) p.set(k, v); else p.delete(k); }
+    setParams(p, { replace: true });
   };
+  // si la URL cambia desde fuera (el menú, atrás), el campo la sigue
   useEffect(() => {
-    if (q === (params.get("q") ?? "")) return undefined;
-    const t = setTimeout(() => actualizar({ q }), ESPERA_URL_MS);
+    if (qUrl !== escrito.current) { escrito.current = qUrl; setQ(qUrl); }
+  }, [qUrl]);
+  useEffect(() => {
+    if (q === escrito.current) return undefined;
+    const t = setTimeout(() => { escrito.current = q; actualizar({ q }); }, ESPERA_URL_MS);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);

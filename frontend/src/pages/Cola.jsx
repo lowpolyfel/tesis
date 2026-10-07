@@ -34,11 +34,14 @@ export default function Cola() {
     const leer = async () => {
       try {
         const [proyectos, cola] = await Promise.all([listarProyectos(), obtenerCola()]);
-        const resumenes = await Promise.all(proyectos.map((p) => resumenProyecto(p.proyecto_id)));
+        // un proyecto que falla no tumba el historial: se omite y se avisa
+        const leidos = await Promise.allSettled(proyectos.map((p) => resumenProyecto(p.proyecto_id)));
+        const resumenes = leidos.filter((r) => r.status === "fulfilled").map((r) => r.value);
+        const fallidos = proyectos.filter((_, i) => leidos[i].status === "rejected").map((p) => p.proyecto_id);
         if (!activo) return;
         const lista = resumenes.flatMap((r) => r.requisitos.map((q) => ({ ...q, proyecto: r.proyecto.nombre })))
           .sort((a, b) => b.creado.localeCompare(a.creado));
-        setDatos({ proyectos, cola, lista });
+        setDatos({ proyectos, cola, lista, fallidos });
         setError(null);
         const ocupado = cola.en_proceso || cola.pendientes.length || lista.some((q) => q.en_proceso);
         t = setTimeout(leer, ocupado ? SONDEO_MS : REPOSO_MS);
@@ -71,6 +74,10 @@ export default function Cola() {
         </div>
         <Link to="/inicio" className="pill ml-auto">+ Cargar requisitos</Link>
       </header>
+
+      {datos.fallidos?.length > 0 && (
+        <p className="text-sm text-[var(--danger)]">No se pudo leer el resumen de {datos.fallidos.join(", ")}; sus requisitos no aparecen aquí.</p>
+      )}
 
       <ColaTrabajo cola={datos.cola} />
 

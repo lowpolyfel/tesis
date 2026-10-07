@@ -35,7 +35,7 @@ async function pedir(metodo, ruta, { cuerpo, form, params } = {}) {
   try {
     r = await fetch(url, opciones);
   } catch {
-    throw new Error(`No hay conexión con el backend en ${BASE_URL}. ¿Está corriendo uvicorn?`);
+    throw new Error(`No hay conexión con el backend en ${BASE_URL}. ¿Está corriendo uvicorn? ¿Este origen está en CORS_ORIGENES?`);
   }
   return leer(r);
 }
