@@ -45,14 +45,22 @@ def _contiene(secuencia: list[str], sub: list[str]) -> bool:
     return n > 0 and any(secuencia[i:i + n] == sub for i in range(len(secuencia) - n + 1))
 
 
-def perfil(analizador: Analizador, texto: str, simbolos_lel: list[str]) -> Perfil:
+SimboloAnalizado = tuple[str, list[str], list[str]]  # (símbolo, formas, lemas)
+
+
+def analizar_simbolos(analizador: Analizador, simbolos_lel: list[str]) -> list[SimboloAnalizado]:
+    """Una sola pasada de spaCy por símbolo, para reusarla en todos los requisitos."""
+    return [(s, *_secuencias(analizador, s)) for s in simbolos_lel]
+
+
+def perfil(analizador: Analizador, texto: str, simbolos_lel: list[str] | list[SimboloAnalizado]) -> Perfil:
     """Lemas de contenido y símbolos del LEL que aparecen en el texto (por forma o por
     secuencia de lemas, para que «da de alta» encuentre «dar de alta»)."""
     lemas = {k: u.texto for k, u in analizador.lemas_contenido(texto).items()}
     formas, lemas_texto = _secuencias(analizador, texto)
+    analizados = [s if isinstance(s, tuple) else (s, *_secuencias(analizador, s)) for s in simbolos_lel]
     simbolos = {}
-    for s in simbolos_lel:
-        f, lm = _secuencias(analizador, s)
+    for s, f, lm in analizados:
         if _contiene(formas, f) or _contiene(lemas_texto, lm) or (len(f) == 1 and f[0] in lemas_texto):
             simbolos[" ".join(f)] = s
     return Perfil(lemas, simbolos)

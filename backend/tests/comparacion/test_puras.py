@@ -7,6 +7,7 @@ from app.comparacion import (
     Perfil,
     SalidaComparadorLLM,
     SignificadoValidado,
+    analizar_simbolos,
     bases_de_comparacion,
     casi_duplicados,
     cita_literal,
@@ -29,6 +30,10 @@ TEXTO = "La sesión del usuario debe cerrarse a los 15 minutos de inactividad."
     ("debe cerrarse a los quince minutos", False),
     ("la sesión se cierra a los 15 minutos", False),  # paráfrasis: no es literal
     ("«»", False),
+    ("debe cerrar", False),  # palabra cortada: «cerrar» no está, está «cerrarse»
+    ("sion del usuario", False),  # empieza a media palabra («sesión»)
+    ("5 minutos", False),  # dentro de «15»
+    ("inactividad", True),  # al final, antes del punto
 ])
 def test_cita_literal(cita, esperado):
     assert cita_literal(cita, TEXTO) is esperado
@@ -75,6 +80,20 @@ def test_inconsistencias_desde_el_lel():
         (["R02", "R03"], "lel", ["sesión"]), (["R03", "R04"], "lel", ["sesión"])]
     assert hs[0]["evidencia"] == [{"req_id": "R01", "cita": "Periodo de uso del sistema.", "verificada": True},
                                   {"req_id": "R02", "cita": "Evento de conexión al sistema.", "verificada": True}]
+
+
+def test_perfil_con_simbolos_ya_analizados(analizador):
+    simbolos = ["dar de alta", "sesión", "bitácora"]
+    texto = "El sistema da de alta al cliente y guarda su sesión."
+    assert perfil(analizador, texto, analizar_simbolos(analizador, simbolos)) == perfil(analizador, texto, simbolos)
+
+
+def test_el_orden_de_los_enunciados_de_la_nocion_no_cuenta():
+    lel = [entrada_lel("P01", "R01", "sesión", ["Periodo de uso.", "Empieza al entrar."]),
+           entrada_lel("P01", "R02", "sesión", ["Empieza al entrar.", "periodo de uso"]),
+           entrada_lel("P01", "R03", "sesión", ["Periodo de uso."])]
+    hs = inconsistencias_vocabulario(lel, [])
+    assert [h["requisitos"] for h in hs] == [["R01", "R03"], ["R02", "R03"]]
 
 
 def test_inconsistencias_por_validacion_y_union_con_el_lel():

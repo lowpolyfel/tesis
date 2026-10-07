@@ -264,3 +264,26 @@ def test_lel_de_un_requisito_reprocesado_se_reporta_sin_similitud(tmp_path, anal
     vocab = [h for h in c.hallazgos if h.tipo == "inconsistencia_vocabulario"]
     assert [(h.requisitos, h.similitud) for h in vocab] == [([viejo, otro], None)]
     assert list(c.matriz_similitud) == [f"{nuevo}-{otro}"]
+
+
+def test_la_config_registra_los_modelos_con_que_corrio(tmp_path, analizador):
+    """Una comparación encolada antes de un reinicio puede correr con otros modelos:
+    los umbrales son los de la solicitud, los modelos los de la corrida."""
+    from tests.fakes import EmbeddingsFalsos
+
+    srv, llm, repo, pid = montar_comparacion(tmp_path, analizador, comparacion_relacion_umbral=0.5)
+    requisito(repo, pid, REGISTRAR)
+    requisito(repo, pid, REGISTRAR_2)
+    pendiente = preparar(srv, pid)
+    assert (pendiente.config.modelo_embeddings, pendiente.config.umbral_relacion) == ("embeddings-falsos", 0.5)
+
+    class OtrosEmbeddings(EmbeddingsFalsos):
+        modelo = "otros-embeddings"
+
+    srv.deps.embeddings = OtrosEmbeddings({})
+    llm.modelo = "otro-llm"
+    srv.deps.settings.comparacion_relacion_umbral = 0.9
+    c = ejecutar(srv, pendiente.comparacion_id)
+
+    assert (c.config.modelo, c.config.modelo_embeddings, c.config.umbral_relacion) == ("otro-llm", "otros-embeddings", 0.5)
+    assert [h.modelo for h in c.hallazgos if h.fuente == "embeddings"] == ["otros-embeddings"]

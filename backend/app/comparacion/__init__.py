@@ -7,6 +7,7 @@ from .bases import SignificadoValidado, bases_de_comparacion, significados_valid
 from .ejecucion import (  # noqa: F401
     COLECCION,
     RequisitosInsuficientes,
+    SinComparador,
     comparar,
     ejecutar,
     listar,
@@ -18,5 +19,12 @@ from .ejecucion import (  # noqa: F401
 )
 from .juez import PROMPT, Juez, cita_literal  # noqa: F401
 from .modelos import Comparacion, ResumenComparacion, SalidaComparadorLLM  # noqa: F401
-from .pares import Perfil, casi_duplicados, matriz_similitud, perfil, seleccionar_pares  # noqa: F401
+from .pares import (  # noqa: F401
+    Perfil,
+    analizar_simbolos,
+    casi_duplicados,
+    matriz_similitud,
+    perfil,
+    seleccionar_pares,
+)
 from .vocabulario import inconsistencias_vocabulario  # noqa: F401

@@ -23,9 +23,11 @@ def _plano(texto: str) -> str:
 
 def cita_literal(cita: str, texto: str) -> bool:
     """La cita aparece tal cual en el texto, salvo mayúsculas, acentos, espacios
-    repetidos y comillas o puntuación en los extremos de la cita."""
+    repetidos y comillas o puntuación en los extremos de la cita. Debe empezar y
+    terminar en límite de palabra: «no» no se verifica dentro de «notifica», ni
+    «debe cerrar» dentro de «debe cerrarse»."""
     c = _plano(cita)
-    return bool(c) and c in _plano(texto)
+    return bool(c) and re.search(rf"(?<!\w){re.escape(c)}(?!\w)", _plano(texto)) is not None
 
 
 class Juez:

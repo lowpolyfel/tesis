@@ -79,3 +79,49 @@ def test_errores_de_la_api(entorno):
     r = cliente.post(f"/proyectos/{pid}/comparaciones")
     assert r.status_code == 422 and "al menos 2" in r.json()["detail"]
     assert cliente.get(f"/proyectos/{pid}/comparaciones").json() == []
+
+
+def test_al_arrancar_la_api_retoma_las_comparaciones_pendientes(tmp_path, analizador):
+    """Un reinicio deja comparaciones `en_cola` o `en_proceso`: el lifespan del router las
+    vuelve a encolar (antes se quedaban así para siempre y la interfaz no dejaba comparar)."""
+    from app.api.main import create_app
+    from app.comparacion import obtener, preparar
+
+    juicios = {("R01", "R02"): juicio("contradiccion", "debe cerrarse a los 15 minutos", "nunca debe cerrarse")}
+    srv, llm, repo, pid = montar_comparacion(tmp_path, analizador, juicios=juicios,
+                                             vectores={CIERRE_15: [1, 0, 0], SIN_CIERRE: [0.8, 0.6, 0]})
+    requisito(repo, pid, CIERRE_15, Estado.FORMALIZADO)  # terminales: el arranque no los vuelve a correr
+    requisito(repo, pid, SIN_CIERRE, Estado.FORMALIZADO)
+    en_cola = preparar(srv, pid)
+    a_medias = preparar(srv, pid)
+    repo.guardar_doc("comparaciones", a_medias.comparacion_id,
+                     {**a_medias.model_dump(mode="json"), "estado": "en_proceso", "avance": {"hechos": 0, "total": 1}})
+
+    with TestClient(create_app(srv)) as cliente:
+        assert srv.cola.esperar(10)
+        for cid in (en_cola.comparacion_id, a_medias.comparacion_id):
+            c = cliente.get(f"/comparaciones/{cid}").json()
+            assert c["estado"] == "terminada" and [h["tipo"] for h in c["hallazgos"]] == ["contradiccion"]
+    assert len(llm.llamadas["comparador_v1"]) == 2  # una vez cada una: nada se encoló dos veces
+    assert obtener(srv, en_cola.comparacion_id).avance.model_dump() == {"hechos": 1, "total": 1}
+
+
+def test_recuperar_no_encola_dos_veces(entorno):
+    from app.comparacion import recuperar
+
+    srv, repo, pid, cliente = entorno
+    requisito(repo, pid, CIERRE_15)
+    requisito(repo, pid, SIN_CIERRE)
+    assert cliente.post(f"/proyectos/{pid}/comparaciones").status_code == 202
+    assert recuperar(srv) == []  # ya está en la cola
+    assert srv.cola.estado()["pendientes"] == [{"tipo": "analisis", "clave": "C01"}]
+
+
+def test_sin_cliente_del_comparador_es_503(entorno):
+    srv, repo, pid, cliente = entorno
+    requisito(repo, pid, CIERRE_15)
+    requisito(repo, pid, SIN_CIERRE)
+    srv.deps.llm_comparador = None
+    r = cliente.post(f"/proyectos/{pid}/comparaciones")
+    assert r.status_code == 503 and "comparador" in r.json()["detail"]
+    assert cliente.get(f"/proyectos/{pid}/comparaciones").json() == []

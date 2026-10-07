@@ -41,9 +41,12 @@ MARE (CONTEXTO §3), y la tesis se distingue de ellos por no hacerlo.
      `validacion` **aprobado** (`fuente: validacion`).
    Solo ambigüedad léxica (y trazas sin tipo, ADR 0010): el referente de una
    anáfora o el alcance de un cuantificador son propios de cada requisito y que
-   difieran no es inconsistencia. El criterio es el mismo que el de las
-   ambigüedades del proyecto (ADR 0015 §6), comparación literal sin mayúsculas
-   ni acentos, pero expresado **por par** de requisitos. Si un par tiene las dos
+   difieran no es inconsistencia. Parte del criterio de las ambigüedades del
+   proyecto (ADR 0015 §6), comparación literal sin mayúsculas ni acentos, pero
+   expresado **por par** de requisitos y con dos diferencias deliberadas: solo
+   cuenta la ambigüedad léxica y el orden de los enunciados de una noción no
+   cuenta (es una lista de enunciados, no un texto). Por eso los dos módulos
+   pueden no marcar exactamente los mismos términos. Si un par tiene las dos
    cosas para el mismo término sale un solo hallazgo (`lel`) que menciona
    también los significados.
 4. **Selección de pares:** embeddings del texto base de cada requisito y coseno a
@@ -61,8 +64,9 @@ MARE (CONTEXTO §3), y la tesis se distingue de ellos por no hacerlo.
    con validación y un reintento (ADR 0001). El prompt pide que cada cita se copie
    tal cual del requisito. El código **verifica** que cada cita aparezca literal
    en su texto base (sin distinguir mayúsculas, acentos, espacios repetidos ni
-   comillas o puntuación en los extremos) y lo registra como `verificada`; **no
-   descarta** el juicio. `contradiccion` y `redundancia` producen hallazgo;
+   comillas o puntuación en los extremos), empezando y terminando en límite de
+   palabra («no» no se verifica dentro de «notifica», ni «debe cerrar» dentro de
+   «debe cerrarse»), y lo registra como `verificada`; **no descarta** el juicio. `contradiccion` y `redundancia` producen hallazgo;
    `complementaria` e `independiente` quedan solo en `relaciones_por_par`.
 7. **Fallos:** si el LLM falla en un par (salida inválida tras el reintento o el
    servidor no responde), el par queda con `relacion: null` y su `error` (con las
@@ -71,14 +75,22 @@ MARE (CONTEXTO §3), y la tesis se distingue de ellos por no hacerlo.
    y conserva lo determinista ya calculado.
 8. **Ejecución por la cola** (ADR 0008), prioridad `analisis`, la más baja:
    `POST /proyectos/{id}/comparaciones` responde 202 `en_cola`; menos de dos
-   requisitos comparables es 422. El documento (`C01`, `C02`…) se guarda tras cada
-   paso y tras cada par (`avance`), para que la interfaz muestre el progreso.
-   Cada ejecución recalcula desde cero. `comparar` corre en el mismo hilo para
-   pruebas y scripts; `recuperar` vuelve a encolar las que quedaron pendientes
-   tras un reinicio.
+   requisitos comparables es 422 y un servicio sin cliente para el juez es 503
+   (antes de crear el documento). El documento (`C01`, `C02`…) se guarda tras
+   cada paso y tras cada par (`avance`), para que la interfaz muestre el
+   progreso. Cada ejecución recalcula desde cero. `comparar` corre en el mismo
+   hilo para pruebas y scripts. Al arrancar la API, el `lifespan` del router de
+   comparaciones llama a `recuperar`, que vuelve a encolar las que un reinicio
+   dejó `en_cola` o `en_proceso` (sin duplicar las que ya están en la cola); sin
+   eso quedaban así para siempre y la interfaz no dejaba comparar de nuevo. Va en
+   el router y no en `Servicio.iniciar` para que quitar el módulo no toque el
+   núcleo.
 9. **Configuración registrada** en cada comparación: umbrales, límite de pares,
    modelo, versión de prompt y modelo de embeddings. Los tres parámetros vienen de
-   `Settings`; ninguno está escrito en el código.
+   `Settings`; ninguno está escrito en el código. Los umbrales y el límite son los
+   del momento de la solicitud; el modelo del juez y el de embeddings se vuelven a
+   leer al ejecutar, porque una comparación recuperada tras un reinicio corre con
+   los modelos que haya entonces y la configuración debe decir los que se usaron.
 
 ## Justificación
 
@@ -134,7 +146,11 @@ citas verificadas en código siguen la misma idea que R1 y R2 del Crítico (ADR
   uso del sistema» cuentan como distintos (falso positivo posible).
 - Un hallazgo del LEL puede citar un requisito excluido por reprocesado: su
   entrada sigue en la memoria del proyecto y la inconsistencia es real; queda con
-  `similitud: null` porque ese requisito no está en la matriz.
+  `similitud: null` porque ese requisito no está en la matriz. Puede salir incluso
+  contra su propia versión nueva (R01 y el R05 que lo reprocesa): son el mismo
+  requisito, pero el LEL guarda las dos nociones y el humano debe verlo. En la
+  interfaz solo se reprocesan requisitos rechazados o en error, que no dejan
+  entradas en el LEL, así que el caso se da sobre todo por la API.
 - El orden A/B lo fija el número de requisito; el juez puede ser sensible al
   orden y no se prueba el par invertido.
 - La comparación es una foto: no se actualiza si los requisitos cambian. Tras un

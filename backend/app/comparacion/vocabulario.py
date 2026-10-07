@@ -47,7 +47,9 @@ def inconsistencias_vocabulario(lel: list[EntradaLELFormalizada], significados: 
     terminos_lel: dict[tuple[str, str], set[str]] = {}
     for e in lel:
         terminos_lel.setdefault((_clave(e.simbolo), e.req_id), set()).add(_clave(e.termino))
-    filas_lel = [(_clave(e.simbolo), e.req_id, "|".join(_clave(n) for n in e.nocion), " ".join(e.nocion)) for e in lel]
+    # la noción es una lista de enunciados: el orden en que el Modelador los dio no la cambia
+    filas_lel = [(_clave(e.simbolo), e.req_id, "|".join(sorted(_clave(n) for n in e.nocion)), " ".join(e.nocion))
+                 for e in lel]
     for clave, por_req in _agrupar(filas_lel).items():
         for a, b in _pares_distintos(por_req):
             h = {"tipo": "inconsistencia_vocabulario", "requisitos": [a, b], "terminos": [simbolos[clave]],
