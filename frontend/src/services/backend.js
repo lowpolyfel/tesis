@@ -18,6 +18,8 @@ export const salud = () => get("/salud");
 export const obtenerConfiguracion = () => get("/configuracion");
 export const obtenerCatalogos = () => get("/catalogos");
 export const obtenerCola = () => get("/cola");
+/** A qué Mongo está conectado (atlas | local | otro, o el respaldo JSON), medido en el momento */
+export const probarConexion = () => get("/conexion");
 
 /* ======================= Proyectos ======================= */
 export const listarProyectos = () => get("/proyectos");

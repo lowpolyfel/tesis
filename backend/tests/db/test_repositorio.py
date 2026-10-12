@@ -15,7 +15,7 @@ def _entrada(req_id="R01"):
 
 def _mongo():
     mongomock = pytest.importorskip("mongomock")
-    return RepositorioMongo(mongomock.MongoClient(tz_aware=True)["tesis_pruebas"])
+    return RepositorioMongo(mongomock.MongoClient(tz_aware=True)["tesis_pruebas"], "localhost")
 
 
 @pytest.fixture(params=["json", "mongo"])

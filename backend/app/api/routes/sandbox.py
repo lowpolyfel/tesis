@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse, RedirectResponse
 
+from app.db.conexion import probar_conexion
 from app.orchestration import Servicio
 
 from ..dependencias import obtener_servicio
@@ -29,3 +30,12 @@ def salud(srv: Annotated[Servicio, Depends(obtener_servicio)]) -> dict:
     s = srv.deps.settings
     return {"estado": "ok", "persistencia": srv.repo.descripcion, "checkpoints": str(s.ruta(s.checkpoint_path)),
             "config": srv.deps.config_traza()}
+
+
+@router.get("/conexion")
+def conexion(srv: Annotated[Servicio, Depends(obtener_servicio)]) -> dict:
+    """A qué Mongo está conectado el servidor (Atlas, local u otro), de dónde salió
+    `MONGO_URI`, y un ping, la versión, las colecciones y una escritura de prueba medidos
+    ahora. Con el respaldo JSON responde 200 con `persistencia: "json"` y el motivo en
+    `error`. Ningún campo lleva usuario ni contraseña."""
+    return probar_conexion(srv.repo, srv.deps.settings)

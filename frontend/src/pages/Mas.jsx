@@ -25,6 +25,12 @@ const GRUPOS = [
       { a: "/catalogos/regionales", texto: "Catálogos", que: "Las expresiones regionales y vagas que el sistema reconoce.", mood: "thinking" },
     ],
   },
+  {
+    titulo: "Servidor",
+    items: [
+      { a: "/conexion", texto: "Conexión", que: "A qué base de datos está conectado el backend (Atlas, local o JSON) y si puede escribir.", mood: "sistema" },
+    ],
+  },
 ];
 
 export default function Mas() {

@@ -4,20 +4,37 @@ Ningún parámetro calibrable está escrito en el código: todo sale de aquí, y
 copia de los valores usados se guarda en la traza de cada requisito para poder
 reconstruir el experimento.
 """
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, model_validator
+from dotenv import dotenv_values
+from pydantic import Field, PrivateAttr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 RAIZ_REPO = Path(__file__).resolve().parents[2]
 RAIZ_BACKEND = RAIZ_REPO / "backend"
+# pydantic-settings lee los dos y, si una variable está en ambos, gana el último (backend/.env)
+ARCHIVOS_ENV = (RAIZ_REPO / ".env", RAIZ_BACKEND / ".env")
+
+
+def fuente_de(variable: str) -> str:
+    """De dónde toma pydantic-settings `variable` (sin distinguir mayúsculas), en su orden
+    de prioridad: `variable_de_sistema` (gana a los .env), `env_backend`, `env_raiz` o `default`."""
+    nombre = variable.lower()
+    if any(k.lower() == nombre for k in os.environ):
+        return "variable_de_sistema"
+    for ruta, fuente in ((ARCHIVOS_ENV[1], "env_backend"), (ARCHIVOS_ENV[0], "env_raiz")):
+        if ruta.is_file() and any(k.lower() == nombre and v is not None
+                                  for k, v in dotenv_values(ruta, encoding="utf-8").items()):
+            return fuente
+    return "default"
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=(RAIZ_REPO / ".env", RAIZ_BACKEND / ".env"),
+        env_file=ARCHIVOS_ENV,
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -58,6 +75,9 @@ class Settings(BaseSettings):
     mongo_uri: str = "mongodb://localhost:27017"
     mongo_db: str = "tesis"
     mongo_timeout_ms: int = 1500
+    # De dónde salió MONGO_URI, fijado al crear la configuración (al arrancar): si después
+    # se edita un .env sin reiniciar, /conexion sigue diciendo de dónde salió la URI en uso
+    _fuente_mongo_uri: str = PrivateAttr(default="default")
     checkpoint_path: str = "data/checkpoints.sqlite"
     resultados_dir: str = "data/resultados"
     catalogos_dir: str = "data/catalogos"
@@ -87,6 +107,13 @@ class Settings(BaseSettings):
     calibracion_desde: float = Field(0.50, ge=0.0, le=1.0)
     calibracion_hasta: float = Field(0.95, ge=0.0, le=1.0)
     calibracion_paso: float = Field(0.05, gt=0.0, le=0.5)
+
+    def model_post_init(self, contexto) -> None:
+        self._fuente_mongo_uri = fuente_de("MONGO_URI")
+
+    @property
+    def fuente_mongo_uri(self) -> str:
+        return self._fuente_mongo_uri
 
     @model_validator(mode="after")
     def _rejilla_valida(self) -> "Settings":
