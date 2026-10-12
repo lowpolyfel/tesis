@@ -43,6 +43,21 @@ SMTP_CONTRASENA=<contraseña de aplicación de Google, no la normal>
 SMTP_REMITENTE=Dudamel <tu-correo@gmail.com>
 ```
 
+Con Gmail, la cuenta necesita la verificación en dos pasos activada; luego, en
+<https://myaccount.google.com/apppasswords>, se crea una contraseña de
+aplicación (16 letras) y esa va en `SMTP_CONTRASENA`, con o sin los espacios con
+que la muestra Google. La contraseña normal de la cuenta no sirve.
+
+Para probar la configuración sin abrir la app (desde la raíz del repo):
+
+```powershell
+python scripts\probar_correo.py              # manda un correo de prueba a SMTP_USUARIO
+python scripts\probar_correo.py otra@correo.com
+```
+
+Muestra qué leyó y de dónde (nunca la contraseña) y, si falla, la respuesta del
+servidor de correo.
+
 Sin `SMTP_HOST` el correo no se envía: el código aparece en la consola de
 uvicorn (`Código de registro para …: 123456`) y la pantalla lo avisa. Sirve para
 desarrollar sin servidor de correo. `AUTH_CODIGO_AL_ENTRAR=true` pide además un

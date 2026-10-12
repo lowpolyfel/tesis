@@ -8,4 +8,7 @@ Utilidades de línea de comandos:
   `data/resultados/aceptacion/`. Puede correr con la API arriba (también con el
   respaldo JSON); no arranques la API mientras el script está a mitad de un
   requisito, porque lo retomaría en paralelo (ADR 0006).
+- `probar_correo.py`: muestra la configuración de correo (`SMTP_*`) que lee el
+  backend y de dónde salió, y envía un correo de prueba por el mismo camino que
+  los códigos de seguridad (`python scripts/probar_correo.py [destino]`).
 - Pendiente: carga del corpus y evaluación contra el ground truth.
