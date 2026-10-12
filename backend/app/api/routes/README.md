@@ -9,4 +9,4 @@ Endpoints de FastAPI. Solo validan la entrada y delegan en `app.orchestration.Se
 | GET | `/eventos/{req_id}` (SSE) | `requisitos.py` |
 | POST | `/validar/{req_id}` | `requisitos.py` |
 | GET | `/lel` | `lel.py` |
-| GET | `/sandbox`, `/salud` | `sandbox.py` |
+| GET | `/sandbox`, `/salud`, `/conexion` | `sandbox.py` |

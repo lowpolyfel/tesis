@@ -106,3 +106,14 @@ def test_sandbox_y_salud(cliente):
     assert cliente.get("/", follow_redirects=False).headers["location"] == "/sandbox"
     salud = cliente.get("/salud").json()
     assert salud["persistencia"].startswith("json:") and salud["config"]["similarity_threshold"] == 0.75
+
+
+def test_conexion_con_respaldo_json(cliente):
+    r = cliente.get("/conexion")
+    assert r.status_code == 200
+    c = r.json()
+    assert (c["persistencia"], c["tipo"], c["ping_ms"], c["prueba_escritura"]) == ("json", None, None, None)
+    assert c["fuente_uri"] in ("env_raiz", "env_backend", "variable_de_sistema", "default")
+    assert c["checkpoints"].startswith("sqlite:") and set(c) == {
+        "persistencia", "tipo", "host", "base", "fuente_uri", "ping_ms", "version_servidor", "colecciones",
+        "prueba_escritura", "checkpoints", "error"}

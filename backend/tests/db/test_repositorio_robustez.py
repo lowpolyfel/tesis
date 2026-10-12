@@ -19,7 +19,7 @@ def repo(request, tmp_path):
     if request.param == "json":
         return RepositorioJson(tmp_path)
     mongomock = pytest.importorskip("mongomock")
-    return RepositorioMongo(mongomock.MongoClient(tz_aware=True)["tesis_pruebas"])
+    return RepositorioMongo(mongomock.MongoClient(tz_aware=True)["tesis_pruebas"], "localhost")
 
 
 def test_guardar_lel_reemplaza_la_entrada_del_mismo_requisito_y_termino(repo):

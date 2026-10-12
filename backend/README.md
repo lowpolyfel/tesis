@@ -21,7 +21,10 @@ ollama pull nomic-embed-text
 ```
 
 MongoDB es opcional: si no responde en `MONGO_URI`, las trazas y el LEL se
-guardan en `data/resultados/` (JSON). `GET /salud` dice cuál se está usando.
+guardan en `data/resultados/` (JSON). `GET /conexion` (y la pantalla
+`/conexion` del frontend) dice cuál se está usando: Atlas, un Mongo local o
+JSON, y de dónde salió `MONGO_URI`. Las variables `MONGO_*` van solo en el
+`.env` de la raíz (ver `app/db/README.md`).
 
 ## Ejecutar
 
@@ -60,7 +63,7 @@ trabajador, ADR 0008):
 | Proyecto | `GET /proyectos/{id}/especificacion` (RF/RNF y glosario), `/ambiguedades`, `/flujo`, `/metas`, `/big-picture` (las tres de artefactos aceptan `?req_ids=`), `GET /lel?proyecto_id=` |
 | Exploratorio | `POST/GET /proyectos/{id}/comparaciones`, `GET /comparaciones/{id}` (ADR 0012) |
 | Experimentación | `GET /calibracion`, `GET /proyectos/{id}/calibracion`, `GET /corpus`, `GET /corpus/{nombre}`, `POST/GET /evaluaciones`, `GET /evaluaciones/{id}` |
-| Configuración | `GET /configuracion`, `GET /catalogos`, `GET /salud` |
+| Configuración | `GET /configuracion`, `GET /catalogos`, `GET /salud`, `GET /conexion` |
 
 ## Pruebas
 

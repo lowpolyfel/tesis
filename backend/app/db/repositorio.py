@@ -9,6 +9,9 @@ si no responde dentro de `MONGO_TIMEOUT_MS`, usa archivos JSON en
 - Colecciones genéricas (`proyectos`, `documentos`, `comparaciones`,
   `evaluaciones`…): documentos JSON con id propio (`P01`, `D01`…). Los módulos
   validan sus datos con sus modelos Pydantic; el repositorio solo los guarda.
+
+La descripción dice a qué servidor se conectó (`mongo:atlas:<host>/<base>`,
+`mongo:local:…` u `mongo:otro:…`), nunca con usuario ni contraseña.
 """
 from __future__ import annotations
 
@@ -20,6 +23,7 @@ import threading
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable, Protocol
+from urllib.parse import unquote
 
 from app.config import Settings
 from app.models import PROYECTO_GENERAL, EntradaLELFormalizada, Estado, Mensaje, Origen, Transicion, Traza, ahora
@@ -29,6 +33,9 @@ log = logging.getLogger(__name__)
 _PATRON_REQ = re.compile(r"^R(\d+)$")
 _PATRON_COLECCION = re.compile(r"^[a-z_]+$")
 CAMPOS_RESUMEN = ("req_id", "proyecto_id", "ciclo", "texto", "origen", "estado", "creado", "actualizado")
+_HOSTS_LOCALES = {"localhost", "127.0.0.1", "::1"}
+_CREDENCIALES_EN_URI = re.compile(r"(mongodb(?:\+srv)?://)[^@/\s]*@")
+OCULTO = "****"
 
 
 def formato_req_id(n: int) -> str:
@@ -42,6 +49,42 @@ def formato_id(prefijo: str, n: int) -> str:
 def _numero(doc_id: str, prefijo: str) -> int | None:
     m = re.fullmatch(rf"{re.escape(prefijo)}(\d+)", str(doc_id))
     return int(m.group(1)) if m else None
+
+
+def host_de_uri(uri: str) -> str:
+    """Los hosts de una URI de Mongo sin usuario ni contraseña (`cluster0.xxxx.mongodb.net`,
+    `localhost:27017`). Se descarta todo lo anterior a la última `@`: aunque la contraseña
+    traiga `/` o `?` sin codificar, no se cuela en el host."""
+    resto = uri.split("://", 1)[-1].rpartition("@")[2]
+    return resto.partition("/")[0].partition("?")[0]
+
+
+def _sin_puerto(host: str) -> str:
+    h = host.strip().lower()
+    if h.startswith("["):  # IPv6: [::1]:27017
+        return h[1:].partition("]")[0]
+    return h.rpartition(":")[0] if ":" in h else h
+
+
+def tipo_de_host(hosts: str) -> str:
+    """`atlas` si todos los hosts terminan en `.mongodb.net`, `local` si son localhost, si no `otro`."""
+    nombres = [_sin_puerto(h) for h in hosts.split(",") if h.strip()]
+    if nombres and all(n.endswith(".mongodb.net") for n in nombres):
+        return "atlas"
+    if nombres and all(n in _HOSTS_LOCALES for n in nombres):
+        return "local"
+    return "otro"
+
+
+def enmascarar(texto: str, uri: str) -> str:
+    """`texto` (un mensaje de error) sin credenciales: ni una URI con usuario y contraseña
+    ni el usuario o la contraseña de `uri` sueltos, codificados o no."""
+    texto = _CREDENCIALES_EN_URI.sub(rf"\g<1>{OCULTO}@", texto)
+    usuario, _, contrasena = uri.split("://", 1)[-1].rpartition("@")[0].partition(":")
+    for secreto in sorted({usuario, unquote(usuario), contrasena, unquote(contrasena)}, key=len, reverse=True):
+        if secreto:
+            texto = texto.replace(secreto, OCULTO)
+    return texto
 
 
 def _nueva_traza(req_id: str, texto: str, config: dict, proyecto_id: str, origen: Origen | None, ciclo: int) -> Traza:
@@ -116,8 +159,9 @@ class RepositorioJson:
     carpeta no repite ids ni pisa archivos (ADR 0006).
     """
 
-    def __init__(self, directorio: Path):
+    def __init__(self, directorio: Path, error_mongo: str | None = None):
         self.dir = Path(directorio)
+        self.error_mongo = error_mongo  # por qué no se usó Mongo al arrancar (sin credenciales)
         self.dir_trazas = self.dir / "trazas"
         self.archivo_lel = self.dir / "lel.json"
         self.dir_trazas.mkdir(parents=True, exist_ok=True)
@@ -269,11 +313,13 @@ class RepositorioMongo:
     """`trazas` usa `_id = req_id`; el contador de secuencia vive en el propio
     documento (`ultima_secuencia`) y se incrementa con `$inc` atómico."""
 
-    def __init__(self, db):
+    def __init__(self, db, host: str):
         self.db = db
         self.trazas = db["trazas"]
         self.lel = db["lel"]
-        self.descripcion = f"mongo:{db.name}"
+        self.host = host  # sin usuario ni contraseña (`host_de_uri`)
+        self.tipo = tipo_de_host(host)
+        self.descripcion = f"mongo:{self.tipo}:{host}/{db.name}"
 
     @staticmethod
     def _a_traza(doc: dict) -> Traza:
@@ -394,15 +440,24 @@ class RepositorioMongo:
 
 def crear_repositorio(settings: Settings) -> Repositorio:
     """Mongo si responde al `ping` dentro del tiempo límite; si no, JSON."""
+    host = host_de_uri(settings.mongo_uri)
     try:
         from pymongo import MongoClient
 
-        cliente = MongoClient(settings.mongo_uri, serverSelectionTimeoutMS=settings.mongo_timeout_ms, tz_aware=True)
+        opciones = {}
+        if settings.mongo_uri.startswith("mongodb+srv://"):  # Atlas: los certificados de certifi, no los del sistema
+            import certifi
+
+            opciones = {"tlsCAFile": certifi.where(), "appname": "tesis-backend"}
+        cliente = MongoClient(settings.mongo_uri, serverSelectionTimeoutMS=settings.mongo_timeout_ms, tz_aware=True,
+                              **opciones)
         cliente.admin.command("ping")
-        repo = RepositorioMongo(cliente[settings.mongo_db])
-        log.info("Persistencia en %s", repo.descripcion)
+        repo = RepositorioMongo(cliente[settings.mongo_db], host)
+        log.info("Persistencia en %s (MONGO_URI de %s)", repo.descripcion, settings.fuente_mongo_uri)
         return repo
     except Exception as e:  # sin Mongo: respaldo JSON
-        repo = RepositorioJson(settings.ruta(settings.resultados_dir))
-        log.warning("MongoDB no disponible (%s); persistencia en %s", type(e).__name__, repo.descripcion)
+        motivo = enmascarar(f"{type(e).__name__}: {e}", settings.mongo_uri)
+        repo = RepositorioJson(settings.ruta(settings.resultados_dir), error_mongo=motivo)
+        log.warning("MongoDB no disponible en %s (MONGO_URI de %s): %s; persistencia en %s",
+                    host, settings.fuente_mongo_uri, motivo, repo.descripcion)
         return repo

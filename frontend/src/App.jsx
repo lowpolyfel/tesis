@@ -21,6 +21,7 @@ import Lel from "./pages/Lel";
 import Catalogos from "./pages/Catalogos";
 import Calibracion from "./pages/Calibracion";
 import Evaluacion from "./pages/Evaluacion";
+import Conexion from "./pages/Conexion";
 
 /*
  * La esfera vive aquí, por encima de las rutas: nunca se desmonta.
@@ -32,6 +33,7 @@ import Evaluacion from "./pages/Evaluacion";
  *   /analisis?proyecto=&ids=        la escena en vivo de un lote
  *   /requisitos/:id[/validacion]    un requisito y su revisión
  *   /mas                            análisis y experimentación
+ *   /conexion                       a qué base de datos está conectado el backend
  */
 const raiz = { current: document.documentElement };
 
@@ -76,6 +78,7 @@ export default function App() {
           <Route path="/catalogos/:tipo" element={<Catalogos />} />
           <Route path="/calibracion" element={<Calibracion />} />
           <Route path="/evaluacion" element={<Evaluacion />} />
+          <Route path="/conexion" element={<Conexion />} />
         </Route>
         <Route path="/inicio" element={<AAnalizar />} />
         <Route path="/cargar" element={<AAnalizar />} />
