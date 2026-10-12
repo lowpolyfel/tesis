@@ -193,7 +193,7 @@ export default function Analizar() {
     };
     return (e) => {
       if (e.tipo === "paso") {
-        const texto = { limpieza: "Limpiando el texto", patrones: "Buscando verbos como «debe»", ficha: "Ficha del contexto" }[e.id] ?? e.id;
+        const texto = e.texto ?? { limpieza: "Limpiando el texto", patrones: "Buscando verbos como «debe»", ficha: "Ficha del contexto" }[e.id] ?? e.id;
         poner({ id: e.id, texto, estado: e.estado, detalle: e.detalle });
         setProgreso((g) => ({ ...g, pasos: [...pasos] }));
       } else if (e.tipo === "tanda") {
@@ -687,7 +687,7 @@ function Progreso({ progreso, titulo, onCancelar }) {
     return () => clearInterval(t);
   }, []);
   const segundos = progreso.inicio ? Math.max(0, Math.round((ahora - progreso.inicio) / 1000)) : 0;
-  const pasos = progreso.pasos.length ? progreso.pasos : [{ id: "inicio", texto: "Conectando con el Revisor", estado: "curso" }];
+  const pasos = progreso.pasos.length ? progreso.pasos : [{ id: "servidor", texto: "Conectando con el servidor", estado: "curso" }];
   return (
     <section className="aparece fixed inset-x-0 bottom-[7vh] z-10 px-6" aria-live="polite">
       <div className="mx-auto max-w-lg space-y-4">

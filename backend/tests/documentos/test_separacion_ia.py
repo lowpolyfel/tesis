@@ -131,6 +131,10 @@ def test_flujo_dice_lo_que_hace(cliente):
     r = c.post("/requisitos/separar/flujo", json={"texto": TEXTO, "proyecto_id": pid})
     assert r.status_code == 200 and r.headers["content-type"].startswith("application/x-ndjson")
     eventos = [json.loads(x) for x in r.text.splitlines()]
+    # primero dice con qué se conecta: servidor, base y el modelo del Revisor
+    assert [e["id"] for e in eventos[:3]] == ["servidor", "base", "base"]
+    assert any(e.get("id") == "modelo" for e in eventos)
+    eventos = [e for e in eventos if e.get("id") not in ("servidor", "base", "modelo")]
     assert eventos[0] == {"tipo": "paso", "id": "limpieza", "estado": "ok", "detalle": "5 párrafos"}
     tandas_ = [e for e in eventos if e["tipo"] == "tanda"]
     assert [(e["i"], e["total"], e["estado"]) for e in tandas_] == [(1, 1, "curso"), (1, 1, "ok")]

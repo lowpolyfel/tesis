@@ -143,3 +143,48 @@ def cargar_modelo(s: Settings, modelo: str, cliente: httpx.Client | None = None,
     except httpx.HTTPError as e:
         raise PreparacionFallida(f"Ollama no pudo cargar {modelo} ({type(e).__name__}: {e})") from e
     return {"modelo": modelo, "ms": _ms(t0)}
+
+
+def conexiones(repo, s: Settings, eleccion: dict | None, avisar, ollama_url: str | None = None,
+               cliente: httpx.Client | None = None) -> None:
+    """Para las pantallas en vivo (separar, revisar): dice paso a paso que el servidor, la base
+    y el modelo del Revisor responden, como eventos {"tipo": "paso", id, texto, estado, detalle}.
+    No detiene nada: si algo falla lo avisa y el proceso sigue (y falla con su propio error)."""
+    def paso(id_, texto, estado, detalle=None):
+        avisar({"tipo": "paso", "id": id_, "texto": texto, "estado": estado, "detalle": detalle})
+
+    paso("servidor", "Conectado con el servidor", "ok", "la API responde")
+    paso("base", "Conectando con la base de datos", "curso")
+    b = estado_base(repo)
+    if not b["ok"]:
+        paso("base", "Base de datos", "error", b["error"])
+    elif b["tipo"] == "json":
+        paso("base", "Base de datos", "aviso", b["aviso"])
+    else:
+        paso("base", "Conectado con la base de datos", "ok",
+             " · ".join(str(x) for x in (b["tipo"], b["host"], b["ms"] is not None and f"{b['ms']:.0f} ms") if x))
+    if not eleccion:
+        return
+    modelo, proveedor = eleccion["modelo"], eleccion["proveedor"]
+    if proveedor != "ollama":
+        p = POR_ID.get(proveedor)
+        nombre = p.nombre if p else proveedor
+        lista = eleccion.get("tiene_clave") or bool(p and not p.pide_clave)
+        paso("modelo", f"Usando {nombre}", "ok" if lista else "aviso",
+             f"{modelo}" if lista else f"{modelo} · falta la clave: agrégala en Configuración")
+        return
+    url = (eleccion.get("base_url") or ollama_url or s.ollama_base_url).rstrip("/")
+    paso("modelo", "Conectando con Ollama", "curso", url)
+    t0 = perf_counter()
+    try:
+        with (cliente or httpx.Client()) as c:
+            r = c.get(f"{url}/api/tags", timeout=5)
+            r.raise_for_status()
+            instalados = {m["name"] for m in r.json().get("models", [])}
+    except (httpx.HTTPError, ValueError) as e:
+        paso("modelo", "Ollama", "error", f"no responde en {url} ({type(e).__name__})")
+        return
+    if _esta(modelo, instalados):
+        paso("modelo", "Conectado con Ollama", "ok", f"{modelo} · {url} · {_ms(t0):.0f} ms")
+    else:
+        paso("modelo", "Conectado con Ollama", "aviso", f"falta {modelo}: corre «ollama pull {modelo}»")
