@@ -98,6 +98,7 @@ trabajador, ADR 0008):
 | Documentos | `POST /proyectos/{id}/documentos` (PDF o .txt), `GET /proyectos/{id}/documentos`, `GET /documentos/{id}`, `POST /requisitos/separar` |
 | Requisitos | `POST /procesar`, `GET /requisitos/{id}` (vista por término), `GET /traza/{id}`, `GET /eventos/{id}` (SSE), `POST /validar/{id}`, `GET /requisitos/{id}/artefactos`, `PATCH /requisitos/{id}/formalizacion`, `PATCH /requisitos/{id}/lel/{termino}`, `GET /trazas`, `GET /cola` |
 | Proyecto | `GET /proyectos/{id}/especificacion` (RF/RNF y glosario), `/ambiguedades`, `/flujo`, `/metas`, `/big-picture` (las tres de artefactos aceptan `?req_ids=`), `GET /lel?proyecto_id=` |
+| Mapa conceptual | `GET /proyectos/{id}/mapa-conceptual` (el guardado, si sigue al día), `POST /proyectos/{id}/mapa-conceptual` (lo genera con el Modelador y responde su progreso en NDJSON; ADR 0020) |
 | Exploratorio | `POST/GET /proyectos/{id}/comparaciones`, `GET /comparaciones/{id}` (ADR 0012) |
 | Experimentación | `GET /calibracion`, `GET /proyectos/{id}/calibracion`, `GET /corpus`, `GET /corpus/{nombre}`, `POST/GET /evaluaciones`, `GET /evaluaciones/{id}` |
 | Configuración | `GET /configuracion`, `GET /catalogos`, `GET /salud`, `GET /conexion` |
@@ -142,7 +143,8 @@ paralelo.
 - `app/db/`: Mongo con respaldo JSON, proyectos (ADR 0006, 0008).
 - `app/documentos/`: carga de PDF/.txt y separación en requisitos (ADR 0009).
 - `app/analisis/`: vista por término y análisis del proyecto (ADR 0015).
-- `app/artefactos/`: especificación RF/RNF, modelo de metas y Big Picture, sin LLM (ADR 0011, 0017).
+- `app/artefactos/`: especificación RF/RNF, modelo de metas y Big Picture, sin LLM (ADR 0011, 0017), y el
+  mapa conceptual, que organiza el Modelador sobre un protocolo previo en código (ADR 0020).
 - `app/comparacion/`: comparación entre requisitos, **exploratoria** (ADR 0012).
 - `app/calibracion/`: sensibilidad del umbral y contraste con el ground truth (ADR 0013).
 - `app/evaluacion/`: corpus y evaluación contra un solo agente (ADR 0014).

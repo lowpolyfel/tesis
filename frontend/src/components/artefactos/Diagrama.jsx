@@ -3,7 +3,7 @@ import { descargar, svgAPng, urlPlantUML } from "./exportar";
 
 /*
  * Dibuja el Mermaid que arma el backend (app/artefactos/exportar.py) y ofrece
- * sus exportaciones. El texto trae sus propios estilos claros (pensados para la
+ * sus exportaciones (PlantUML solo si se lo dan). El texto trae sus propios estilos claros (pensados para la
  * tesis), así que el diagrama va sobre fondo blanco. Mermaid se carga solo al
  * abrir esta vista.
  */
@@ -62,7 +62,7 @@ export default function Diagrama({ mermaid, plantuml, nombre }) {
         <button className="hover:text-[var(--bone)] disabled:opacity-40" disabled={!svg} onClick={async () => descargar(`${nombre}.png`, await svgAPng(svg))}>PNG</button>
         <button className="hover:text-[var(--bone)] disabled:opacity-40" disabled={!svg} onClick={() => descargar(`${nombre}.svg`, svg, "image/svg+xml")}>SVG</button>
         <button className="hover:text-[var(--bone)]" onClick={() => descargar(`${nombre}.mmd`, mermaid, "text/plain")}>Mermaid</button>
-        <button className="hover:text-[var(--bone)]" onClick={() => descargar(`${nombre}.puml`, plantuml, "text/plain")}>PlantUML</button>
+        {plantuml && <button className="hover:text-[var(--bone)]" onClick={() => descargar(`${nombre}.puml`, plantuml, "text/plain")}>PlantUML</button>}
         <button className="ml-auto hover:text-[var(--bone)]" onClick={() => setVista((v) => (v === "diagrama" ? "mermaid" : "diagrama"))}>
           {vista === "diagrama" ? "ver código" : "ocultar código"}
         </button>
@@ -70,7 +70,7 @@ export default function Diagrama({ mermaid, plantuml, nombre }) {
       {vista !== "diagrama" && (
         <div className="space-y-2">
           <div className="mono flex flex-wrap gap-4 text-[10px]">
-            {[["mermaid", "Mermaid"], ["plantuml", "PlantUML"]].map(([k, t]) => (
+            {[["mermaid", "Mermaid"], ...(plantuml ? [["plantuml", "PlantUML"]] : [])].map(([k, t]) => (
               <button key={k} onClick={() => setVista(k)} className={vista === k ? "text-[var(--bone)]" : "text-[var(--bone-faint)] hover:text-[var(--bone)]"}>{t}</button>
             ))}
             <button className="text-[var(--bone-faint)] hover:text-[var(--bone)]" onClick={() => copiar(vista === "plantuml" ? plantuml : mermaid)}>copiar</button>

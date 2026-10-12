@@ -1,11 +1,18 @@
 """Artefactos de salida (ADR 0011): modelo de metas y Big Picture del proyecto, y
 los artefactos de un requisito. No escriben nada ni llaman a un LLM: se recalculan en cada
-petición a partir de `formalizados` y del LEL del proyecto."""
+petición a partir de `formalizados` y del LEL del proyecto.
+
+El mapa conceptual (ADR 0020) es la excepción: lo organiza el Modelador, así que se
+guarda y solo se vuelve a generar cuando cambia lo validado o se pide."""
 from __future__ import annotations
 
+import json
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.artefactos import (
     artefactos_requisito,
@@ -14,7 +21,8 @@ from app.artefactos import (
     formas,
     metas_proyecto,
 )
-from app.models import Traza
+from app.artefactos import mapa_conceptual as mc
+from app.models import Proyecto, Traza
 from app.orchestration import Servicio
 from app.orchestration.grafo import COLECCION_FORMALIZADOS
 
@@ -70,3 +78,54 @@ def requisito(t: Annotated[Traza, Depends(traza_existente)], srv: ServicioDep) -
     return artefactos_requisito(t.req_id, t.proyecto_id, t.estado.value,
                                 srv.repo.obtener_doc(COLECCION_FORMALIZADOS, t.req_id), lel, srv.deps.analizador,
                                 formalizados, trazas)
+
+
+# ---------------------------------------------------------------- mapa conceptual (ADR 0020)
+
+class EntradaMapa(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    req_ids: list[str] = Field(default=[], max_length=500)
+    nuevo: bool = False  # volver a generarlo aunque haya uno guardado
+
+
+def _mapa_guardado(p: Proyecto, srv: Servicio, solo: set[str] | None) -> tuple[dict, str, dict | None]:
+    """(Big Picture, huella, mapa guardado si sigue al día)."""
+    formalizados, lel, trazas = _insumos(p.proyecto_id, srv)
+    bp = big_picture_proyecto(formalizados, lel, trazas, srv.deps.analizador, solo)
+    h = mc.huella(bp, p.nombre, p.contexto, srv.deps.modelador.cliente.modelo, solo)
+    doc = srv.repo.obtener_doc(mc.COLECCION, mc.id_guardado(p.proyecto_id, solo))
+    return bp, h, (doc["mapa"] if doc and doc.get("huella") == h else None)
+
+
+@router.get("/proyectos/{proyecto_id}/mapa-conceptual")
+def mapa_guardado(p: ProyectoDep, srv: ServicioDep, req_ids: str | None = None) -> dict:
+    """{mapa, requisitos}: el mapa guardado si lo validado no cambió desde que se generó
+    (si no, null) y cuántos requisitos listos entran."""
+    bp, _, mapa = _mapa_guardado(p, srv, _seleccion(req_ids))
+    return {"mapa": mapa, "requisitos": sum(n["tipo"] == "requisito" for n in bp["nodos"])}
+
+
+@router.post("/proyectos/{proyecto_id}/mapa-conceptual")
+def generar_mapa(entrada: EntradaMapa, p: ProyectoDep, srv: ServicioDep) -> StreamingResponse:
+    """Genera el mapa y va diciendo qué hace: una línea JSON por evento (NDJSON).
+    {"tipo": "paso", id, texto, estado: curso|ok|aviso, detalle} · {"tipo": "mapa", mapa} ·
+    {"tipo": "error", mensaje}. Con un mapa al día guardado y sin `nuevo`, solo ese."""
+    solo = {r.strip() for r in entrada.req_ids if r.strip()} or None
+
+    def eventos():
+        bp, h, guardado = _mapa_guardado(p, srv, solo)
+        if guardado is not None and not entrada.nuevo:
+            yield {"tipo": "mapa", "mapa": guardado}
+            return
+        if not any(n["tipo"] == "requisito" for n in bp["nodos"]):
+            yield {"tipo": "error", "mensaje": "El mapa se arma con los requisitos listos. Todavía no hay ninguno."}
+            return
+        for e in mc.generar_mapa(bp, p.nombre, p.contexto, srv.deps.modelador):
+            if e["tipo"] == "mapa":
+                e["mapa"]["creado"] = datetime.now(UTC).isoformat(timespec="seconds")
+                srv.repo.guardar_doc(mc.COLECCION, mc.id_guardado(p.proyecto_id, solo), {
+                    "proyecto_id": p.proyecto_id, "seleccion": sorted(solo or []), "huella": h, "mapa": e["mapa"]})
+            yield e
+
+    lineas = (json.dumps(e, ensure_ascii=False) + "\n" for e in eventos())
+    return StreamingResponse(lineas, media_type="application/x-ndjson", headers={"Cache-Control": "no-store"})

@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { useOrb } from "../components/orb/useOrb";
 import { isMobile } from "../components/orb/poses";
 import { cargarModelo, prepararAnalisis, salud } from "../services/backend";
+import Pasos from "./Pasos";
 
 /*
  * Antes de la escena: la esfera grande al centro revisa, paso a paso, que todo esté
@@ -123,21 +124,7 @@ export default function Preparacion({ proyecto, onListo }) {
 
   return (
     <section className="aparece fixed inset-x-0 bottom-[6vh] z-10 px-6" aria-live="polite">
-      <ol className="mx-auto max-w-lg space-y-2.5">
-        {pasos.map((p, i) => (
-          <li key={i} className="flex items-start gap-3">
-            <Marca estado={p.estado} />
-            <span className="min-w-0 flex-1">
-              <span className={`block text-[14.5px] ${p.estado === "curso" ? "text-[var(--bone)]" : "text-[var(--bone-dim)]"}`}>{p.texto}</span>
-              {p.detalle && (
-                <span className={`block break-words text-[12px] ${p.estado === "error" ? "text-[var(--danger)]" : p.estado === "aviso" ? "text-[var(--aviso)]" : "text-[var(--bone-faint)]"}`}>
-                  {p.detalle}
-                </span>
-              )}
-            </span>
-          </li>
-        ))}
-      </ol>
+      <Pasos pasos={pasos} />
       {fallo && (
         <div className="mx-auto mt-6 flex max-w-lg flex-wrap gap-2">
           <button className="pill sm" onClick={() => setIntento((n) => n + 1)}>Reintentar</button>
@@ -149,10 +136,3 @@ export default function Preparacion({ proyecto, onListo }) {
   );
 }
 
-function Marca({ estado }) {
-  if (estado === "curso") return <span className="gira mt-1 shrink-0" aria-label="en curso" />;
-  const [signo, color, nombre] = {
-    ok: ["✓", "var(--ok)", "listo"], aviso: ["!", "var(--aviso)", "aviso"], error: ["✕", "var(--danger)", "falló"],
-  }[estado];
-  return <span className="mono mt-0.5 w-3 shrink-0 text-center text-[12px]" style={{ color }} aria-label={nombre}>{signo}</span>;
-}

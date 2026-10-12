@@ -14,7 +14,7 @@ export const SECCIONES = {
   requisitos: { lado: -1, y: 0.26, mood: "clasificador", nombre: "Requisitos" },
   especificacion: { lado: 1, y: 0.14, mood: "modelador", nombre: "Especificación" },
   lexico: { lado: -1, y: 0.1, mood: "extractor", nombre: "Léxico" },
-  mapa: { lado: 1, y: 0.3, mood: "critico", nombre: "Mapa" },
+  mapa: { lado: 1, y: 0.3, mood: "mapa", nombre: "Mapa" },
   requisito: { lado: 1, y: 0.2, mood: "idle", nombre: "Requisito" },
   revision: { lado: -1, y: 0.18, mood: "humano", nombre: "Revisión" },
   analizar: { lado: 1, y: 0.2, mood: "idle", nombre: "Analizar" },

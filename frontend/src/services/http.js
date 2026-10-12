@@ -53,3 +53,33 @@ export const postArchivo = (ruta, campo, archivo) => {
   form.append(campo, archivo);
   return pedir("POST", ruta, { form });
 };
+
+/*
+ * POST que responde una línea JSON por evento (NDJSON): llama a `onEvento` con cada
+ * uno conforme llegan. `senal` (AbortSignal) lo cancela.
+ */
+export async function postFlujo(ruta, cuerpo, onEvento, senal) {
+  let r;
+  try {
+    r = await fetch(BASE_URL + ruta, {
+      method: "POST", credentials: "include", signal: senal,
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo),
+    });
+  } catch (e) {
+    if (e.name === "AbortError") throw e;
+    throw new Error(`No hay conexión con el backend en ${BASE_URL}. ¿Está corriendo uvicorn? ¿Este origen está en CORS_ORIGENES?`);
+  }
+  if (r.status === 401) window.dispatchEvent(new Event(SIN_SESION));
+  if (!r.ok) return leer(r);
+  const lector = r.body.getReader();
+  const decodificador = new TextDecoder();
+  let resto = "";
+  for (;;) {
+    const { value, done } = await lector.read();
+    resto += decodificador.decode(value ?? new Uint8Array(), { stream: !done });
+    const lineas = resto.split("\n");
+    resto = done ? "" : lineas.pop();
+    for (const l of lineas) if (l.trim()) onEvento(JSON.parse(l));
+    if (done) return;
+  }
+}
