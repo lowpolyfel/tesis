@@ -31,12 +31,12 @@ class Documentos:
         return int(self.settings.documento_max_mb * 1024 * 1024)
 
     def cargar(self, proyecto_id: str, archivo: str | None, contenido: bytes,
-               tipo_contenido: str | None = None) -> Documento:
+               tipo_contenido: str | None = None, ia=None) -> Documento:
         """Lanza `ErrorDocumento` (tipo, tamaño, sin texto, ilegible) sin guardar nada."""
         nombre = nombre_de_archivo(archivo)
         extraido = leer(nombre, contenido, self.max_bytes, tipo_contenido)
         separacion = separar_paginas(extraido.paginas, con_paginas=extraido.con_paginas,
-                                     maquetado=extraido.tipo == "pdf")
+                                     maquetado=extraido.tipo == "pdf", ia=ia)
         caracteres = sum(len(p) for p in extraido.paginas)
         advertencias = extraido.advertencias + separacion.advertencias
         guardar_texto = caracteres <= MAX_CARACTERES_GUARDADOS
@@ -44,7 +44,9 @@ class Documentos:
             advertencias.append(f"El texto por página no se guardó: {caracteres} caracteres "
                                 f"(máximo {MAX_CARACTERES_GUARDADOS}).")
         if not separacion.requisitos_propuestos:
-            advertencias.append("No se encontró ninguna oración con verbo de obligación o capacidad: "
+            advertencias.append("No se encontró ningún requisito: revisa los fragmentos descartados."
+                                if separacion.metodo == "ia" else
+                                "No se encontró ninguna oración con verbo de obligación o capacidad: "
                                 "revisa los fragmentos descartados.")
 
         documento = Documento(
@@ -53,6 +55,7 @@ class Documentos:
             requisitos_propuestos=separacion.requisitos_propuestos,
             fragmentos_descartados=separacion.fragmentos_descartados,
             total_descartados=separacion.total_descartados, advertencias=advertencias,
+            metodo=separacion.metodo, modelo=separacion.modelo,
             texto_por_pagina=extraido.paginas if guardar_texto else None)
         tamano = _bytes(documento)
         if tamano > MAX_BYTES_GUARDADOS and documento.texto_por_pagina is not None:

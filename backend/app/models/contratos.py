@@ -424,3 +424,23 @@ class TriajeRequisito(Contrato):
 
 class SalidaTriaje(Contrato):
     requisitos: list[TriajeRequisito] = Field(min_length=1, max_length=30)
+
+
+# ---------------------------------------------------------------- Separación con IA (ADR 0023)
+
+class RequisitoSeparado(Contrato):
+    """Un requisito que el Revisor reconoció, con los párrafos de los que sale."""
+
+    parrafos: list[int] = Field(min_length=1, max_length=6)
+    texto: str = Field(min_length=1, max_length=2000)
+    marca: str | None = Field(None, max_length=40)
+
+
+class DescarteSeparado(Contrato):
+    parrafo: int
+    motivo: str = Field(min_length=1, max_length=200)
+
+
+class SalidaSeparacion(Contrato):
+    requisitos: list[RequisitoSeparado] = Field(default=[], max_length=150)
+    descartados: list[DescarteSeparado] = Field(default=[], max_length=200)

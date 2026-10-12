@@ -43,7 +43,8 @@ def modelado_requisito(prompt):
 def montar(tmp_path, analizador, guiones, checkpointer=None, **ajustes):
     # Las pruebas del flujo con validación humana fijan `siempre`; las de la validación
     # automática (ADR 0017) lo cambian con `validacion_humana=...`.
-    ajustes = {"validacion_humana": "siempre", **ajustes}
+    # La separación de documentos se prueba por patrones; las pruebas de la IA (ADR 0023) la encienden.
+    ajustes = {"validacion_humana": "siempre", "separacion_ia": False, **ajustes}
     settings = Settings(_env_file=None, similarity_threshold=0.75, max_debate_rounds=2,
                         resultados_dir=str(tmp_path / "resultados"), checkpoint_path=str(tmp_path / "cp.sqlite"),
                         **ajustes)

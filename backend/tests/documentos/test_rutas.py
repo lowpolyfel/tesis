@@ -17,7 +17,7 @@ from tests.fakes import como_usuario
 
 CAMPOS_DOCUMENTO = {"documento_id", "proyecto_id", "archivo", "tipo", "paginas", "caracteres", "creado",
                     "requisitos_propuestos", "fragmentos_descartados", "total_descartados", "advertencias",
-                    "texto_por_pagina"}
+                    "texto_por_pagina", "metodo", "modelo"}
 CAMPOS_REQUISITO = {"indice", "texto", "pagina", "marca", "texto_original", "advertencias"}
 
 
@@ -137,10 +137,11 @@ def test_separar_texto_sin_guardar(cliente):
             {"indice": 2, "texto": "El usuario podrá salir.", "pagina": None, "marca": None,
              "texto_original": "El usuario podrá salir.", "advertencias": []}],
         "fragmentos_descartados": [
-            {"texto": "Requisitos", "pagina": None, "marca": None, "motivo": "titulo"},
-            {"texto": "Esto es contexto.", "pagina": None, "marca": None, "motivo": "sin_verbo_obligacion"}],
+            {"texto": "Requisitos", "pagina": None, "marca": None, "motivo": "titulo", "detalle": None},
+            {"texto": "Esto es contexto.", "pagina": None, "marca": None, "motivo": "sin_verbo_obligacion",
+             "detalle": None}],
         "total_descartados": 2,
-        "advertencias": []}
+        "advertencias": [], "metodo": "patrones", "modelo": None}
     assert cliente.srv.repo.listar_docs("documentos") == []
     assert cliente.post("/requisitos/separar", json={"texto": ""}).status_code == 422
     assert cliente.post("/requisitos/separar", json={"texto": "x", "otro": 1}).status_code == 422

@@ -95,7 +95,7 @@ trabajador, ADR 0008):
 | Grupo | Rutas |
 |---|---|
 | Proyectos | `GET/POST /proyectos`, `GET/PATCH /proyectos/{id}` (nombre y contexto general), `GET /proyectos/{id}/resumen`, `GET/POST /proyectos/{id}/requisitos` |
-| Documentos | `POST /proyectos/{id}/documentos` (PDF o .txt), `GET /proyectos/{id}/documentos`, `GET /documentos/{id}`, `POST /requisitos/separar` |
+| Documentos | `POST /proyectos/{id}/documentos` (PDF o .txt), `GET /proyectos/{id}/documentos`, `GET /documentos/{id}`, `POST /requisitos/separar` (con IA, patrones de respaldo; ADR 0023) |
 | Requisitos | `POST /procesar`, `GET /requisitos/{id}` (vista por término), `GET /traza/{id}`, `GET /eventos/{id}` (SSE), `POST /validar/{id}`, `GET /requisitos/{id}/artefactos`, `PATCH /requisitos/{id}/formalizacion`, `PATCH /requisitos/{id}/lel/{termino}`, `GET /trazas`, `GET /cola` |
 | Proyecto | `GET /proyectos/{id}/especificacion` (RF/RNF y glosario), `/ambiguedades`, `/flujo`, `/metas`, `/big-picture` (las tres de artefactos aceptan `?req_ids=`), `GET /lel?proyecto_id=` |
 | Mapa conceptual | `GET /proyectos/{id}/mapa-conceptual` (el guardado, si sigue al día), `POST /proyectos/{id}/mapa-conceptual` (lo genera con el Modelador y responde su progreso en NDJSON; ADR 0020) |
