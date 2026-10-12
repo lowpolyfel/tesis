@@ -12,6 +12,9 @@ import { isMobile } from "./poses";
  * destinos: [{ id, etiqueta, a, mood }]
  */
 const RETIRO_MS = 650;
+// Sin membrana: es un desenfoque SVG sobre casi toda la pantalla que se redibuja en cada
+// cuadro mientras las esferas viajan; con ocho esferas a la vez trababa la animación
+const SIN_MEMBRANA = { membrana: false };
 
 function lugares(destinos) {
   const m = isMobile();
@@ -43,14 +46,14 @@ export default function Orbita({ abierta, onCerrar, destinos }) {
     orb.setPose({ x: 0, y: 0, s: isMobile() ? 0.42 : 0.55 });
     orb.divide("core", pos.map((d) => ({
       id: `menu:${d.id}`, mood: d.mood, x: d.x, y: d.y, s: isMobile() ? 0.24 : 0.3, label: null, sub: null,
-    })));
+    })), SIN_MEMBRANA);
     const t = setTimeout(() => primero.current?.focus(), 80);
     const tecla = (e) => { if (e.key === "Escape") onCerrar(); };
     addEventListener("keydown", tecla);
     return () => {
       clearTimeout(t);
       removeEventListener("keydown", tecla);
-      orb.fuse(ids, "core");
+      orb.fuse(ids, "core", SIN_MEMBRANA);
       orb.setPose(previa); // si se navega, la sección nueva pone su pose después
       retiro.current = setTimeout(() => orb.setElevada(false), RETIRO_MS);
     };

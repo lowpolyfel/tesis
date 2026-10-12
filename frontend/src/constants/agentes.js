@@ -29,6 +29,9 @@ export const NODOS = Object.freeze({
 export const ORDEN_NODOS = ["extractor", "filtros", "clasificador", "divergencia", "critico", "humano", "modelador"];
 
 export const nodo = (id) => NODOS[id] ?? { id, nombre: id, rol: "", tipo: "mecanismo", fase: null, tono: "#94a3b8" };
+/** Color para escribir en el tono de un nodo: tal cual en oscuro; en claro, mezclado con la tinta
+    (los tonos neón casi no se leen sobre papel). Ver --mezcla-tono en dudamel.css. */
+export const tintaNodo = (id) => `color-mix(in oklab, ${nodo(id).tono} var(--mezcla-tono), var(--bone))`;
 
 /* Interpretaciones I1…In: mismo color en esferas, tarjetas y gráficas */
 const PALETA = [

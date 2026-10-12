@@ -101,6 +101,7 @@ trabajador, ADR 0008):
 | Exploratorio | `POST/GET /proyectos/{id}/comparaciones`, `GET /comparaciones/{id}` (ADR 0012) |
 | Experimentación | `GET /calibracion`, `GET /proyectos/{id}/calibracion`, `GET /corpus`, `GET /corpus/{nombre}`, `POST/GET /evaluaciones`, `GET /evaluaciones/{id}` |
 | Configuración | `GET /configuracion`, `GET /catalogos`, `GET /salud`, `GET /conexion` |
+| Preparación | `GET /preparacion` (base, Ollama y modelos del análisis: descargados y en memoria), `POST /preparacion/cargar` (precarga uno de esos modelos) |
 | Cuenta | `POST /auth/registro`, `/auth/verificar`, `/auth/reenviar`, `/auth/entrar`, `/auth/salir`, `/auth/recuperar`, `/auth/restablecer`, `GET /auth/yo` |
 | Borrar | `DELETE /proyectos/{id}` (con todo lo suyo), `DELETE /requisitos/{id}` |
 

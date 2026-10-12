@@ -21,8 +21,8 @@
 .orb-stage.es-elevada{z-index:41}
 /* La esfera principal se puede tocar: abre el menú */
 .orb-orbwrap.es-tocable{pointer-events:auto;cursor:pointer;border-radius:50%}
-.orb-membrane{position:absolute;inset:0;overflow:visible;
-  filter:drop-shadow(0 0 18px rgba(239,228,206,.12))}
+/* Sin drop-shadow encima: sería otro filtro a pantalla completa sobre el desenfoque */
+.orb-membrane{position:absolute;inset:0;overflow:visible}
 .orb-body{position:absolute;left:50%;top:50%;width:0;height:0;will-change:transform,opacity}
 .orb-scene{position:absolute;left:-200px;top:-200px;width:400px;height:400px;
   display:grid;place-items:center;will-change:transform}
@@ -49,11 +49,10 @@
   opacity:.55;will-change:transform}
 
 /* ---- orbe blanco hueso ---- */
-.orb-orbwrap{position:relative;z-index:3;width:218px;height:218px;will-change:transform;--hx:36%;--hy:28%}
+.orb-orbwrap{position:relative;z-index:3;width:218px;height:218px;will-change:transform}
 .orb-orb{position:relative;width:100%;height:100%;overflow:hidden;isolation:isolate;
   border-radius:49% 51% 53% 47% / 47% 52% 48% 53%;
   background:
-    radial-gradient(circle at calc(var(--hx) + 6%) calc(var(--hy) + 8%),rgba(255,253,248,.7),transparent 38%),
     radial-gradient(circle at 74% 80%,rgba(150,128,102,.45),transparent 52%),
     radial-gradient(circle at 46% 44%,#f6f1e8 0%,#ece4d6 38%,#dcd0bc 70%,#c2b39b 100%);
   box-shadow:
@@ -76,10 +75,13 @@
   animation:orbDrift 6s ease-in-out infinite}
 .orb-il.il2{width:210px;height:210px;background:radial-gradient(closest-side,var(--c1),transparent);right:-86px;bottom:-70px;opacity:.2;
   animation:orbDrift 7.4s ease-in-out infinite reverse}
-.orb-spec{position:absolute;inset:0;z-index:2;pointer-events:none;
+/* Brillo: una capa más grande que la esfera que el motor desplaza con transform según la
+   mirada (el recorte redondo de .orb-orb la contiene). Centro de reposo: 36 % / 28 % de la esfera */
+.orb-spec{position:absolute;inset:-30%;z-index:2;pointer-events:none;will-change:transform;
   background:
-    radial-gradient(circle at var(--hx) var(--hy),rgba(255,255,255,.95) 0,rgba(255,255,255,.6) 3.5%,transparent 10%),
-    radial-gradient(ellipse 30% 18% at var(--hx) var(--hy),rgba(255,255,255,.35),transparent 70%)}
+    radial-gradient(circle 21px at 144px 126px,rgba(255,255,255,.95) 0,rgba(255,255,255,.6) 35%,transparent 100%),
+    radial-gradient(65px 39px at 144px 126px,rgba(255,255,255,.35),transparent 70%),
+    radial-gradient(circle 71px at 157px 144px,rgba(255,253,248,.7),transparent 100%)}
 
 @keyframes orbSpin{to{transform:rotate(360deg)}}
 @keyframes orbCore{0%,100%{transform:scale(.75);opacity:.12}50%{transform:scale(1.15);opacity:.26}}
@@ -89,8 +91,10 @@
   .orb-orb::before,.orb-orb::after,.orb-il{animation:none}
 }
 
-/* Esferas pequeñas (agentes): menos desenfoque, para que la mitosis vaya fluida */
-.es-chica .orb-orb::before{filter:blur(14px)}
+/* Esferas pequeñas (agentes, menú): sin el brillo de color desenfocado ni las sombras
+   grandes, que a ese tamaño casi no se ven y cuestan al pintarlas por primera vez */
+.es-chica .orb-orb::before{display:none}
+.es-chica .orb-orb{box-shadow:inset -16px -20px 36px var(--rim),inset 12px 14px 26px rgba(255,255,255,.5),inset 0 0 0 1px rgba(255,250,240,.25)}
 
 /* ---- modo claro: el mismo mundo sobre papel ---- */
 :root[data-tema="claro"] .orb-vignette{background:radial-gradient(ellipse at 50% 48%,transparent 55%,rgba(60,45,25,.07) 100%)}

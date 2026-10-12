@@ -80,10 +80,8 @@ export default function OrbField({ controller, rootRef }) {
       const dt = Math.max(Math.min((now - last) / 1000, 0.05), 1e-4);
       // La membrana (filtro a pantalla completa) solo existe mientras hay mitosis o fusión
       const membrana = membranaRef.current;
-      if (membrana) {
-        const visible = now < (controller.state.membranaHasta ?? 0);
-        if (membrana.style.display !== (visible ? "" : "none")) membrana.style.display = visible ? "" : "none";
-      }
+      const conMembrana = now < (controller.state.membranaHasta ?? 0);
+      if (membrana && membrana.style.display !== (conMembrana ? "" : "none")) membrana.style.display = conMembrana ? "" : "none";
       last = now;
       time += dt;
       const vw = innerWidth, vh = innerHeight;
@@ -217,9 +215,9 @@ export default function OrbField({ controller, rootRef }) {
         el.orb.style.transform =
           `translate(${(f.gx * 12).toFixed(2)}px, ${(f.gy * 10).toFixed(2)}px) rotate(${ang.toFixed(3)}rad) ` +
           `scale(${(s * (1 + f.stretch)).toFixed(4)}, ${(s * (1 - f.stretch * 0.7)).toFixed(4)}) rotate(${(-ang).toFixed(3)}rad)`;
-        // El brillo sigue la mirada en pasos de 1 %: casi no se nota y repinta mucho menos
-        setVar(el.orb, f.cache, "--hx", `${Math.round(36 + f.gx * 34)}%`);
-        setVar(el.orb, f.cache, "--hy", `${Math.round(28 + f.gy * 34)}%`);
+        // El brillo sigue la mirada moviéndose como capa: cambiar el fondo de la esfera la
+        // repintaría entera (con sus sombras grandes) en cada cuadro
+        el.spec.style.transform = `translate(${(f.gx * 74).toFixed(1)}px, ${(f.gy * 74).toFixed(1)}px)`;
 
         // Colores propios de esta esfera
         const c1 = oklabToRgb(f.lab.c1), c2 = oklabToRgb(f.lab.c2);
@@ -241,8 +239,8 @@ export default function OrbField({ controller, rootRef }) {
         el.shadow.style.transform =
           `translate(${(f.gx * 18).toFixed(2)}px, ${(-lift * 0.6).toFixed(2)}px) scale(${(1 - breath * 1.6 - f.pop * 0.8 + lift * 0.003).toFixed(4)}, 1)`;
 
-        // Membrana de la mitosis
-        const goo = gooRefs.current.get(id);
+        // Membrana de la mitosis (solo mientras se ve)
+        const goo = conMembrana && gooRefs.current.get(id);
         if (goo) {
           goo.setAttribute("cx", (vw / 2 + sx).toFixed(1));
           goo.setAttribute("cy", (vh / 2 + sy).toFixed(1));
@@ -270,10 +268,12 @@ export default function OrbField({ controller, rootRef }) {
         const speedMul = 1 + travelN * 1.6 + activo * 1.6;
         const cx = 200 + f.gx * 12, cy = 200 + f.gy * 10;
         f.cuadro++;
-        const saltar = body.dim && f.cuadro % 2;
+        f.dtOndas = (f.dtOndas ?? 0) + dt;
+        // Las ondas de las esferas atenuadas o chicas se redibujan a 30 Hz: no se nota y cuesta la mitad
+        const saltar = (body.dim || chica) && f.cuadro % 2;
         for (let si = 0; si < SHAPES.length && !saltar; si++) {
           const shape = SHAPES[si], ph = f.phases[si];
-          for (let h = 0; h < HARMONICS.length; h++) ph[h] += dt * HARMONICS[h].rate * cur.speed * speedMul * shape.speedK;
+          for (let h = 0; h < HARMONICS.length; h++) ph[h] += f.dtOndas * HARMONICS[h].rate * cur.speed * speedMul * shape.speedK;
           const ampPx = AMP_PX * shape.ampK * cur.amp * pulseMul * ampMul;
           const turb = Math.min(1, cur.turbulence + travelN * 0.5 + activo * 0.4);
           const base = shape.r * radScale;
@@ -289,6 +289,7 @@ export default function OrbField({ controller, rootRef }) {
           }
           el.paths[si]?.setAttribute("d", smoothClosedPath(xs, ys));
         }
+        if (!saltar) f.dtOndas = 0;
       }
       raf = requestAnimationFrame(tick);
     };
@@ -342,7 +343,7 @@ export default function OrbField({ controller, rootRef }) {
 
 function Esfera({ body, registrar }) {
   const uid = useId().replace(/:/g, "");
-  const wrap = useRef(null), scene = useRef(null), orb = useRef(null), shadow = useRef(null), label = useRef(null);
+  const wrap = useRef(null), scene = useRef(null), orb = useRef(null), shadow = useRef(null), label = useRef(null), spec = useRef(null);
   const paths = useRef([]);
   const svg = useRef(null);
 
@@ -353,6 +354,7 @@ function Esfera({ body, registrar }) {
       orb: orb.current,
       shadow: shadow.current,
       label: label.current,
+      spec: spec.current,
       paths: paths.current,
       stops: [...svg.current.querySelectorAll("stop[data-c]")],
       rotGrads: [...svg.current.querySelectorAll("[data-rot]")],
@@ -405,7 +407,7 @@ function Esfera({ body, registrar }) {
           <div className="orb-orb">
             <div className="orb-il il1" />
             <div className="orb-il il2" />
-            <div className="orb-spec" />
+            <div ref={spec} className="orb-spec" />
           </div>
         </div>
       </div>
