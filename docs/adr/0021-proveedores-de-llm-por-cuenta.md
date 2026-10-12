@@ -47,3 +47,26 @@ servidor, y todas las cuentas usaban lo mismo.
   la misma corrida no siempre da lo mismo, aunque se fije la temperatura.
 - Si varias máquinas comparten la base (Atlas), todas necesitan la misma
   `CLAVE_CIFRADO` para leer las claves guardadas.
+
+## Actualización (2026-10-12): la lista de modelos la da el proveedor
+
+Los modelos cambian cada pocas semanas. Google, por ejemplo, retira `gemini-2.5-flash`
+el 20-10-2026 y ya no lo ofrece en AI Studio, así que una lista fija en el código se
+queda vieja. `POST /cuenta/modelos/listar` le pide la lista al proveedor con la clave de
+la cuenta:
+- Gemini: `GET v1beta/models`, con la clave en la cabecera `x-goog-api-key` y solo los
+  modelos con `generateContent`.
+- Anthropic: `GET /v1/models`.
+- OpenAI y los compatibles: `GET /models`, los más nuevos primero.
+- Ollama: `/api/tags`.
+
+En todos se quitan embeddings, audio e imagen. En Configuración el modelo se elige de
+esa lista. Si el elegido ya no está, se marca; «Otro modelo…» permite escribir
+cualquiera. Las sugerencias fijas solo se ven mientras no hay clave.
+
+## Actualización (2026-10-12): volver a analizar lo que falló
+
+Si un requisito termina en error por algo ajeno al texto (una clave sin acceso al modelo,
+Ollama apagado), `POST /proyectos/{id}/reanalizar` lo vuelve a cargar como reproceso
+(`origen.reproceso_de`), con su texto, su origen y su triaje. La traza con el error se
+conserva, pero ya no cuenta en «con error» y la lista la oculta (`reemplazado_por`).

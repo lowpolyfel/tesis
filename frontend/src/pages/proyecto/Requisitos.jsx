@@ -4,12 +4,15 @@ import { ESTADOS as E, MOOD_SIMPLE, estadoSimple } from "../../constants/estados
 import { seccion } from "../../components/orb/secciones";
 import { useOrb } from "../../components/orb/useOrb";
 import { EstadoChip, Vacio } from "../../components/ui";
+import { reanalizarRequisitos } from "../../services/backend";
 
 /*
  * Los requisitos del proyecto, por carga (ciclo KMoS-SSA), con su estado en
  * lenguaje claro. Se pueden elegir varios para armar su mapa (Big Picture) o
- * ver solo su especificación. Al pasar por un requisito, la esfera toma el tono
- * de su estado.
+ * ver solo su especificación, y los que terminaron en error por algo ajeno al
+ * texto (una clave sin acceso al modelo, Ollama apagado) se pueden volver a
+ * analizar: queda una versión nueva y la del error se oculta. Al pasar por un
+ * requisito, la esfera toma el tono de su estado.
  */
 const FILTROS = [
   ["todos", "Todos"],
@@ -24,9 +27,14 @@ export default function Requisitos({ r, onElegir }) {
   const navigate = useNavigate();
   const [filtro, setFiltro] = useState("todos");
   const [elegidos, setElegidos] = useState(() => new Set());
+  const [anteriores, setAnteriores] = useState(false); // ver las versiones con error ya reanalizadas
+  const [reanalizando, setReanalizando] = useState(false);
+  const [falloReanalisis, setFalloReanalisis] = useState(null);
   const pid = r.proyecto.proyecto_id;
+  const reemplazados = r.requisitos.filter((q) => q.reemplazado_por).length;
 
   const visibles = r.requisitos.filter((q) => {
+    if (q.reemplazado_por && !anteriores) return false;
     const s = estadoSimple(q.estado).id;
     return filtro === "todos" || s === filtro || (filtro === "analizando" && s === "cola");
   });
@@ -51,7 +59,22 @@ export default function Requisitos({ r, onElegir }) {
   });
   const todos = visibles.length > 0 && visibles.every((q) => elegidos.has(q.req_id));
   const listos = [...elegidos].filter((id) => r.requisitos.find((q) => q.req_id === id)?.estado === E.FORMALIZADO);
-  const cuenta = (id) => r.requisitos.filter((q) => {
+  const fallidos = [...elegidos].filter((id) => {
+    const q = r.requisitos.find((x) => x.req_id === id);
+    return q?.estado === E.ERROR && !q.reemplazado_por;
+  });
+  const reanalizar = async (ids) => {
+    setReanalizando(true);
+    setFalloReanalisis(null);
+    try {
+      const { req_ids: nuevos } = await reanalizarRequisitos(pid, ids);
+      navigate(`/analisis?proyecto=${pid}&ids=${nuevos.join(",")}`);
+    } catch (e) {
+      setFalloReanalisis(e.message);
+      setReanalizando(false);
+    }
+  };
+  const cuenta = (id) => r.requisitos.filter((q) => !q.reemplazado_por).filter((q) => {
     const s = estadoSimple(q.estado).id;
     return s === id || (id === "analizando" && s === "cola");
   }).length;
@@ -64,6 +87,11 @@ export default function Requisitos({ r, onElegir }) {
             onChange={() => setElegidos(todos ? new Set() : new Set(visibles.map((q) => q.req_id)))} />
           Elegir {filtro === "todos" ? "todos" : "estos"}
         </label>
+        {reemplazados > 0 && (
+          <button className="mono text-[10px] text-[var(--bone-faint)] hover:text-[var(--bone)]" onClick={() => setAnteriores((x) => !x)}>
+            {anteriores ? "ocultar" : "ver"} {reemplazados} {reemplazados === 1 ? "versión" : "versiones"} con error ya {reemplazados === 1 ? "reanalizada" : "reanalizadas"}
+          </button>
+        )}
         <div className="ml-auto flex flex-wrap gap-1">
           {FILTROS.filter(([id]) => id === "todos" || cuenta(id) > 0).map(([id, texto]) => (
             <button key={id} onClick={() => setFiltro(id)}
@@ -97,7 +125,10 @@ export default function Requisitos({ r, onElegir }) {
                       <span className="mono w-10 shrink-0 text-[10px] text-[var(--bone-faint)] sm:order-1">{q.req_id}</span>
                       <EstadoChip estado={q.estado} className="sm:order-3" />
                     </span>
-                    <span className="min-w-0 flex-1 text-[15px] leading-relaxed sm:order-2">{q.texto}</span>
+                    <span className={`min-w-0 flex-1 text-[15px] leading-relaxed sm:order-2 ${q.reemplazado_por ? "text-[var(--bone-faint)]" : ""}`}>
+                      {q.texto}
+                      {q.reemplazado_por && <span className="mono ml-2 text-[10px]">· se volvió a analizar como {q.reemplazado_por}</span>}
+                    </span>
                   </button>
                 </li>
               );
@@ -112,9 +143,17 @@ export default function Requisitos({ r, onElegir }) {
           <p className="min-w-0 flex-1 text-[14px]">
             <b className="font-medium">{elegidos.size}</b> elegido{elegidos.size === 1 ? "" : "s"}
             {listos.length < elegidos.size && <span className="text-[var(--bone-faint)]"> · {listos.length} listo{listos.length === 1 ? "" : "s"} para el mapa</span>}
+            {fallidos.length > 0 && <span className="text-[var(--bone-faint)]"> · {fallidos.length} con error</span>}
+            {falloReanalisis && <span className="block text-[13px] text-[var(--danger)]">{falloReanalisis}</span>}
           </p>
           <button className="pill sm" disabled={!listos.length} onClick={() => onElegir("mapa", listos)}>Crear mapa</button>
           <button className="pill ghost sm" disabled={!listos.length} onClick={() => onElegir("especificacion", listos)}>Ver especificación</button>
+          {fallidos.length > 0 && (
+            <button className="pill ghost sm" disabled={reanalizando} onClick={() => reanalizar(fallidos)}
+              title="Para los que fallaron por algo ajeno al texto: una clave sin acceso al modelo, Ollama apagado…">
+              {reanalizando ? "Enviando…" : `Volver a analizar (${fallidos.length})`}
+            </button>
+          )}
           <button className="mono px-2 text-[10px] text-[var(--bone-faint)] hover:text-[var(--bone)]" onClick={() => setElegidos(new Set())}>Quitar</button>
         </div>
       )}

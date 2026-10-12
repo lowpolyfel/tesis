@@ -62,6 +62,8 @@ def resumen_proyecto(proyecto: Proyecto, trazas: list[Traza], lel: list[EntradaL
     requisitos, por_estado}], requisitos[resumen_requisito]}. Forma: `formas.ResumenProyecto`."""
     todos = _ordenadas(trazas)
     por_estado = _por_estado(todos)
+    # un requisito que se volvió a analizar (origen.reproceso_de) ya no cuenta como error
+    reemplazado = {t.origen.reproceso_de: t.req_id for t in trazas if t.origen and t.origen.reproceso_de}
     ciclos = sorted({a.traza.ciclo for a in todos})
     return {
         "proyecto": proyecto.model_dump(mode="json"),
@@ -71,14 +73,14 @@ def resumen_proyecto(proyecto: Proyecto, trazas: list[Traza], lel: list[EntradaL
             "por_validar": por_estado[Estado.PENDIENTE_VALIDACION.value],
             "formalizados": por_estado[Estado.FORMALIZADO.value],
             "rechazados": por_estado[Estado.RECHAZADO.value],
-            "errores": por_estado[Estado.ERROR.value],
+            "errores": sum(a.traza.estado == Estado.ERROR and a.traza.req_id not in reemplazado for a in todos),
             "ambiguos": sum(len(a.ambiguos) for a in todos),
             "lel": len(lel),
         },
         "por_estado": por_estado,
         "por_ciclo": [{"ciclo": c, "requisitos": sum(a.traza.ciclo == c for a in todos),
                        "por_estado": _por_estado(a for a in todos if a.traza.ciclo == c)} for c in ciclos],
-        "requisitos": [resumen_de(a) for a in todos],
+        "requisitos": [{**resumen_de(a), "reemplazado_por": reemplazado.get(a.traza.req_id)} for a in todos],
     }
 
 
