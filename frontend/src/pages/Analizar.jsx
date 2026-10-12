@@ -38,6 +38,7 @@ const POSES = {
 POSES.revisando = POSES.leyendo;
 POSES.triaje = POSES.confirmar;
 const MIN_LECTURA_MS = 1400;
+const MOTIVOS = { titulo: "título", sin_verbo_obligacion: "sin «debe» ni «podrá»", sin_texto: "sin texto", no_es_requisito: "no es requisito" };
 
 /* Un 422 del backend señala el requisito por su posición (base 0) en lo enviado; aquí se numeran desde 1 */
 function explicar(e, enviadas) {
@@ -65,6 +66,7 @@ export default function Analizar() {
   const [error, setError] = useState(null);
   const [saliendo, setSaliendo] = useState(false);
   const [avisoTriaje, setAvisoTriaje] = useState(null);
+  const [metodo, setMetodo] = useState(null); // { metodo: "ia" | "patrones", modelo } de la separación
   const archivo = useRef(null);
 
   usePoseEsfera(POSES[arrastrando ? "arrastre" : fase], [fase, arrastrando]);
@@ -116,9 +118,12 @@ export default function Analizar() {
     const propuestos = r.requisitos_propuestos ?? [];
     setDescartados({ lista: r.fragmentos_descartados ?? [], total: r.total_descartados ?? 0 });
     setAdvertencias(r.advertencias ?? []);
+    setMetodo({ metodo: r.metodo ?? "patrones", modelo: r.modelo ?? null });
     if (!propuestos.length && !r.total_descartados) {
       orb.setMood("error", { revertAfter: 1600 });
-      setError("No encontré requisitos. Cada uno debería decir qué «debe», «podrá» o «permitirá» hacer el sistema.");
+      setError(r.metodo === "ia"
+        ? "No encontré requisitos: el Revisor no vio nada que el sistema deba hacer. Revisa el texto."
+        : "No encontré requisitos. Cada uno debería decir qué «debe», «podrá» o «permitirá» hacer el sistema.");
       setFase(volverA);
       return;
     }
@@ -133,7 +138,7 @@ export default function Analizar() {
     setDocumento(null);
     setFase("leyendo");
     try {
-      const [r] = await Promise.all([separarRequisitos(contenido), new Promise((ok) => setTimeout(ok, MIN_LECTURA_MS))]);
+      const [r] = await Promise.all([separarRequisitos(contenido, proyectoId), new Promise((ok) => setTimeout(ok, MIN_LECTURA_MS))]);
       mostrar(r, "pegar");
     } catch (e) {
       orb.setMood("error", { revertAfter: 1600 });
@@ -283,7 +288,7 @@ export default function Analizar() {
 
       {(fase === "leyendo" || fase === "revisando") && (
         <p key={fase} className="mono aparece fixed inset-x-0 bottom-[16vh] text-center text-[10px] text-[var(--bone-dim)]">
-          {fase === "leyendo" ? "Separando el documento en requisitos…" : "El Revisor compara cada requisito con la ficha del contexto…"}
+          {fase === "leyendo" ? "El Revisor lee el texto y reconoce cada requisito…" : "El Revisor compara cada requisito con la ficha del contexto…"}
         </p>
       )}
 
@@ -297,6 +302,7 @@ export default function Analizar() {
         <section key="confirmar" className={`aparece mx-auto flex min-h-screen max-w-2xl flex-col justify-center gap-5 px-6 pt-[34vh] pb-12 md:mr-[6vw] md:pt-28 ${saliendo ? "sale" : ""}`}>
           <p className="mono text-[10px] text-[var(--bone-faint)]">
             {proyecto?.nombre ?? proyectoId} · {origen}{documento ? ` · ${documento.paginas} pág.` : ""}
+            {metodo && <> · {metodo.metodo === "ia" ? `separados por el Revisor${metodo.modelo ? ` (${metodo.modelo})` : ""}` : "separados por patrones"}</>}
           </p>
           <h1 className="serif text-[clamp(40px,4vw,64px)] leading-[.95]">
             Encontré <em>{validas.length}</em> {validas.length === 1 ? "requisito" : "requisitos"}.
@@ -304,7 +310,9 @@ export default function Analizar() {
           <p className="text-[14.5px] text-[var(--bone-dim)]">
             {piezas.length
               ? "Revisa la separación: corrige, une o quita. Después los comparo con el contexto del proyecto."
-              : "No encontré oraciones con «debe», «podrá» o «permitirá». Rescata los que sí sean requisitos con «+ usar»."}
+              : metodo?.metodo === "ia"
+                ? "No reconocí requisitos. Rescata los que sí lo sean con «+ usar»."
+                : "No encontré oraciones con «debe», «podrá» o «permitirá». Rescata los que sí sean requisitos con «+ usar»."}
           </p>
           {advertencias.length > 0 && (
             <ul className="text-[12px] text-amber-200/80">
@@ -360,7 +368,7 @@ export default function Analizar() {
               <ul className="mt-2 space-y-1 border-l border-[var(--line)] pl-3">
                 {descartados.lista.map((d, i) => (
                   <li key={i}>
-                    <span className="mono mr-2 text-[9.5px] text-[var(--bone-faint)]">{d.pagina ? `p. ${d.pagina}` : ""} {d.motivo}</span>
+                    <span className="mono mr-2 text-[9.5px] text-[var(--bone-faint)]">{d.pagina ? `p. ${d.pagina}` : ""} {d.detalle ?? MOTIVOS[d.motivo] ?? d.motivo}</span>
                     {d.texto}
                     <button className="mono ml-2 text-[9.5px] text-[var(--c1)]"
                       onClick={() => setPiezas((ps) => [...ps, { texto: d.texto, pagina: d.pagina, marca: d.marca, clave: `d-${Date.now()}-${i}` }])}>

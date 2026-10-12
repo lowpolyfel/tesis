@@ -67,7 +67,8 @@ export const subirDocumento = (proyectoId, archivo) => postArchivo(`/proyectos/$
 export const obtenerDocumento = (documentoId) => get(`/documentos/${id(documentoId)}`);
 export const documentosDeProyecto = (proyectoId) => get(`/proyectos/${id(proyectoId)}/documentos`);
 /** Texto pegado → requisitos candidatos (no guarda nada) */
-export const separarRequisitos = (texto) => post("/requisitos/separar", { texto });
+/** El Revisor reconoce los requisitos en cualquier redacción (ADR 0023); si falla, patrones. → Separacion con `metodo` */
+export const separarRequisitos = (texto, proyectoId) => post("/requisitos/separar", { texto, proyecto_id: proyectoId ?? null });
 /**
  * Los requisitos confirmados por el humano entran a la cola en un ciclo nuevo.
  * requisitos: [{ texto, origen?: {documento_id, archivo, pagina, indice, marca, texto_original, reproceso_de} }]

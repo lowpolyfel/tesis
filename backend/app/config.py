@@ -59,6 +59,8 @@ class Settings(BaseSettings):
     critico_api_key: str | None = None
     # Revisor del contexto (ADR 0022): ficha del contexto del proyecto y triaje de requisitos
     revisor_model: str = "qwen2.5:7b"
+    # Separar el texto pegado o los documentos con el Revisor (ADR 0023); false: solo patrones
+    separacion_ia: bool = True
     # Claves de API que cada cuenta guarda en su configuración (ADR 0021): se cifran con esta clave
     # (Fernet). Sin CLAVE_CIFRADO se crea una en CLAVE_CIFRADO_PATH; con Atlas compartido entre
     # máquinas, pon la misma CLAVE_CIFRADO en todas.

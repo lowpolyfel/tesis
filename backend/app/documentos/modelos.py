@@ -9,8 +9,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.models import Origen, ahora
 
 # titulo: encabezado corto sin verbo; sin_verbo_obligacion: oración sin verbo de
-# obligación o capacidad; sin_texto: solo marca, números o símbolos.
-MotivoDescarte = Literal["titulo", "sin_verbo_obligacion", "sin_texto"]
+# obligación o capacidad; sin_texto: solo marca, números o símbolos; no_es_requisito:
+# el Revisor lo leyó y no pide nada al sistema (ADR 0023; el porqué va en `detalle`).
+MotivoDescarte = Literal["titulo", "sin_verbo_obligacion", "sin_texto", "no_es_requisito"]
+MetodoSeparacion = Literal["ia", "patrones"]
 
 
 class RequisitoPropuesto(BaseModel):
@@ -35,6 +37,7 @@ class FragmentoDescartado(BaseModel):
     pagina: int | None = Field(None, ge=1)
     marca: str | None = None
     motivo: MotivoDescarte
+    detalle: str | None = None
 
 
 class Separacion(BaseModel):
@@ -46,6 +49,8 @@ class Separacion(BaseModel):
     fragmentos_descartados: list[FragmentoDescartado] = []  # los primeros; el total va aparte
     total_descartados: int = Field(0, ge=0)
     advertencias: list[str] = []  # lo que la limpieza quitó o no pudo leer
+    metodo: MetodoSeparacion = "patrones"  # ia: los reconoció el Revisor (ADR 0023)
+    modelo: str | None = None  # el del Revisor, si separó con IA
 
 
 class ResumenDocumento(BaseModel):
@@ -80,6 +85,8 @@ class Documento(BaseModel):
     fragmentos_descartados: list[FragmentoDescartado] = []
     total_descartados: int = Field(0, ge=0)
     advertencias: list[str] = []
+    metodo: MetodoSeparacion = "patrones"  # ADR 0023
+    modelo: str | None = None
     texto_por_pagina: list[str] | None = None
 
     def resumen(self) -> ResumenDocumento:
