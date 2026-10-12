@@ -9,7 +9,7 @@
  *   - corpus y evaluación: app/evaluacion (ADR 0014)
  *   - metas y Big Picture: app/artefactos (ADR 0011)
  */
-import { borrar, get, patch, post, postArchivo, postFlujo } from "./http";
+import { borrar, get, patch, post, postArchivo, postFlujo, put } from "./http";
 
 const id = (x) => encodeURIComponent(x);
 
@@ -144,3 +144,20 @@ export const obtenerCorpus = (nombre) => get(`/corpus/${id(nombre)}`);
 export const evaluar = (corpus, nombre) => post("/evaluaciones", { corpus, ...(nombre ? { nombre } : {}) });
 export const listarEvaluaciones = () => get("/evaluaciones");
 export const obtenerEvaluacion = (evaluacionId) => get(`/evaluaciones/${id(evaluacionId)}`);
+
+/* ======================= Modelos de los agentes, por cuenta (ADR 0021) ======================= */
+/** { catalogo: [{id, nombre, tipo, base_url, pide_clave, pide_url, modelos, ayuda, url_ayuda}],
+ *    agentes: [{rol, nombre, proveedor, modelo, propio, servidor}], proveedores: {id: {base_url, tiene_clave, final}} } */
+export const obtenerModelos = () => get("/cuenta/modelos");
+/** agentes: {rol: {proveedor, modelo} | null}; proveedores: {id: {base_url?, api_key?}} ("" deja la clave, null la borra) */
+export const guardarModelos = (cambios) => put("/cuenta/modelos", cambios);
+/** → { ok, ms, error } con lo del formulario (sin api_key usa la guardada) */
+export const probarModelo = (datos) => post("/cuenta/modelos/probar", datos);
+
+/* ======================= Ficha del contexto y triaje (ADR 0022) ======================= */
+/** { ficha: {ficha, markdown, modelo, creada} | null, al_dia, tiene_contexto } */
+export const fichaContexto = (proyectoId) => get(`/proyectos/${id(proyectoId)}/ficha`);
+export const armarFicha = (proyectoId) => post(`/proyectos/${id(proyectoId)}/ficha`, {});
+/** → { resultados: [{indice, veredicto: claro|ambiguo|incompleto|null, motivo, faltantes, preguntas,
+ *       terminos_ambiguos, origen}], modelo, aviso, ficha } */
+export const triarRequisitos = (proyectoId, textos) => post(`/proyectos/${id(proyectoId)}/triaje`, { requisitos: textos });

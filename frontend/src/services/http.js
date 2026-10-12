@@ -47,6 +47,7 @@ async function pedir(metodo, ruta, { cuerpo, form, params } = {}) {
 export const get = (ruta, params) => pedir("GET", ruta, { params });
 export const post = (ruta, cuerpo) => pedir("POST", ruta, { cuerpo });
 export const patch = (ruta, cuerpo) => pedir("PATCH", ruta, { cuerpo });
+export const put = (ruta, cuerpo) => pedir("PUT", ruta, { cuerpo });
 export const borrar = (ruta) => pedir("DELETE", ruta);
 export const postArchivo = (ruta, campo, archivo) => {
   const form = new FormData();

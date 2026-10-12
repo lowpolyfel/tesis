@@ -44,6 +44,9 @@ Thumbs.db
 data/checkpoints.sqlite
 data/checkpoints.sqlite-*
 
+# Clave que cifra las claves de API de las cuentas (ADR 0021)
+data/clave_cifrado.key
+
 # Salidas locales del respaldo JSON del repositorio (estado de trabajo, no resultados)
 data/resultados/trazas/
 data/resultados/lel.json

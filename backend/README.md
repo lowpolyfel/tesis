@@ -99,6 +99,8 @@ trabajador, ADR 0008):
 | Requisitos | `POST /procesar`, `GET /requisitos/{id}` (vista por término), `GET /traza/{id}`, `GET /eventos/{id}` (SSE), `POST /validar/{id}`, `GET /requisitos/{id}/artefactos`, `PATCH /requisitos/{id}/formalizacion`, `PATCH /requisitos/{id}/lel/{termino}`, `GET /trazas`, `GET /cola` |
 | Proyecto | `GET /proyectos/{id}/especificacion` (RF/RNF y glosario), `/ambiguedades`, `/flujo`, `/metas`, `/big-picture` (las tres de artefactos aceptan `?req_ids=`), `GET /lel?proyecto_id=` |
 | Mapa conceptual | `GET /proyectos/{id}/mapa-conceptual` (el guardado, si sigue al día), `POST /proyectos/{id}/mapa-conceptual` (lo genera con el Modelador y responde su progreso en NDJSON; ADR 0020) |
+| Contexto y triaje | `GET/POST /proyectos/{id}/ficha` (ficha del contexto, ADR 0022), `POST /proyectos/{id}/triaje` (claro, ambiguo o incompleto, contra la ficha) |
+| Modelos por cuenta | `GET/PUT /cuenta/modelos` (proveedor y modelo por agente, claves cifradas), `POST /cuenta/modelos/probar` (ADR 0021) |
 | Exploratorio | `POST/GET /proyectos/{id}/comparaciones`, `GET /comparaciones/{id}` (ADR 0012) |
 | Experimentación | `GET /calibracion`, `GET /proyectos/{id}/calibracion`, `GET /corpus`, `GET /corpus/{nombre}`, `POST/GET /evaluaciones`, `GET /evaluaciones/{id}` |
 | Configuración | `GET /configuracion`, `GET /catalogos`, `GET /salud`, `GET /conexion` |

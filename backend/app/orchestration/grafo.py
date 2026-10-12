@@ -154,6 +154,7 @@ def construir_grafo(deps: Dependencias, checkpointer):
         return {"estado": Estado.CARGADO.value, "proyecto_id": proyecto_id, "ronda": 0, "lel": lel,
                 "contexto": (contexto or "").strip() or None,
                 "evaluacion": bool(proyecto and proyecto.tipo == "evaluacion"),
+                "revision_obligatoria": (config.get("triaje") or {}).get("veredicto") in ("ambiguo", "incompleto"),
                 "candidatos": {}, "fallo": None}
 
     @nodo
@@ -451,9 +452,10 @@ def construir_grafo(deps: Dependencias, checkpointer):
                 if c.get("via") == Via.ARBITRAJE.value]
 
     def necesita_persona(st: EstadoGrafo) -> bool:
-        """ADR 0017. Un proyecto de evaluación se detiene siempre antes de validar (ADR 0014)."""
+        """ADR 0017. Un proyecto de evaluación se detiene siempre antes de validar (ADR 0014), y un
+        requisito que el triaje vio ambiguo o incompleto también (ADR 0022)."""
         modo = ValidacionHumana(s.validacion_humana)
-        if st.get("evaluacion") or modo == ValidacionHumana.SIEMPRE:
+        if st.get("evaluacion") or st.get("revision_obligatoria") or modo == ValidacionHumana.SIEMPRE:
             return True
         if modo == ValidacionHumana.NUNCA:
             return False

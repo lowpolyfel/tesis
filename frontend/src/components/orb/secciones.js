@@ -19,6 +19,7 @@ export const SECCIONES = {
   revision: { lado: -1, y: 0.18, mood: "humano", nombre: "Revisión" },
   analizar: { lado: 1, y: 0.2, mood: "idle", nombre: "Analizar" },
   mas: { lado: 1, y: 0.28, mood: "sistema", nombre: "Más" },
+  configuracion: { lado: -1, y: 0.24, mood: "clasificador", nombre: "Configuración" },
   avanzado: { lado: -1, y: 0.3, mood: "sistema", nombre: "Análisis" },
 };
 

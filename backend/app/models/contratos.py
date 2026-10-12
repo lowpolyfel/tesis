@@ -378,3 +378,49 @@ class SalidaMapaConceptual(Contrato):
     conceptos: list[ConceptoMapa] = Field(min_length=1, max_length=24)
     ramas: list[RamaMapa] = Field(min_length=1, max_length=6)
     proposiciones: list[ProposicionMapa] = Field(min_length=1, max_length=30)
+
+
+# ---------------------------------------------------------------- Revisor del contexto (ADR 0022)
+
+class ActorContexto(Contrato):
+    nombre: str = Field(min_length=1, max_length=80)
+    rol: str = Field(min_length=1, max_length=300)
+
+
+class ConceptoContexto(Contrato):
+    termino: str = Field(min_length=1, max_length=80)
+    significado: str = Field(min_length=1, max_length=400)
+
+
+class SalidaFichaContexto(Contrato):
+    """El contexto general del proyecto ordenado para leerlo y compararle requisitos."""
+
+    resumen: str = Field(min_length=1, max_length=800)
+    objetivo: str = Field(min_length=1, max_length=400)
+    actores: list[ActorContexto] = Field(default=[], max_length=20)
+    conceptos: list[ConceptoContexto] = Field(default=[], max_length=40)
+    procesos: list[str] = Field(default=[], max_length=20)
+    reglas: list[str] = Field(default=[], max_length=25)
+    fuera_de_alcance: list[str] = Field(default=[], max_length=12)
+    vacios: list[str] = Field(default=[], max_length=12)  # lo que el contexto no dice y conviene precisar
+
+
+class TriajeRequisito(Contrato):
+    """Cómo se entiende un requisito contra la ficha del contexto.
+
+    - claro: dice qué hace quién sobre qué y se entiende con el contexto.
+    - ambiguo: se entiende qué pide, pero algo admite más de una interpretación o es vago: va al
+      análisis con revisión humana obligatoria.
+    - incompleto: no se entiende sin inventar, o no tiene que ver con el contexto: una
+      persona debe precisarlo antes de analizarlo."""
+
+    indice: int = Field(ge=1)
+    veredicto: Literal["claro", "ambiguo", "incompleto"]
+    motivo: str = Field(min_length=1, max_length=400)
+    faltantes: list[str] = Field(default=[], max_length=6)
+    preguntas: list[str] = Field(default=[], max_length=4)
+    terminos_ambiguos: list[str] = Field(default=[], max_length=8)
+
+
+class SalidaTriaje(Contrato):
+    requisitos: list[TriajeRequisito] = Field(min_length=1, max_length=30)

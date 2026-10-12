@@ -89,7 +89,8 @@ que una persona revise, y el navegador solo abre seis conexiones por servidor.
 | `/` | Presentación y entrada (sin cuentas: el prototipo es de un solo usuario) |
 | `/proyectos` | Todos los proyectos; crear uno con su nombre y su contexto general |
 | `/proyectos/:id` | Un proyecto: su contexto (editable) y cuatro vistas (`?vista=`): **Requisitos** (estado de cada uno; elegir varios para su mapa o su especificación), **Especificación** (RF/RNF reescritos con sus supuestos, corregibles, en Markdown), **Léxico** (el LEL, corregible) y **Mapa** (el mapa conceptual que organiza el Modelador, con su pantalla de carga; debajo sus frases, el modelo de metas y el grafo completo; de todos o de los elegidos con `?req=`) |
-| `/proyectos/:id/analizar` | Sube un PDF o .txt o pega el texto; se confirma la separación y todo sigue solo. Hasta 200 requisitos por carga y 2000 caracteres por requisito |
+| `/configuracion` | Proveedor y modelo de cada agente (Ollama, Gemini, OpenAI, Claude…) y sus claves, que se guardan cifradas (ADR 0021) |
+| `/proyectos/:id/analizar` | Sube un PDF o .txt o pega el texto; se confirma la separación y el Revisor separa los que se entienden con el contexto de los ambiguos y los poco detallados, que se precisan antes de analizar (ADR 0022). Hasta 200 requisitos por carga y 2000 caracteres por requisito |
 | `/analisis?proyecto=&ids=` | La escena en vivo del lote y, al terminar, los resultados |
 | `/requisitos/:id` | El resultado (original → versión completa, corregible; qué significado quedó para cada término) y, plegada, la traza por fases KMoS-SSA (`?figura=1`: versión clara para la tesis) |
 | `/requisitos/:id/validacion` | Revisión: solo cuando los agentes no llegaron a un acuerdo. Por término se confirma la propuesta, se elige otra o se escribe otra |

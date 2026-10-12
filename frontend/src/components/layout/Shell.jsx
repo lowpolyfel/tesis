@@ -27,6 +27,7 @@ export function seccionDe(pathname, params) {
   }
   if (pathname === "/proyectos") return "proyectos";
   if (pathname === "/mas") return "mas";
+  if (pathname === "/configuracion") return "configuracion";
   if (/^\/requisitos\/[^/]+\/validacion/.test(pathname)) return "revision";
   if (/^\/requisitos\//.test(pathname)) return "requisito";
   return "avanzado";
@@ -105,7 +106,11 @@ function BarraSuperior({ pid, onMenu }) {
         <BotonTema />
         {usuario && (
           <span className="flex items-center gap-3 sm:border-l sm:border-[var(--line)] sm:pl-4 md:pl-5">
-            <span className="mono hidden max-w-[14ch] truncate text-[10.5px] text-[var(--bone-dim)] md:inline" title={usuario.correo}>{usuario.nombre}</span>
+            <NavLink to="/configuracion" title={`${usuario.correo} · Configuración`}
+              className={(e) => `mono flex items-center gap-1.5 text-[10.5px] transition-colors ${e.isActive ? "text-[var(--bone)]" : "text-[var(--bone-dim)] hover:text-[var(--bone)]"}`}>
+              <span aria-hidden="true">⚙</span><span className="hidden max-w-[14ch] truncate md:inline">{usuario.nombre}</span>
+              <span className="sr-only">Configuración</span>
+            </NavLink>
             <button onClick={cerrar} className="mono text-[10.5px] text-[var(--bone-faint)] transition-colors hover:text-[var(--bone)]">Salir</button>
           </span>
         )}

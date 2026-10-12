@@ -113,8 +113,13 @@ export default function Validacion() {
 
       {pendiente && (
         <>
+          <AvisoTriaje t={v.triaje} />
           {!terminos.length && (
-            <p className="tarjeta px-5 py-4 text-[14.5px] text-[var(--bone-dim)]">No hay términos dudosos. Confirma para que el Modelador reescriba el requisito.</p>
+            <p className="tarjeta px-5 py-4 text-[14.5px] text-[var(--bone-dim)]">
+              {v.triaje?.veredicto === "ambiguo" || v.triaje?.veredicto === "incompleto"
+                ? "Los agentes no encontraron términos que elegir. Si el requisito se entiende así, confírmalo; si no, descártalo y vuelve a cargarlo con lo que falta."
+                : "No hay términos dudosos. Confirma para que el Modelador reescriba el requisito."}
+            </p>
           )}
           {terminos.map((t) => (
             <TerminoAElegir key={t.termino} t={t} eleccion={elecciones[t.termino]}
@@ -214,5 +219,20 @@ function TerminoAElegir({ t, eleccion, onCambio }) {
         </Plegable>
       )}
     </section>
+  );
+}
+
+/* Por qué este requisito pide revisión aunque los agentes estén de acuerdo (ADR 0022) */
+function AvisoTriaje({ t }) {
+  if (t?.veredicto !== "ambiguo" && t?.veredicto !== "incompleto") return null;
+  return (
+    <div className="tarjeta space-y-2 px-5 py-4 text-[14px]">
+      <p className="etiqueta" style={{ color: "var(--aviso)" }}>
+        {t.forzado ? "Lo mandaste sin precisar" : t.veredicto === "ambiguo" ? "El Revisor lo vio ambiguo" : "El Revisor lo vio poco detallado"}
+      </p>
+      {t.motivo && <p className="text-[var(--bone-dim)]">{t.motivo}</p>}
+      {t.terminos_ambiguos?.length > 0 && <p className="text-[var(--bone-dim)]">Palabras dudosas: {t.terminos_ambiguos.map((x) => `«${x}»`).join(", ")}</p>}
+      {t.preguntas?.length > 0 && <ul className="list-disc space-y-0.5 pl-5 text-[var(--bone-dim)]">{t.preguntas.map((q) => <li key={q}>{q}</li>)}</ul>}
+    </div>
   );
 }
