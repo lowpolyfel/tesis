@@ -91,7 +91,11 @@ def _interps(dicts: list[dict]) -> list[Interpretacion]:
     return [Interpretacion.model_validate(d) for d in dicts]
 
 
-def construir_grafo(deps: Dependencias, checkpointer):
+class Cancelado(Exception):
+    """La persona canceló el análisis: el grafo se detiene antes del nodo siguiente."""
+
+
+def construir_grafo(deps: Dependencias, checkpointer, cancelado: Callable[[str], bool] = lambda _req: False):
     s = deps.settings
     repo = deps.repo
 
@@ -112,10 +116,13 @@ def construir_grafo(deps: Dependencias, checkpointer):
         return {"estado": estado.value}
 
     def nodo(fn: Callable[[EstadoGrafo], dict]) -> Callable[[EstadoGrafo], dict]:
-        """Cualquier excepción de un nodo se registra como mensaje `error` y desvía a `error`."""
+        """Cualquier excepción de un nodo se registra como mensaje `error` y desvía a `error`.
+        Si la persona canceló el análisis, `Cancelado` sale del grafo (el servicio lo borra)."""
 
         @wraps(fn)
         def envuelto(st: EstadoGrafo) -> dict:
+            if cancelado(st.get("req_id")):  # entre nodo y nodo: la llamada en curso no se corta
+                raise Cancelado(st.get("req_id"))
             try:
                 return fn(st)
             except GraphBubbleUp:  # interrupt y control interno de LangGraph

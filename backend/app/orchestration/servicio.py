@@ -37,7 +37,7 @@ from app.nlp import normalizar
 from .cola import Cola
 from .dependencias import Dependencias
 from .estado import con_interpretaciones
-from .grafo import COLECCION_FORMALIZADOS, construir_grafo
+from .grafo import COLECCION_FORMALIZADOS, Cancelado, construir_grafo
 
 log = logging.getLogger(__name__)
 
@@ -76,7 +76,8 @@ class Servicio:
         if checkpointer is None:
             checkpointer = checkpointer_sqlite(deps.settings.ruta(deps.settings.checkpoint_path))
         self.checkpointer = checkpointer
-        self.grafo = construir_grafo(deps, checkpointer)
+        self._cancelados: set[str] = set()  # se detienen antes del nodo siguiente y se borran
+        self.grafo = construir_grafo(deps, checkpointer, cancelado=lambda req_id: req_id in self._cancelados)
         self.proyectos = Proyectos(self.repo)
         self.cuentas = Cuentas(self.repo, deps.settings)
         self.perfiles = PerfilesLLM(self.repo, deps.settings)  # proveedores por cuenta (ADR 0021)
@@ -201,12 +202,16 @@ class Servicio:
             traza = self.repo.obtener_traza(req_id)
             with con_perfil(self.perfil(traza.proyecto_id if traza else None)):  # sus proveedores (ADR 0021)
                 self.grafo.invoke(entrada, self._config(req_id))
+        except Cancelado:
+            log.info("Análisis de %s cancelado: se descarta", req_id)
+            self._borrar_rastro(req_id)
         except Exception as e:
             log.exception("Falla fuera de los nodos en %s", req_id)
             self.repo.agregar_mensaje(req_id, ronda=0, emisor=Nodo.SISTEMA, receptor=Nodo.SISTEMA, tipo=TipoMensaje.ERROR,
                                       payload={"nodo": None, "excepcion": type(e).__name__, "mensaje": str(e)})
             self.repo.cambiar_estado(req_id, Estado.ERROR)
         finally:
+            self._cancelados.discard(req_id)
             self._liberar(req_id)
 
     def ejecutar(self, req_id: str) -> None:
@@ -357,6 +362,39 @@ class Servicio:
             self._borrar_rastro(req_id)
         finally:
             self._liberar(req_id)
+
+    def cancelar(self, proyecto_id: str, req_ids: list[str]) -> dict:
+        """Cancela el análisis y descarta por completo los requisitos: los que esperan turno salen
+        de la cola y se borran ya; el que se está analizando se detiene al terminar el paso en
+        curso (una llamada al modelo no se corta a la mitad) y se borra entonces; los demás
+        (en revisión o terminados) se borran. {descartados, deteniendo}. ValueError si alguno
+        no es del proyecto."""
+        trazas = {}
+        for req_id in dict.fromkeys(req_ids):
+            t = self.repo.obtener_traza(req_id)
+            if t is None or t.proyecto_id != proyecto_id:
+                raise ValueError(f"{req_id} no es un requisito de este proyecto")
+            trazas[req_id] = t
+        en_cola = self.cola.quitar(set(trazas))
+        descartados, deteniendo = [], []
+        for req_id in trazas:
+            if req_id in en_cola:  # reservado al encolarlo: se libera para borrarlo
+                self._liberar(req_id)
+            with self._candado:
+                ocupado = req_id in self._ocupados
+                if ocupado:
+                    self._cancelados.add(req_id)
+                else:
+                    self._ocupados.add(req_id)
+            if ocupado:
+                deteniendo.append(req_id)
+                continue
+            try:
+                self._borrar_rastro(req_id)
+                descartados.append(req_id)
+            finally:
+                self._liberar(req_id)
+        return {"descartados": descartados, "deteniendo": deteniendo}
 
     def reemplazados(self, proyecto_id: str) -> dict[str, str]:
         """{req_id viejo: req_id del reproceso que lo sustituye} en el proyecto."""

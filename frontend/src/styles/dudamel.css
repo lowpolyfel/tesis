@@ -138,3 +138,8 @@ details.plegable[open]>summary .flecha{transform:rotate(90deg)}
 :root[data-tema="claro"] .text-\[\#f9a8d4\]{color:#be2f7d}
 :root[data-tema="claro"] .text-\[\#ffc457\]{color:#a86400}
 :root[data-tema="claro"] .text-amber-300,:root[data-tema="claro"] .text-amber-200\/80,:root[data-tema="claro"] .text-amber-200\/70{color:#a16207}
+
+/* Barra de avance sin porcentaje: un tramo que va y viene (lectura y revisión del Revisor) */
+.barra-indeterminada{animation:barra-va 1.4s ease-in-out infinite}
+@keyframes barra-va{0%{transform:translateX(-100%)}100%{transform:translateX(300%)}}
+@media (prefers-reduced-motion:reduce){.barra-indeterminada{animation:none}}

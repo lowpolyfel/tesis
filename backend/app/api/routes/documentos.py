@@ -3,9 +3,13 @@ candidatos (ADR 0009). Nada de esto procesa requisitos: el humano revisa lo
 propuesto y lo confirma con POST /proyectos/{id}/requisitos."""
 from __future__ import annotations
 
+import json
+import queue
+import threading
 from typing import Annotated
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.contexto import COLECCION_FICHAS, ficha_al_dia
@@ -53,9 +57,9 @@ def _ia(srv: Servicio, perfil: dict, proyecto=None):
         doc = srv.repo.obtener_doc(COLECCION_FICHAS, proyecto.proyecto_id)
         contexto = doc["markdown"] if ficha_al_dia(doc, proyecto.nombre, proyecto.contexto) else proyecto.contexto
 
-    def ia(parrafos):
+    def ia(parrafos, avance=None):
         with con_perfil(perfil):
-            return separar_con_ia(parrafos, srv.deps.revisor, contexto)
+            return separar_con_ia(parrafos, srv.deps.revisor, contexto, avance=avance)
     return ia
 
 
@@ -86,10 +90,8 @@ def obtener(documento_id: str, srv: ServicioDep, usuario: UsuarioDep) -> Documen
     return documento
 
 
-@router.post("/requisitos/separar", response_model=Separacion)
-def separar(entrada: EntradaSeparar, srv: ServicioDep, usuario: UsuarioDep) -> Separacion:
-    """Separa texto pegado sin guardar nada. Un salto de página (\\f) separa páginas. Los
-    requisitos los reconoce el Revisor en cualquier redacción; si falla, patrones (ADR 0023)."""
+def _preparar(entrada: EntradaSeparar, srv: Servicio, usuario):
+    """(ia o None) para separar este texto, con el contexto y los modelos que tocan."""
     if len(entrada.texto.encode("utf-8")) > _documentos(srv).max_bytes:
         raise HTTPException(413, "El texto excede el máximo de DOCUMENTO_MAX_MB.")
     proyecto = None
@@ -97,4 +99,36 @@ def separar(entrada: EntradaSeparar, srv: ServicioDep, usuario: UsuarioDep) -> S
         exigir_suyo(srv, usuario, entrada.proyecto_id, f"el proyecto {entrada.proyecto_id}")
         proyecto = srv.proyectos.obtener(entrada.proyecto_id)
     perfil = srv.perfil(entrada.proyecto_id) if proyecto else srv.perfiles.resuelto(usuario.usuario_id)
-    return separar_texto(entrada.texto, ia=_ia(srv, perfil, proyecto) if entrada.con_ia else None)
+    return _ia(srv, perfil, proyecto) if entrada.con_ia else None
+
+
+@router.post("/requisitos/separar", response_model=Separacion)
+def separar(entrada: EntradaSeparar, srv: ServicioDep, usuario: UsuarioDep) -> Separacion:
+    """Separa texto pegado sin guardar nada. Un salto de página (\\f) separa páginas. Los
+    requisitos los reconoce el Revisor en cualquier redacción; si falla, patrones (ADR 0023)."""
+    return separar_texto(entrada.texto, ia=_preparar(entrada, srv, usuario))
+
+
+@router.post("/requisitos/separar/flujo")
+def separar_en_vivo(entrada: EntradaSeparar, srv: ServicioDep, usuario: UsuarioDep) -> StreamingResponse:
+    """Lo mismo, diciendo qué hace mientras lo hace (NDJSON, para la pantalla de carga):
+    {"tipo": "paso", id, estado, detalle} · {"tipo": "tanda", i, total, desde, hasta, parrafos,
+    estado, encontrados} · al final {"tipo": "resultado", separacion} o {"tipo": "error", mensaje}."""
+    ia = _preparar(entrada, srv, usuario)
+    eventos: queue.Queue = queue.Queue()
+
+    def trabajar():
+        try:
+            s = separar_texto(entrada.texto, ia=ia, avance=eventos.put)
+            eventos.put({"tipo": "resultado", "separacion": s.model_dump(mode="json")})
+        except Exception as e:  # noqa: BLE001 — se informa en el flujo
+            eventos.put({"tipo": "error", "mensaje": f"{type(e).__name__}: {e}"})
+        eventos.put(None)
+
+    threading.Thread(target=trabajar, daemon=True).start()
+
+    def lineas():
+        while (e := eventos.get()) is not None:
+            yield json.dumps(e, ensure_ascii=False) + "\n"
+    return StreamingResponse(lineas(), media_type="application/x-ndjson", headers={"Cache-Control": "no-store"})
+

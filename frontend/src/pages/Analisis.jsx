@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
+import { Confirmar } from "../components/ui";
 import { useOrb } from "../components/orb/useOrb";
 import { isMobile } from "../components/orb/poses";
-import { especificacionDeProyecto, obtenerCola, obtenerRequisito, obtenerProyecto, requisitosDeProyecto } from "../services/backend";
+import { cancelarRequisitos, especificacionDeProyecto, obtenerCola, obtenerRequisito, obtenerProyecto, requisitosDeProyecto } from "../services/backend";
 import { ESTADOS as E, esTerminal, estadoSimple } from "../constants/estados";
 import { TIPO_REQUISITO, nodo, tintaNodo } from "../constants/agentes";
 import { COLUMNA_ESCENA, centroEscena, crearCoreografia } from "../escena/coreografia";
@@ -191,6 +192,9 @@ export default function Analisis() {
         <Volver a={`/proyectos/${proyecto}`}>{nombreProyecto ?? "Proyecto"}</Volver>
       </div>
       {fase === "preparacion" && !todosEnReposo && <Preparacion proyecto={proyecto} onListo={() => setFase("division")} />}
+      {fase === "preparacion" && !todosEnReposo && lista && (
+        <div className="fixed right-5 bottom-5 z-20"><CancelarAnalisis lista={lista} proyecto={proyecto} /></div>
+      )}
       {fase === "trabajo" && lateral && (
         <Columna vivo={vivo} lista={lista} foco={foco} focoInfo={focoInfo} pendientes={pendientes} proyecto={proyecto}
           onSeguir={(id) => setFoco(id)} />
@@ -373,7 +377,8 @@ function Columna({ vivo, lista, foco, focoInfo, pendientes, proyecto, onSeguir }
         )}
         <div className="flex items-center gap-3 border-t border-[var(--line)] px-5 py-3">
           <span className="mono text-[10px] text-[var(--bone-faint)]">{listos} de {lista.length} listos</span>
-          <BotonRevisar pendientes={pendientes} lista={lista} proyecto={proyecto} className="ml-auto" />
+          <CancelarAnalisis lista={lista} proyecto={proyecto} className="ml-auto" />
+          <BotonRevisar pendientes={pendientes} lista={lista} proyecto={proyecto} />
         </div>
       </div>
     </aside>
@@ -405,7 +410,8 @@ function Panel({ vivo, lista, foco, pendientes, proyecto, onSeguir }) {
               );
             })}
           </span>
-          <BotonRevisar pendientes={pendientes} lista={lista} proyecto={proyecto} className="ml-auto" />
+          <CancelarAnalisis lista={lista} proyecto={proyecto} className="ml-auto" />
+          <BotonRevisar pendientes={pendientes} lista={lista} proyecto={proyecto} />
         </div>
 
         {bitacora && <Bitacora vivo={vivo} className="max-h-[22vh] border-t border-[var(--line)]" />}
@@ -468,5 +474,41 @@ function Resultados({ lista, proyecto, onRepetir }) {
       </ol>
       <Link to={`/proyectos/${proyecto}`} className="mono self-start text-[10px] text-[var(--bone-faint)] hover:text-[var(--bone)]">Volver al proyecto</Link>
     </section>
+  );
+}
+
+/*
+ * Abortar: cancela el análisis de lo que no ha terminado (en cola, analizando o por revisar)
+ * y lo descarta por completo (POST /proyectos/{id}/cancelar). Lo que ya está listo se queda.
+ * El que se está analizando se detiene al terminar el paso en curso.
+ */
+function CancelarAnalisis({ lista, proyecto, className = "" }) {
+  const navigate = useNavigate();
+  const [abierto, setAbierto] = useState(false);
+  const sinTerminar = lista.filter((r) => ["cola", "analizando", "revisar"].includes(estadoSimple(r.estado).id));
+  if (!sinTerminar.length) return null;
+  const n = sinTerminar.length;
+  return (
+    <>
+      <button className={`mono text-[10px] text-[var(--bone-faint)] hover:text-[var(--danger)] ${className}`} onClick={() => setAbierto(true)}>
+        cancelar análisis
+      </button>
+      {abierto && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-[color-mix(in_oklab,var(--bg)_72%,transparent)] px-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setAbierto(false); }}>
+          <div className="w-full max-w-md">
+            <Confirmar
+              pregunta={`¿Cancelar el análisis y descartar ${n === 1 ? "el requisito que no ha terminado" : `los ${n} requisitos que no han terminado`}?`}
+              detalle={`Se borran por completo (su traza, lo que aportaron al léxico y su avance): ${sinTerminar.map((r) => r.req_id).join(", ")}. El que se está analizando se detiene al terminar el paso en curso. Los que ya están listos se quedan.`}
+              accion="Cancelar y descartar" enviando="Descartando…" volver="Seguir analizando"
+              onCancelar={() => setAbierto(false)}
+              onConfirmar={async () => {
+                await cancelarRequisitos(proyecto, sinTerminar.map((r) => r.req_id));
+                navigate(`/proyectos/${proyecto}`);
+              }} />
+          </div>
+        </div>
+      )}
+    </>
   );
 }

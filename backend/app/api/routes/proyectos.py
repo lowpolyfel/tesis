@@ -140,3 +140,19 @@ def reanalizar(p: ProyectoDep, entrada: EntradaReanalizar, srv: ServicioDep) -> 
     except ValueError as e:
         raise HTTPException(422, str(e)) from e
     return {"proyecto_id": p.proyecto_id, "ciclo": ciclo, "req_ids": ids}
+
+
+class EntradaCancelar(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    req_ids: list[str] = Field(min_length=1, max_length=500)
+
+
+@router.post("/proyectos/{proyecto_id}/cancelar")
+def cancelar(p: ProyectoDep, entrada: EntradaCancelar, srv: ServicioDep) -> dict:
+    """Cancela el análisis de esos requisitos y los descarta por completo (traza, LEL,
+    formalización, checkpoint). {descartados, deteniendo}: los de `deteniendo` se estaban
+    analizando y se borran al terminar el paso en curso. 422 si alguno no es del proyecto."""
+    try:
+        return srv.cancelar(p.proyecto_id, entrada.req_ids)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e

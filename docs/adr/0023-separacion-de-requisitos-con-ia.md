@@ -42,3 +42,8 @@ proveedores con su teléfono»).
 - Separar ya no es instantáneo: hay una llamada al LLM por tanda.
 - La separación por patrones sigue siendo reproducible y explicable, y es la que usan
   las pruebas de ADR 0009.
+
+## Adenda: avance en vivo y cancelar
+
+- `POST /requisitos/separar/flujo` y `POST /proyectos/{id}/triaje/flujo` emiten NDJSON (`paso`, `tanda`, `resultado`/`error`) para que la pantalla «Analizar» muestre qué hace, cuánto lleva y en qué tanda va; la esfera respira cambiando de color mientras lee o revisa.
+- `POST /proyectos/{id}/cancelar` descarta requisitos: los de la cola se quitan, el que corre se detiene antes del siguiente nodo (una llamada al modelo en curso no se interrumpe) y se borra todo su rastro.

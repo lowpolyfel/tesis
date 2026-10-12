@@ -79,8 +79,11 @@ def verificador(parrafos: list[Parrafo], indices: list[int]):
 
 
 def separar_con_ia(parrafos: list[Parrafo], revisor, contexto: str | None,
-                   max_fragmentos: int = MAX_FRAGMENTOS) -> Separacion:
-    """Lanza la excepción del Revisor (o `DemasiadoTexto`) para que quien llama use los patrones."""
+                   max_fragmentos: int = MAX_FRAGMENTOS, avance=None) -> Separacion:
+    """Lanza la excepción del Revisor (o `DemasiadoTexto`) para que quien llama use los patrones.
+    `avance(evento)` recibe {"tipo": "tanda", i, total, desde, hasta, estado, encontrados} al
+    empezar y al terminar cada tanda (para la pantalla de carga)."""
+    avisar = avance or (lambda _e: None)
     if len(parrafos) > MAX_PARRAFOS:
         raise DemasiadoTexto(f"{len(parrafos)} párrafos: más de {MAX_PARRAFOS} para separar con IA")
     candidatos: list[tuple[int, _Candidato]] = []
@@ -88,7 +91,11 @@ def separar_con_ia(parrafos: list[Parrafo], revisor, contexto: str | None,
     usados: set[int] = set()
     modelo = None
     contexto = (contexto or "").strip() or "(el proyecto no tiene contexto general)"
-    for tanda in tandas(parrafos):
+    lista = tandas(parrafos)
+    for k, tanda in enumerate(lista, 1):
+        evento = {"tipo": "tanda", "i": k, "total": len(lista), "desde": tanda[0], "hasta": tanda[-1],
+                  "parrafos": len(parrafos)}
+        avisar({**evento, "estado": "curso", "encontrados": len(candidatos)})
         texto = "\n".join(_numerado(i, parrafos[i - 1]) for i in tanda)
         r = revisor.separar(contexto, texto, verificar=verificador(parrafos, tanda))
         modelo = r.modelo
@@ -102,6 +109,7 @@ def separar_con_ia(parrafos: list[Parrafo], revisor, contexto: str | None,
             candidatos.append((min(req.parrafos), c))
         for d in r.valor.descartados:
             motivos.setdefault(d.parrafo, d.motivo)
+        avisar({**evento, "estado": "ok", "encontrados": len(candidatos), "modelo": modelo})
     candidatos.sort(key=lambda x: x[0])  # estable: en una tanda, el orden que dio el Revisor
     descartados = [FragmentoDescartado(texto=p.texto, pagina=p.pagina, marca=p.marca, motivo="no_es_requisito",
                                        detalle=motivos.get(i)) for i, p in enumerate(parrafos, 1) if i not in usados]

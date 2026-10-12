@@ -3,8 +3,8 @@ import { Link, useNavigate } from "react-router";
 import { ESTADOS as E, MOOD_SIMPLE, estadoSimple } from "../../constants/estados";
 import { seccion } from "../../components/orb/secciones";
 import { useOrb } from "../../components/orb/useOrb";
-import { EstadoChip, Vacio } from "../../components/ui";
-import { reanalizarRequisitos } from "../../services/backend";
+import { Confirmar, EstadoChip, Vacio } from "../../components/ui";
+import { cancelarRequisitos, reanalizarRequisitos } from "../../services/backend";
 
 /*
  * Los requisitos del proyecto, por carga (ciclo KMoS-SSA), con su estado en
@@ -22,7 +22,7 @@ const FILTROS = [
   ["error", "Con error"],
 ];
 
-export default function Requisitos({ r, onElegir }) {
+export default function Requisitos({ r, onElegir, onCambio }) {
   const orb = useOrb();
   const navigate = useNavigate();
   const [filtro, setFiltro] = useState("todos");
@@ -30,6 +30,7 @@ export default function Requisitos({ r, onElegir }) {
   const [anteriores, setAnteriores] = useState(false); // ver las versiones con error ya reanalizadas
   const [reanalizando, setReanalizando] = useState(false);
   const [falloReanalisis, setFalloReanalisis] = useState(null);
+  const [descartando, setDescartando] = useState(false); // confirmar cancelar y descartar
   const pid = r.proyecto.proyecto_id;
   const reemplazados = r.requisitos.filter((q) => q.reemplazado_por).length;
 
@@ -62,6 +63,11 @@ export default function Requisitos({ r, onElegir }) {
   const fallidos = [...elegidos].filter((id) => {
     const q = r.requisitos.find((x) => x.req_id === id);
     return q?.estado === E.ERROR && !q.reemplazado_por;
+  });
+  // lo que no ha terminado: se cancela su análisis y se descarta por completo
+  const sinTerminar = [...elegidos].filter((id) => {
+    const e = estadoSimple(r.requisitos.find((x) => x.req_id === id)?.estado).id;
+    return e === "cola" || e === "analizando" || e === "revisar";
   });
   const reanalizar = async (ids) => {
     setReanalizando(true);
@@ -154,7 +160,25 @@ export default function Requisitos({ r, onElegir }) {
               {reanalizando ? "Enviando…" : `Volver a analizar (${fallidos.length})`}
             </button>
           )}
+          {sinTerminar.length > 0 && (
+            <button className="pill ghost sm" onClick={() => setDescartando(true)}>Cancelar y descartar ({sinTerminar.length})</button>
+          )}
           <button className="mono px-2 text-[10px] text-[var(--bone-faint)] hover:text-[var(--bone)]" onClick={() => setElegidos(new Set())}>Quitar</button>
+          {descartando && (
+            <div className="basis-full">
+              <Confirmar
+                pregunta={`¿Cancelar el análisis y descartar ${sinTerminar.length === 1 ? "este requisito" : `estos ${sinTerminar.length} requisitos`}?`}
+                detalle={`Se borran por completo: ${sinTerminar.join(", ")}. El que se está analizando se detiene al terminar el paso en curso.`}
+                accion="Cancelar y descartar" enviando="Descartando…" volver="No"
+                onCancelar={() => setDescartando(false)}
+                onConfirmar={async () => {
+                  await cancelarRequisitos(pid, sinTerminar);
+                  setDescartando(false);
+                  setElegidos(new Set());
+                  onCambio?.();
+                }} />
+            </div>
+          )}
         </div>
       )}
     </div>

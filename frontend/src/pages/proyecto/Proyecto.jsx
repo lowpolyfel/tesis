@@ -122,7 +122,7 @@ export default function Proyecto() {
         ]}
       />
 
-      {vista === "requisitos" && <Requisitos r={r} onElegir={(v, ids) => ir(v, ids)} />}
+      {vista === "requisitos" && <Requisitos r={r} onElegir={(v, ids) => ir(v, ids)} onCambio={recargar} />}
       {vista === "especificacion" && <Especificacion proyecto={p} seleccion={seleccion} onTodos={() => ir("especificacion")} />}
       {vista === "lexico" && <Lexico proyectoId={id} />}
       {vista === "mapa" && <Mapa proyectoId={id} requisitos={r.requisitos} seleccion={seleccion} onSeleccion={(ids) => ir("mapa", ids)} />}

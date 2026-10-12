@@ -123,3 +123,16 @@ def test_rutas(cliente):
     assert c.post("/requisitos/separar", json={"texto": TEXTO, "proyecto_id": "P999"}).status_code == 404
     d = c.post(f"/proyectos/{pid}/documentos", files={"archivo": ("caja.txt", TEXTO.encode(), "text/plain")}).json()
     assert d["metodo"] == "ia" and len(d["requisitos_propuestos"]) == 3
+
+
+def test_flujo_dice_lo_que_hace(cliente):
+    c, _, pid = cliente
+    import json
+    r = c.post("/requisitos/separar/flujo", json={"texto": TEXTO, "proyecto_id": pid})
+    assert r.status_code == 200 and r.headers["content-type"].startswith("application/x-ndjson")
+    eventos = [json.loads(x) for x in r.text.splitlines()]
+    assert eventos[0] == {"tipo": "paso", "id": "limpieza", "estado": "ok", "detalle": "5 párrafos"}
+    tandas_ = [e for e in eventos if e["tipo"] == "tanda"]
+    assert [(e["i"], e["total"], e["estado"]) for e in tandas_] == [(1, 1, "curso"), (1, 1, "ok")]
+    assert tandas_[-1]["encontrados"] == 3 and tandas_[-1]["modelo"] == "llm-falso"
+    assert eventos[-1]["tipo"] == "resultado" and len(eventos[-1]["separacion"]["requisitos_propuestos"]) == 3

@@ -157,6 +157,8 @@ export const probarModelo = (datos) => post("/cuenta/modelos/probar", datos);
 /** Los modelos de texto que el proveedor ofrece ahora con esa clave (o la guardada) → { modelos: [{id, nombre}], error } */
 export const listarModelos = (datos) => post("/cuenta/modelos/listar", datos);
 /** Vuelve a analizar requisitos que terminaron en error → { ciclo, req_ids } (las versiones nuevas) */
+/** Cancela el análisis y descarta por completo → { descartados, deteniendo } (estos se borran al terminar su paso) */
+export const cancelarRequisitos = (proyectoId, reqIds) => post(`/proyectos/${id(proyectoId)}/cancelar`, { req_ids: reqIds });
 export const reanalizarRequisitos = (proyectoId, reqIds) => post(`/proyectos/${id(proyectoId)}/reanalizar`, { req_ids: reqIds });
 
 /* ======================= Ficha del contexto y triaje (ADR 0022) ======================= */
@@ -165,4 +167,10 @@ export const fichaContexto = (proyectoId) => get(`/proyectos/${id(proyectoId)}/f
 export const armarFicha = (proyectoId) => post(`/proyectos/${id(proyectoId)}/ficha`, {});
 /** → { resultados: [{indice, veredicto: claro|ambiguo|incompleto|null, motivo, faltantes, preguntas,
  *       terminos_ambiguos, origen}], modelo, aviso, ficha } */
+/** Igual que separarRequisitos, avisando cada paso (NDJSON): onEvento({tipo: paso|tanda|resultado|error, …}) */
+export const separarRequisitosFlujo = (texto, proyectoId, onEvento) =>
+  postFlujo("/requisitos/separar/flujo", { texto, proyecto_id: proyectoId ?? null }, onEvento);
+/** Igual que triarRequisitos, avisando cada paso (NDJSON) */
+export const triarRequisitosFlujo = (proyectoId, textos, onEvento) =>
+  postFlujo(`/proyectos/${id(proyectoId)}/triaje/flujo`, { requisitos: textos }, onEvento);
 export const triarRequisitos = (proyectoId, textos) => post(`/proyectos/${id(proyectoId)}/triaje`, { requisitos: textos });
