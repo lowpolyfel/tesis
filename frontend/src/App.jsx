@@ -24,6 +24,7 @@ import Catalogos from "./pages/Catalogos";
 import Calibracion from "./pages/Calibracion";
 import Evaluacion from "./pages/Evaluacion";
 import Conexion from "./pages/Conexion";
+import Configuracion from "./pages/Configuracion";
 
 /*
  * La esfera vive aquí, por encima de las rutas: nunca se desmonta.
@@ -87,6 +88,7 @@ export default function App() {
             <Route path="/calibracion" element={<Calibracion />} />
             <Route path="/evaluacion" element={<Evaluacion />} />
             <Route path="/conexion" element={<Conexion />} />
+            <Route path="/configuracion" element={<Configuracion />} />
           </Route>
           <Route path="/inicio" element={<AAnalizar />} />
           <Route path="/cargar" element={<AAnalizar />} />

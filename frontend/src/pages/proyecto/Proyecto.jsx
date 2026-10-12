@@ -11,6 +11,7 @@ import Requisitos from "./Requisitos";
 import Especificacion from "./Especificacion";
 import Lexico from "./Lexico";
 import Mapa from "./Mapa";
+import FichaContexto from "./FichaContexto";
 
 /*
  * Un proyecto: su contexto general y cuatro vistas.
@@ -196,6 +197,7 @@ function Contexto({ p, editable, pedirEdicion, onGuardado }) {
         {p.contexto.length > 150 && <button className="hover:text-[var(--bone)]" onClick={() => setCompleto((x) => !x)}>{completo ? "ver menos" : "ver todo"}</button>}
         {editable && <button className="hover:text-[var(--bone)]" onClick={abrir}>editar</button>}
       </p>
+      {editable && <FichaContexto proyecto={p} />}
     </div>
   );
 }

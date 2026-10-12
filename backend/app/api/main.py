@@ -24,9 +24,11 @@ from .routes import (
     auth,
     calibracion,
     comparaciones,
+    contexto,
     documentos,
     evaluaciones,
     lel,
+    modelos,
     preparacion,
     proyectos,
     requisitos,
@@ -128,7 +130,8 @@ def create_app(servicio: Servicio | None = None) -> FastAPI:
     app.include_router(sandbox.router)  # /salud es pública; /conexion pide sesión en la propia ruta
     # Todo lo demás exige una sesión (cookie); cada ruta comprueba además que lo pedido sea de la cuenta
     for r in (requisitos.router, proyectos.router, documentos.router, analisis.router, comparaciones.router,
-              calibracion.router, evaluaciones.router, artefactos.router, lel.router, preparacion.router):
+              calibracion.router, evaluaciones.router, artefactos.router, lel.router, preparacion.router,
+              modelos.router, contexto.router):
         app.include_router(r, dependencies=[Depends(usuario_actual)])
     return app
 

@@ -19,3 +19,5 @@ Todo exige sesión salvo `/auth/*` y `/salud` (ADR 0019); lo de otra cuenta resp
 | POST | `/preparacion/cargar` (precarga un modelo configurado; 422 si no lo es, 502 si Ollama falla) | `preparacion.py` |
 | GET | `/proyectos/{id}/metas`, `/big-picture`, `/especificacion`, `/requisitos/{req_id}/artefactos` | `artefactos.py` |
 | GET/POST | `/proyectos/{id}/mapa-conceptual` (el guardado / generarlo con progreso en NDJSON, ADR 0020) | `artefactos.py` |
+| GET/POST | `/proyectos/{id}/ficha` (ficha del contexto) · POST `/proyectos/{id}/triaje` (ADR 0022) | `contexto.py` |
+| GET/PUT | `/cuenta/modelos` · POST `/cuenta/modelos/probar` (proveedores por cuenta, ADR 0021) | `modelos.py` |

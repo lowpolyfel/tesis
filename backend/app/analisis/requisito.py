@@ -371,6 +371,7 @@ def vista_requisito(traza: Traza, formalizado: dict | None = None) -> dict:
         "terminos": [t.forma() for t in a.terminos],
         "resumen": a.resumen(),
         "solicitud": a.solicitud,
+        "triaje": (traza.config or {}).get("triaje"),  # cómo lo vio el Revisor al cargarlo (ADR 0022)
         "validacion": a.validacion,
         "formalizacion": formalizado if formalizado is not None else a.formalizacion,
         "errores": a.errores,

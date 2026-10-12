@@ -14,10 +14,14 @@ from pathlib import Path
 from langgraph.types import Command
 
 from app.auth import Cuentas
-from app.db.proyectos import COLECCION as COLECCION_PROYECTOS, Proyectos
+from app.contexto import COLECCION_FICHAS
+from app.db.proyectos import COLECCION as COLECCION_PROYECTOS
+from app.db.proyectos import Proyectos
+from app.llm.perfiles import PerfilesLLM, con_perfil
+from app.llm.proveedores import ROLES
 from app.models import (
-    PROYECTO_GENERAL,
     ESTADOS_TERMINALES,
+    PROYECTO_GENERAL,
     EntradaLELFormalizada,
     Estado,
     Nodo,
@@ -34,7 +38,6 @@ from .cola import Cola
 from .dependencias import Dependencias
 from .estado import con_interpretaciones
 from .grafo import COLECCION_FORMALIZADOS, construir_grafo
-
 
 log = logging.getLogger(__name__)
 
@@ -62,7 +65,8 @@ def _pausa(snapshot) -> str | None:
 
 # Lo que cuelga de un proyecto, además de sus trazas y su LEL (campo `proyecto_id`)
 COLECCIONES_DEL_PROYECTO = ("documentos", "comparaciones", "evaluaciones", COLECCION_FORMALIZADOS,
-                            "mapas_conceptuales")  # app/artefactos/mapa_conceptual.py
+                            "mapas_conceptuales",  # app/artefactos/mapa_conceptual.py
+                            COLECCION_FICHAS)  # app/contexto/ficha.py
 
 
 class Servicio:
@@ -75,6 +79,7 @@ class Servicio:
         self.grafo = construir_grafo(deps, checkpointer)
         self.proyectos = Proyectos(self.repo)
         self.cuentas = Cuentas(self.repo, deps.settings)
+        self.perfiles = PerfilesLLM(self.repo, deps.settings)  # proveedores por cuenta (ADR 0021)
         self.cola = Cola()
         self._ocupados: set[str] = set()
         self._candado = threading.Lock()
@@ -145,14 +150,26 @@ class Servicio:
     def siguiente_ciclo(self, proyecto_id: str) -> int:
         return max((t.get("ciclo") or 1 for t in self.repo.listar_trazas(proyecto_id)), default=0) + 1
 
+    def perfil(self, proyecto_id: str | None) -> dict:
+        """Los proveedores que eligió la cuenta dueña del proyecto (ADR 0021); {} si no eligió."""
+        proyecto = self.proyectos.obtener(proyecto_id) if proyecto_id else None
+        return self.perfiles.resuelto(proyecto.propietario if proyecto else None)
+
     def registrar(self, texto: str, proyecto_id: str = PROYECTO_GENERAL, origen: Origen | None = None,
-                  ciclo: int | None = None) -> str:
+                  ciclo: int | None = None, triaje: dict | None = None) -> str:
         """Crea la traza en `cargado` y reserva el requisito para ejecutarlo. Sin `ciclo`, abre uno nuevo.
-        La traza guarda una copia del contexto del proyecto: es el que reciben los agentes (ADR 0017)."""
+        La traza guarda una copia del contexto del proyecto: es el que reciben los agentes (ADR 0017),
+        los modelos que eligió la cuenta (ADR 0021) y el triaje del requisito, si lo hubo (ADR 0022)."""
         proyecto = self.proyectos.obtener(proyecto_id)
         if proyecto is None:
             raise KeyError(proyecto_id)
         config = {**self.deps.config_traza(), "contexto_proyecto": (proyecto.contexto or "").strip() or None}
+        elegidos = self.perfiles.resuelto(proyecto.propietario)
+        config["modelos"] = {**config.get("modelos", {}), **{
+            rol: e["modelo"] if e["proveedor"] == "ollama" else f"{e['proveedor']}:{e['modelo']}"
+            for rol, e in elegidos.items() if rol in ROLES and rol != "revisor"}}
+        if triaje:
+            config["triaje"] = triaje
         with self._candado_ciclos:  # el ciclo nuevo queda tomado al crear su primera traza
             ciclo = ciclo or self.siguiente_ciclo(proyecto_id)
             traza = self.repo.crear_traza(texto, config, proyecto_id=proyecto_id, origen=origen, ciclo=ciclo)
@@ -160,26 +177,30 @@ class Servicio:
         return traza.req_id
 
     def solicitar(self, texto: str, proyecto_id: str = PROYECTO_GENERAL, origen: Origen | None = None,
-                  ciclo: int | None = None) -> str:
+                  ciclo: int | None = None, triaje: dict | None = None) -> str:
         """Registrar y encolar (API)."""
-        req_id = self.registrar(texto, proyecto_id, origen, ciclo)
+        req_id = self.registrar(texto, proyecto_id, origen, ciclo, triaje)
         self.cola.encolar("ejecutar", req_id, lambda: self.ejecutar(req_id))
         return req_id
 
-    def solicitar_lote(self, requisitos: list[tuple[str, Origen | None]], proyecto_id: str) -> tuple[int, list[str]]:
-        """Una carga de varios requisitos abre un solo ciclo nuevo; se encolan en orden."""
+    def solicitar_lote(self, requisitos: list[tuple], proyecto_id: str) -> tuple[int, list[str]]:
+        """Una carga de varios requisitos abre un solo ciclo nuevo; se encolan en orden.
+        Cada requisito: (texto, origen) o (texto, origen, triaje)."""
         if self.proyectos.obtener(proyecto_id) is None:
             raise KeyError(proyecto_id)
         with self._candado_ciclos:  # dos cargas simultáneas al mismo proyecto abren ciclos distintos
             ciclo = self.siguiente_ciclo(proyecto_id)
-            return ciclo, [self.solicitar(texto, proyecto_id, origen, ciclo) for texto, origen in requisitos]
+            return ciclo, [self.solicitar(r[0], proyecto_id, r[1], ciclo, r[2] if len(r) > 2 else None)
+                           for r in requisitos]
 
     def _correr(self, req_id: str, entrada) -> None:
         """Invoca el grafo. Los nodos ya registran sus fallas; esto cubre lo que
         falle fuera de ellos (p. ej. el checkpointer), para que el caso no quede
         a medias sin explicación en la traza."""
         try:
-            self.grafo.invoke(entrada, self._config(req_id))
+            traza = self.repo.obtener_traza(req_id)
+            with con_perfil(self.perfil(traza.proyecto_id if traza else None)):  # sus proveedores (ADR 0021)
+                self.grafo.invoke(entrada, self._config(req_id))
         except Exception as e:
             log.exception("Falla fuera de los nodos en %s", req_id)
             self.repo.agregar_mensaje(req_id, ronda=0, emisor=Nodo.SISTEMA, receptor=Nodo.SISTEMA, tipo=TipoMensaje.ERROR,

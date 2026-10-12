@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.orchestration import Servicio
 from app.preparacion import PreparacionFallida, cargar_modelo, preparacion
 
-from ..dependencias import obtener_servicio
+from ..dependencias import UsuarioDep, obtener_servicio
 
 router = APIRouter(tags=["preparacion"])
 ServicioDep = Annotated[Servicio, Depends(obtener_servicio)]
@@ -21,18 +21,23 @@ class EntradaCarga(BaseModel):
 
 
 @router.get("/preparacion")
-def estado(srv: ServicioDep) -> dict:
+def estado(srv: ServicioDep, usuario: UsuarioDep) -> dict:
     """¿Responde la base? ¿Responde Ollama? ¿Está cada modelo del análisis descargado y en
-    memoria? `listo` dice si se puede empezar."""
-    return preparacion(srv.repo, srv.deps.settings)
+    memoria (o, si es de un servicio externo, tiene su clave)? Con los proveedores que eligió
+    la cuenta (ADR 0021). `listo` dice si se puede empezar."""
+    u = usuario.usuario_id
+    return preparacion(srv.repo, srv.deps.settings, elecciones=srv.perfiles.elecciones(u),
+                       ollama_url=srv.perfiles.url_ollama(u))
 
 
 @router.post("/preparacion/cargar")
-def cargar(entrada: EntradaCarga, srv: ServicioDep) -> dict:
+def cargar(entrada: EntradaCarga, srv: ServicioDep, usuario: UsuarioDep) -> dict:
     """Precarga en memoria un modelo de Ollama del análisis. 422 si no es uno de ellos;
     502 si Ollama no responde o no lo puede cargar."""
     try:
-        return cargar_modelo(srv.deps.settings, entrada.modelo)
+        u = usuario.usuario_id
+        return cargar_modelo(srv.deps.settings, entrada.modelo, elecciones=srv.perfiles.elecciones(u),
+                             ollama_url=srv.perfiles.url_ollama(u))
     except ValueError as e:
         raise HTTPException(422, str(e)) from e
     except PreparacionFallida as e:

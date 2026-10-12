@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router";
 import { useOrb, usePoseEsfera } from "../components/orb/useOrb";
 import {
   CONTEXTO_MAX, LIMITES_CARGA, cargarRequisitos, editarProyecto, obtenerProyecto, separarRequisitos, subirDocumento,
+  triarRequisitos,
 } from "../services/backend";
 import { recordarProyecto } from "../components/proyectoRecordado";
 import { Volver } from "../components/ui";
@@ -14,12 +15,17 @@ import { Volver } from "../components/ui";
  *   pegar     → la esfera se hace a un lado; aparece el texto
  *   leyendo   → la esfera "lee" (piensa) en el centro
  *   confirmar → la esfera a la izquierda; a la derecha, los requisitos detectados
+ *   revisando → la esfera piensa: el Revisor los compara con la ficha del contexto
+ *   triaje    → separados: los que se entienden, los ambiguos (irán con revisión
+ *               humana) y los poco detallados, que hay que precisar antes (ADR 0022)
  *
  * El backend lee el PDF (texto extraíble; sin OCR por alcance) y lo separa en
  * requisitos candidatos con su página y numeración original. Lo que descarta
  * se muestra y lo que la limpieza quitó también: nada se pierde en silencio.
- * La persona confirma la separación; desde ahí todo sigue solo y solo se le
- * pregunta si los agentes no llegan a un acuerdo (ADR 0017).
+ * La persona confirma la separación; el Revisor compara cada requisito con el
+ * contexto y los poco detallados se precisan antes de analizar. Desde ahí todo
+ * sigue solo y se le pregunta si los agentes no llegan a un acuerdo (ADR 0017) o
+ * si el requisito era ambiguo.
  */
 const POSES = {
   inicio: { d: { x: 0, y: -0.08, s: 1.05 }, m: { x: 0, y: -0.16, s: 0.8 } },
@@ -29,6 +35,8 @@ const POSES = {
   leyendo: { d: { x: 0, y: -0.04, s: 0.9 }, m: { x: 0, y: -0.1, s: 0.7 } },
   confirmar: { d: { x: -0.29, y: 0.02, s: 0.78 }, m: { x: 0, y: -0.36, s: 0.4 } },
 };
+POSES.revisando = POSES.leyendo;
+POSES.triaje = POSES.confirmar;
 const MIN_LECTURA_MS = 1400;
 
 /* Un 422 del backend señala el requisito por su posición (base 0) en lo enviado; aquí se numeran desde 1 */
@@ -56,6 +64,7 @@ export default function Analizar() {
   const [advertencias, setAdvertencias] = useState([]); // lo que la limpieza quitó o no pudo leer
   const [error, setError] = useState(null);
   const [saliendo, setSaliendo] = useState(false);
+  const [avisoTriaje, setAvisoTriaje] = useState(null);
   const archivo = useRef(null);
 
   usePoseEsfera(POSES[arrastrando ? "arrastre" : fase], [fase, arrastrando]);
@@ -66,10 +75,10 @@ export default function Analizar() {
   }, [proyectoId]);
 
   useEffect(() => {
-    orb.setMood(fase === "leyendo" ? "thinking" : arrastrando || fase === "contexto" ? "listening" : "idle");
+    orb.setMood(fase === "leyendo" || fase === "revisando" ? "thinking" : arrastrando || fase === "contexto" ? "listening" : "idle");
     orb.update("core", {
-      label: fase === "leyendo" ? "Leyendo" : fase === "confirmar" ? `${piezas.length} requisitos` : null,
-      sub: fase === "leyendo" ? origen : null,
+      label: fase === "leyendo" ? "Leyendo" : fase === "revisando" ? "Revisando" : fase === "confirmar" || fase === "triaje" ? `${piezas.length} requisitos` : null,
+      sub: fase === "leyendo" ? origen : fase === "revisando" ? "con el contexto del proyecto" : null,
     });
   }, [orb, fase, arrastrando, origen, piezas.length]);
   useEffect(() => () => orb.update("core", { label: null, sub: null }), [orb]);
@@ -166,6 +175,10 @@ export default function Analizar() {
     try {
       const requisitos = validas.map((p) => ({
         texto: p.texto.trim(),
+        triaje: p.triaje ? {
+          veredicto: p.triaje.veredicto, motivo: p.triaje.motivo, faltantes: p.triaje.faltantes, preguntas: p.triaje.preguntas,
+          terminos_ambiguos: p.triaje.terminos_ambiguos, precisado: p.texto.trim() !== p.textoInicial, forzado: Boolean(p.forzado),
+        } : null,
         origen: {
           documento_id: documento?.documento_id ?? null,
           archivo: documento?.archivo ?? "texto pegado",
@@ -183,6 +196,36 @@ export default function Analizar() {
       setError(explicar(e, validas));
     }
   };
+
+  /* El Revisor compara cada requisito con la ficha del contexto (POST /proyectos/{id}/triaje) */
+  const revisar = async () => {
+    setError(null);
+    setFase("revisando");
+    try {
+      const [r] = await Promise.all([triarRequisitos(proyectoId, validas.map((p) => p.texto.trim())),
+        new Promise((ok) => setTimeout(ok, MIN_LECTURA_MS))]);
+      setPiezas(validas.map((p, i) => ({ ...p, triaje: r.resultados[i], revisado: p.texto.trim(), textoInicial: p.texto.trim(), forzado: false })));
+      setAvisoTriaje(r.aviso);
+      orb.poke(1);
+      setFase("triaje");
+    } catch (e) {
+      orb.setMood("error", { revertAfter: 1600 });
+      setError(`No se pudo revisar con el contexto: ${e.message}`);
+      setFase("confirmar");
+    }
+  };
+  const revisarUna = async (i) => {
+    const p = piezas[i];
+    setPiezas((ps) => ps.map((x, j) => (j === i ? { ...x, revisando: true } : x)));
+    try {
+      const r = await triarRequisitos(proyectoId, [p.texto.trim()]);
+      setPiezas((ps) => ps.map((x, j) => (j === i ? { ...x, triaje: r.resultados[0], revisado: x.texto.trim(), revisando: false, forzado: false } : x)));
+    } catch (e) {
+      setPiezas((ps) => ps.map((x, j) => (j === i ? { ...x, revisando: false } : x)));
+      setError(e.message);
+    }
+  };
+  const forzar = (i) => setPiezas((ps) => ps.map((x, j) => (j === i ? { ...x, forzado: true, revisado: x.texto.trim() } : x)));
 
   return (
     <main className="relative z-10 min-h-screen">
@@ -238,10 +281,16 @@ export default function Analizar() {
         </section>
       )}
 
-      {fase === "leyendo" && (
-        <p key="leyendo" className="mono aparece fixed inset-x-0 bottom-[16vh] text-center text-[10px] text-[var(--bone-dim)]">
-          Separando el documento en requisitos…
+      {(fase === "leyendo" || fase === "revisando") && (
+        <p key={fase} className="mono aparece fixed inset-x-0 bottom-[16vh] text-center text-[10px] text-[var(--bone-dim)]">
+          {fase === "leyendo" ? "Separando el documento en requisitos…" : "El Revisor compara cada requisito con la ficha del contexto…"}
         </p>
+      )}
+
+      {fase === "triaje" && (
+        <Triaje piezas={piezas} proyecto={proyecto} aviso={avisoTriaje} error={error} saliendo={saliendo}
+          onEditar={editar} onQuitar={quitar} onRevisar={revisarUna} onForzar={forzar} onAnalizar={analizar}
+          onVolver={() => { setError(null); setFase("confirmar"); }} />
       )}
 
       {fase === "confirmar" && (
@@ -254,7 +303,7 @@ export default function Analizar() {
           </h1>
           <p className="text-[14.5px] text-[var(--bone-dim)]">
             {piezas.length
-              ? "Revisa la separación: corrige, une o quita. Después todo sigue solo."
+              ? "Revisa la separación: corrige, une o quita. Después los comparo con el contexto del proyecto."
               : "No encontré oraciones con «debe», «podrá» o «permitirá». Rescata los que sí sean requisitos con «+ usar»."}
           </p>
           {advertencias.length > 0 && (
@@ -332,8 +381,8 @@ export default function Analizar() {
                 {error && <p>{error}</p>}
               </div>
             )}
-            <button className="pill" disabled={!validas.length || saliendo || !destino || sobran > 0 || largos.length > 0} onClick={analizar} onPointerEnter={() => orb.poke(0.3)}>
-              Analizar {validas.length} {validas.length === 1 ? "requisito" : "requisitos"}
+            <button className="pill" disabled={!validas.length || saliendo || !destino || sobran > 0 || largos.length > 0} onClick={revisar} onPointerEnter={() => orb.poke(0.3)}>
+              Revisar {validas.length} con el contexto
             </button>
             <button className="pill ghost" onClick={() => { setPiezas([]); setError(null); setFase("inicio"); }}>Empezar de nuevo</button>
             <Link className="mono px-2 text-[10px] text-[var(--bone-faint)] hover:text-[var(--bone)]" to={`/proyectos/${proyectoId}`}>cancelar</Link>
@@ -387,5 +436,107 @@ function EditarContexto({ proyecto, onListo }) {
         </div>
       </form>
     </section>
+  );
+}
+
+/*
+ * Los requisitos separados por el Revisor (ADR 0022). Los poco detallados se precisan
+ * (se reescriben y se vuelven a revisar), se mandan así a propósito o se quitan: sin
+ * eso no se puede analizar. Los ambiguos van al análisis y se detienen para que una
+ * persona los revise. Un requisito editado después de revisarlo se vuelve a revisar.
+ */
+const GRUPOS_TRIAJE = [
+  { id: "incompleto", titulo: "Hay que precisarlos", nota: "No se entienden con el contexto sin inventar información. Reescríbelos con lo que falta.", tono: "var(--danger)" },
+  { id: "ambiguo", titulo: "Ambiguos", nota: "Se entiende qué piden, pero algo admite más de una interpretación. Se analizan y te los pregunto antes de formalizarlos.", tono: "var(--aviso)" },
+  { id: "sin", titulo: "Sin revisar", nota: "El Revisor no respondió: se analizan como vienen.", tono: "var(--bone-faint)" },
+  { id: "claro", titulo: "Se entienden con el contexto", nota: "Van directo al análisis.", tono: "var(--ok)" },
+];
+
+function grupoDe(p) {
+  if (p.forzado) return "ambiguo";
+  return p.triaje?.veredicto ?? "sin";
+}
+
+function Triaje({ piezas, proyecto, aviso, error, saliendo, onEditar, onQuitar, onRevisar, onForzar, onAnalizar, onVolver }) {
+  const editado = (p) => p.texto.trim() !== p.revisado;
+  const pendiente = (p) => p.texto.trim() && (editado(p) || (grupoDe(p) === "incompleto"));
+  const pendientes = piezas.filter(pendiente).length;
+  const total = piezas.filter((p) => p.texto.trim()).length;
+  const cuenta = (g) => piezas.filter((p) => grupoDe(p) === g).length;
+
+  return (
+    <section key="triaje" className={`aparece mx-auto flex min-h-screen max-w-2xl flex-col justify-center gap-6 px-6 pt-[34vh] pb-12 md:mr-[6vw] md:pt-28 ${saliendo ? "sale" : ""}`}>
+      <p className="mono text-[10px] text-[var(--bone-faint)]">{proyecto?.nombre} · revisados con el contexto</p>
+      <h1 className="serif text-[clamp(36px,3.6vw,56px)] leading-[.95]">
+        {cuenta("incompleto") ? <>Hay <em>{cuenta("incompleto")}</em> por precisar.</> : <>Listos para <em>analizar</em>.</>}
+      </h1>
+      <p className="text-[14.5px] text-[var(--bone-dim)]">
+        {cuenta("claro")} se entienden · {cuenta("ambiguo")} ambiguos · {cuenta("incompleto")} poco detallados
+        {!proyecto?.contexto && <> · <span className="text-[var(--aviso)]">el proyecto no tiene contexto: los revisé solo por sí mismos</span></>}
+      </p>
+      {aviso && <p className="text-[13px] text-[var(--aviso)]">{aviso}</p>}
+
+      {GRUPOS_TRIAJE.map((g) => {
+        const del = piezas.map((p, i) => ({ p, i })).filter(({ p }) => grupoDe(p) === g.id);
+        if (!del.length) return null;
+        return (
+          <section key={g.id} className="space-y-2">
+            <h2 className="flex items-center gap-2"><span className="punto" style={{ background: g.tono }} />{g.titulo} <span className="text-[var(--bone-faint)]">({del.length})</span></h2>
+            <p className="text-[13px] text-[var(--bone-faint)]">{g.nota}</p>
+            <ol className="space-y-2">
+              {del.map(({ p, i }) => (
+                <PiezaRevisada key={p.clave ?? i} p={p} compacta={g.id === "claro" && !editado(p)} editado={editado(p)}
+                  onEditar={(v) => onEditar(i, v)} onQuitar={() => onQuitar(i)} onRevisar={() => onRevisar(i)} onForzar={() => onForzar(i)} />
+              ))}
+            </ol>
+          </section>
+        );
+      })}
+
+      <div className="sticky bottom-4 z-10 -mx-3 flex flex-wrap items-center gap-3 rounded-[28px] bg-[color-mix(in_oklab,var(--bg)_90%,transparent)] px-3 py-2">
+        {error && <p className="basis-full px-2 text-sm text-[var(--danger)]">{error}</p>}
+        <button className="pill" disabled={!total || pendientes > 0 || saliendo} onClick={onAnalizar}>
+          {pendientes ? `Faltan ${pendientes} por precisar o revisar` : `Analizar ${total} ${total === 1 ? "requisito" : "requisitos"}`}
+        </button>
+        <button className="pill ghost" onClick={onVolver}>Volver a la separación</button>
+      </div>
+    </section>
+  );
+}
+
+function PiezaRevisada({ p, compacta, editado, onEditar, onQuitar, onRevisar, onForzar }) {
+  const t = p.triaje;
+  const incompleto = grupoDe(p) === "incompleto";
+  return (
+    <li className={`group rounded-2xl border border-[var(--line)] px-4 py-3 ${incompleto ? "bg-[color-mix(in_oklab,var(--danger)_5%,transparent)]" : ""}`}>
+      <div className="flex items-start gap-3">
+        <span className="mono w-6 shrink-0 pt-2 text-[10px] text-[var(--bone-faint)]">{String(p.n).padStart(2, "0")}</span>
+        <textarea value={p.texto} rows={Math.max(1, Math.ceil(p.texto.length / 70))} onChange={(e) => onEditar(e.target.value)}
+          className="min-w-0 flex-1 resize-none bg-transparent py-1.5 [field-sizing:content] text-[15px] leading-relaxed text-[var(--bone)] outline-none" />
+      </div>
+      {!compacta && t && (
+        <div className="ml-9 space-y-1.5 pb-1 text-[13px]">
+          {t.motivo && <p className="text-[var(--bone-dim)]">{t.motivo}</p>}
+          {t.terminos_ambiguos?.length > 0 && (
+            <p className="flex flex-wrap gap-1.5">{t.terminos_ambiguos.map((x) => <span key={x} className="rounded-full border border-[var(--line)] px-2 text-[12px] text-[var(--aviso)]">«{x}»</span>)}</p>
+          )}
+          {t.faltantes?.length > 0 && <p className="text-[var(--bone-faint)]">Falta: {t.faltantes.join(", ")}</p>}
+          {t.preguntas?.length > 0 && (
+            <ul className="list-disc space-y-0.5 pl-5 text-[var(--bone-dim)]">{t.preguntas.map((q) => <li key={q}>{q}</li>)}</ul>
+          )}
+          {p.forzado && <p className="text-[var(--aviso)]">Lo mandas así: te lo preguntaré antes de formalizarlo.</p>}
+        </div>
+      )}
+      <div className="mono ml-9 flex flex-wrap gap-x-4 gap-y-1 pt-1 text-[10px] text-[var(--bone-faint)]">
+        {editado && <span className="text-[var(--aviso)]">cambió: vuelve a revisarlo</span>}
+        {(incompleto || editado) && (
+          <button className="hover:text-[var(--bone)] disabled:opacity-40" disabled={p.revisando || !p.texto.trim()} onClick={onRevisar}>
+            {p.revisando ? "revisando…" : "volver a revisar"}
+          </button>
+        )}
+        {incompleto && !editado && <button className="hover:text-[var(--bone)]" onClick={onForzar} title="Se analiza y se detiene para que lo revises">analizar así</button>}
+        <button className="hover:text-[var(--danger)]" onClick={onQuitar}>quitar</button>
+      </div>
+    </li>
   );
 }

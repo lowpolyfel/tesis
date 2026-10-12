@@ -11,10 +11,12 @@ from app.agents.clasificador import Clasificador
 from app.agents.critico import Critico, ReglasCritico
 from app.agents.extractor import Extractor
 from app.agents.modelador import Modelador
+from app.agents.revisor import Revisor
 from app.config import Settings, get_settings
 from app.db.repositorio import Repositorio, crear_repositorio
 from app.divergence import EmbeddingsOllama, ProveedorEmbeddings
 from app.llm import ClienteLLM, crear_cliente
+from app.llm.perfiles import ClienteDinamico
 from app.nlp import Analizador, Catalogos, Filtros
 
 
@@ -27,6 +29,7 @@ class Dependencias:
     clasificador: Clasificador
     critico: Critico
     modelador: Modelador
+    revisor: Revisor
     embeddings: ProveedorEmbeddings
     analizador: Analizador | None = None
     # Clientes de los módulos fuera del grafo (comparación entre requisitos, línea base de un agente)
@@ -46,9 +49,15 @@ class Dependencias:
 def armar(settings: Settings, repo: Repositorio, analizador: Analizador, *, extractor: ClienteLLM,
           clasificador: ClienteLLM, critico: ClienteLLM, modelador: ClienteLLM,
           embeddings: ProveedorEmbeddings, comparador: ClienteLLM | None = None,
-          agente_unico: ClienteLLM | None = None) -> Dependencias:
-    """Une clientes, spaCy y catálogos en las piezas del grafo."""
+          agente_unico: ClienteLLM | None = None, revisor: ClienteLLM | None = None) -> Dependencias:
+    """Une clientes, spaCy y catálogos en las piezas del grafo. Cada agente recibe un
+    `ClienteDinamico`: usa el proveedor que eligió la cuenta que analiza (ADR 0021) o, si no
+    eligió nada, el cliente que se pasa aquí."""
     catalogos = Catalogos.cargar(settings.ruta(settings.catalogos_dir), analizador)
+    extractor, clasificador, critico, modelador = (
+        ClienteDinamico(rol, c, settings) for rol, c in
+        (("extractor", extractor), ("clasificador", clasificador), ("critico", critico), ("modelador", modelador)))
+    revisor = ClienteDinamico("revisor", revisor or modelador.defecto, settings)
     return Dependencias(
         settings=settings,
         repo=repo,
@@ -57,6 +66,7 @@ def armar(settings: Settings, repo: Repositorio, analizador: Analizador, *, extr
         clasificador=Clasificador(clasificador, settings.significado_max_palabras),
         critico=Critico(critico, ReglasCritico(analizador)),
         modelador=Modelador(modelador),
+        revisor=Revisor(revisor),
         embeddings=embeddings,
         analizador=analizador,
         llm_comparador=comparador,
@@ -74,6 +84,7 @@ def crear_dependencias(settings: Settings | None = None) -> Dependencias:
         clasificador=crear_cliente("ollama", s.clasificador_model, s),
         critico=crear_cliente(s.critico_provider, s.critico_model, s),
         modelador=crear_cliente("ollama", s.modelador_model, s),
+        revisor=crear_cliente("ollama", s.revisor_model, s),
         embeddings=EmbeddingsOllama(s.embedding_model, s.ollama_base_url, s.ollama_timeout_s),
         comparador=crear_cliente("ollama", s.comparador_model, s),
         agente_unico=crear_cliente("ollama", s.agente_unico_model, s),

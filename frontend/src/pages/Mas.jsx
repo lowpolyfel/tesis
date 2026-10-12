@@ -26,6 +26,12 @@ const GRUPOS = [
     ],
   },
   {
+    titulo: "Tu cuenta",
+    items: [
+      { a: "/configuracion", texto: "Configuración", que: "Qué proveedor y modelo usa cada agente (Ollama, Gemini, OpenAI, Claude…) y sus claves.", mood: "clasificador" },
+    ],
+  },
+  {
     titulo: "Servidor",
     items: [
       { a: "/conexion", texto: "Conexión", que: "A qué base de datos está conectado el backend (Atlas, local o JSON) y si puede escribir.", mood: "sistema" },

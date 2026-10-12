@@ -38,6 +38,7 @@ class EstadoGrafo(TypedDict, total=False):
     texto: str
     contexto: str | None  # contexto general del proyecto al cargar el requisito (ADR 0017)
     evaluacion: bool  # proyecto de evaluación: siempre se detiene antes de validar (ADR 0014)
+    revision_obligatoria: bool  # el triaje lo vio ambiguo o incompleto: una persona lo revisa (ADR 0022)
     estado: str  # Estado
     ronda: int
     lel: list[dict]  # EntradaLEL vigente al cargar el requisito (no cambia durante el proceso)

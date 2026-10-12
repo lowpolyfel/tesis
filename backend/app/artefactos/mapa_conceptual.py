@@ -34,6 +34,7 @@ import re
 from collections import Counter
 from collections.abc import Iterator
 
+from app.llm.perfiles import con_perfil
 from app.nlp import normalizar
 
 from .exportar import ids_saneados, texto_mermaid
@@ -402,10 +403,11 @@ def _paso(id_: str, texto: str, estado: str = "curso", detalle: str | None = Non
     return {"tipo": "paso", "id": id_, "texto": texto, "estado": estado, "detalle": detalle}
 
 
-def generar_mapa(bp: dict, nombre: str, contexto: str | None, modelador) -> Iterator[dict]:
+def generar_mapa(bp: dict, nombre: str, contexto: str | None, modelador, perfil: dict | None = None) -> Iterator[dict]:
     """Recorre el protocolo y va avisando: {"tipo": "paso", …} por cada paso (primero en
     curso y luego terminado) y al final {"tipo": "mapa", "mapa": …}. Sin `modelador`
-    (o si falla) el mapa queda en código y lo dice."""
+    (o si falla) el mapa queda en código y lo dice. `perfil`: los proveedores de la cuenta
+    (ADR 0021); se fija solo alrededor de la llamada, que ocurre entera entre dos `yield`."""
     requisitos = [n for n in bp["nodos"] if n["tipo"] == "requisito"]
     yield _paso("reunir", "Reuniendo lo validado")
     yield _paso("reunir", "Reuniendo lo validado", "ok",
@@ -427,16 +429,18 @@ def generar_mapa(bp: dict, nombre: str, contexto: str | None, modelador) -> Iter
     if modelador is None:
         aviso = "Sin Modelador: el mapa se armó en código."
     else:
-        modelo = getattr(modelador.cliente, "modelo", None)
+        with con_perfil(perfil):
+            modelo = getattr(modelador.cliente, "modelo", None)
         texto = f"El Modelador organiza el mapa{f' ({modelo})' if modelo else ''}"
         yield _paso("modelador", texto, detalle="agrupa los conceptos en ramas y nombra cada relación")
         ids = {c["id"] for c in para_llm}
         try:
-            r = modelador.mapear(
-                nombre, contexto, [n["detalle"] or n["etiqueta"] for n in requisitos][:40],
-                [{"id": c["id"], "etiqueta": c["etiqueta"], "tipo": c["tipo"], "peso": c["peso"]} for c in para_llm],
-                [{"origen": x["origen"], "enlace": x["enlace"], "destino": x["destino"]} for x in rel_llm],
-                LIMITE_CONCEPTOS, LIMITE_PROPOSICIONES, verificar=lambda s: verificar_mapa(s, ids))
+            with con_perfil(perfil):
+                r = modelador.mapear(
+                    nombre, contexto, [n["detalle"] or n["etiqueta"] for n in requisitos][:40],
+                    [{"id": c["id"], "etiqueta": c["etiqueta"], "tipo": c["tipo"], "peso": c["peso"]} for c in para_llm],
+                    [{"origen": x["origen"], "enlace": x["enlace"], "destino": x["destino"]} for x in rel_llm],
+                    LIMITE_CONCEPTOS, LIMITE_PROPOSICIONES, verificar=lambda s: verificar_mapa(s, ids))
             mapa, descartadas = del_modelador(r.valor, para_llm, rel_llm)
             version = r.prompt_version
             yield _paso("modelador", texto, "ok",

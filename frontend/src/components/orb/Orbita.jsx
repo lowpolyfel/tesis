@@ -42,7 +42,7 @@ export default function Orbita({ abierta, onCerrar, destinos }) {
     const pos = lugares(destinos);
     const ids = pos.map((d) => `menu:${d.id}`);
     setPuestos(pos);
-    orb.setElevada(true);
+    orb.setElevada(true, "menu");
     orb.setPose({ x: 0, y: 0, s: isMobile() ? 0.42 : 0.55 });
     orb.divide("core", pos.map((d) => ({
       id: `menu:${d.id}`, mood: d.mood, x: d.x, y: d.y, s: isMobile() ? 0.24 : 0.3, label: null, sub: null,
@@ -55,7 +55,7 @@ export default function Orbita({ abierta, onCerrar, destinos }) {
       removeEventListener("keydown", tecla);
       orb.fuse(ids, "core", SIN_MEMBRANA);
       orb.setPose(previa); // si se navega, la sección nueva pone su pose después
-      retiro.current = setTimeout(() => orb.setElevada(false), RETIRO_MS);
+      retiro.current = setTimeout(() => orb.setElevada(false, "menu"), RETIRO_MS);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [abierta]);

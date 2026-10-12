@@ -12,6 +12,7 @@
  *   onClick: la esfera se puede tocar (la principal abre el menú)
  */
 export function createOrbController() {
+  const elevadores = new Set();
   const bodies = new Map();
   const listeners = new Set();
   // elevada: las esferas pasan por encima del contenido (menú de la esfera)
@@ -52,9 +53,13 @@ export function createOrbController() {
     setShy(shy) {
       state.shy = shy;
     },
-    setElevada(elevada) {
-      if (state.elevada === elevada) return;
-      state.elevada = elevada;
+    // la esfera pasa por encima del contenido mientras alguien la necesite al frente (el menú, una
+    // pantalla de carga): cada quien la sube y la baja con su nombre, y una bajada tardía de uno
+    // no se lleva la de otro
+    setElevada(elevada, quien = "general") {
+      if (elevada) elevadores.add(quien); else elevadores.delete(quien);
+      if (state.elevada === elevadores.size > 0) return;
+      state.elevada = elevadores.size > 0;
       emit();
     },
     mood: () => core().mood,

@@ -17,6 +17,7 @@ import httpx
 
 from app.config import Settings
 from app.db.repositorio import RepositorioMongo, enmascarar
+from app.llm.proveedores import POR_ID
 
 
 class PreparacionFallida(Exception):
@@ -27,19 +28,30 @@ def _ms(desde: float) -> float:
     return round((perf_counter() - desde) * 1000, 1)
 
 
-def modelos_del_analisis(s: Settings) -> list[dict]:
-    """Un renglón por modelo distinto que usa el grafo, con los roles que lo usan."""
-    usos = [("extractor", "ollama", s.extractor_model, "generacion"),
-            ("clasificador", "ollama", s.clasificador_model, "generacion"),
-            ("critico", s.critico_provider, s.critico_model, "generacion"),
-            ("modelador", "ollama", s.modelador_model, "generacion"),
-            ("embeddings", "ollama", s.embedding_model, "embeddings")]
+def _usos(s: Settings, elecciones: dict | None = None) -> list[dict]:
+    """Un renglón por modelo distinto que usa el grafo, con los roles que lo usan y si tiene clave.
+    `elecciones`: {rol: {proveedor, modelo, tiene_clave, propio}} de la cuenta (ADR 0021);
+    sin ellas, lo del .env."""
+    base = {"extractor": ("ollama", s.extractor_model), "clasificador": ("ollama", s.clasificador_model),
+            "critico": (s.critico_provider, s.critico_model), "modelador": ("ollama", s.modelador_model)}
     modelos: dict[tuple, dict] = {}
-    for rol, proveedor, modelo, tipo in usos:
-        m = modelos.setdefault((proveedor, modelo, tipo),
-                               {"modelo": modelo, "proveedor": proveedor, "tipo": tipo, "roles": []})
+    for rol, (proveedor, modelo) in base.items():
+        e = (elecciones or {}).get(rol) or {"proveedor": proveedor, "modelo": modelo,
+                                            "tiene_clave": rol == "critico" and bool(s.critico_api_key), "propio": False}
+        m = modelos.setdefault((e["proveedor"], e["modelo"], "generacion"), {
+            "modelo": e["modelo"], "proveedor": e["proveedor"], "tipo": "generacion", "roles": [],
+            "tiene_clave": e.get("tiene_clave", False), "propio": e.get("propio", False)})
         m["roles"].append(rol)
+    m = modelos.setdefault(("ollama", s.embedding_model, "embeddings"), {
+        "modelo": s.embedding_model, "proveedor": "ollama", "tipo": "embeddings", "roles": [],
+        "tiene_clave": False, "propio": False})
+    m["roles"].append("embeddings")
     return list(modelos.values())
+
+
+def modelos_del_analisis(s: Settings, elecciones: dict | None = None) -> list[dict]:
+    """Un renglón por modelo distinto que usa el grafo, con los roles que lo usan."""
+    return [{k: v for k, v in m.items() if k not in ("tiene_clave", "propio")} for m in _usos(s, elecciones)]
 
 
 def _esta(modelo: str, nombres: set[str]) -> bool:
@@ -62,9 +74,10 @@ def estado_base(repo) -> dict:
     return {"ok": True, "tipo": repo.tipo, "host": repo.host, "ms": _ms(t0), "error": None, "aviso": None}
 
 
-def estado_modelos(s: Settings, cliente: httpx.Client) -> dict:
-    modelos = modelos_del_analisis(s)
-    url = s.ollama_base_url.rstrip("/")
+def estado_modelos(s: Settings, cliente: httpx.Client, elecciones: dict | None = None,
+                   ollama_url: str | None = None) -> dict:
+    modelos = _usos(s, elecciones)
+    url = (ollama_url or s.ollama_base_url).rstrip("/")
     ollama = None
     instalados: set[str] = set()
     cargados: set[str] = set()
@@ -90,28 +103,35 @@ def estado_modelos(s: Settings, cliente: httpx.Client) -> dict:
             m["error"] = (None if m["disponible"] or not (ollama and ollama["ok"])
                           else f"Falta el modelo en Ollama: corre «ollama pull {m['modelo']}».")
         else:  # servicio externo: no hay nada que cargar; basta la clave
-            m["disponible"] = bool(s.critico_api_key)
+            p = POR_ID.get(m["proveedor"])
+            m["disponible"] = bool(m["tiene_clave"]) or bool(p and not p.pide_clave)
             m["cargado"] = m["disponible"]
-            m["error"] = None if m["disponible"] else "Falta CRITICO_API_KEY en el .env."
+            m["error"] = (None if m["disponible"] else f"Falta la clave de {p.nombre if p else m['proveedor']}: "
+                          "agrégala en Configuración." if m["propio"] else "Falta CRITICO_API_KEY en el .env.")
+    for m in modelos:
+        m.pop("tiene_clave"), m.pop("propio")
     return {"ollama": ollama, "modelos": modelos}
 
 
-def preparacion(repo, s: Settings, cliente: httpx.Client | None = None) -> dict:
+def preparacion(repo, s: Settings, cliente: httpx.Client | None = None, elecciones: dict | None = None,
+                ollama_url: str | None = None) -> dict:
     """Estado de todo lo que necesita el análisis. `listo`: se puede empezar."""
     with (cliente or httpx.Client()) as c:
-        modelos = estado_modelos(s, c)
+        modelos = estado_modelos(s, c, elecciones, ollama_url)
     base = estado_base(repo)
     listo = base["ok"] and all(m["disponible"] for m in modelos["modelos"])
     return {"listo": listo, "base": base, **modelos}
 
 
-def cargar_modelo(s: Settings, modelo: str, cliente: httpx.Client | None = None) -> dict:
+def cargar_modelo(s: Settings, modelo: str, cliente: httpx.Client | None = None, elecciones: dict | None = None,
+                  ollama_url: str | None = None) -> dict:
     """Deja en memoria un modelo de Ollama de los que usa el análisis. ValueError si no es
     uno de ellos; PreparacionFallida si Ollama no responde o no lo puede cargar."""
-    m = next((x for x in modelos_del_analisis(s) if x["modelo"] == modelo and x["proveedor"] == "ollama"), None)
+    m = next((x for x in modelos_del_analisis(s, elecciones) if x["modelo"] == modelo and x["proveedor"] == "ollama"),
+             None)
     if m is None:
         raise ValueError(f"«{modelo}» no es un modelo de Ollama del análisis")
-    url = s.ollama_base_url.rstrip("/")
+    url = (ollama_url or s.ollama_base_url).rstrip("/")
     t0 = perf_counter()
     try:
         with (cliente or httpx.Client()) as c:

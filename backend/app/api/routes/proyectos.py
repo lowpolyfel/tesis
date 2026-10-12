@@ -2,7 +2,7 @@
 requisitos a la cola. Un proyecto de otra cuenta responde 404."""
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
@@ -35,10 +35,24 @@ class CambiosProyecto(BaseModel):
     contexto: str | None = Field(None, max_length=CONTEXTO_MAX)
 
 
+class TriajeEntrada(BaseModel):
+    """El veredicto del triaje que vio la persona (ADR 0022). `ambiguo` o `incompleto` obligan a
+    revisar el requisito antes de formalizarlo; `forzado`: se mandó incompleto a propósito."""
+    model_config = ConfigDict(extra="forbid")
+    veredicto: Literal["claro", "ambiguo", "incompleto"] | None = None
+    motivo: str | None = Field(None, max_length=400)
+    faltantes: list[str] = Field(default=[], max_length=6)
+    preguntas: list[str] = Field(default=[], max_length=4)
+    terminos_ambiguos: list[str] = Field(default=[], max_length=8)
+    precisado: bool = False  # la persona lo reescribió tras el triaje
+    forzado: bool = False
+
+
 class RequisitoNuevo(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     texto: str = Field(min_length=1, max_length=2000)
     origen: Origen | None = None
+    triaje: TriajeEntrada | None = None
 
 
 class EntradaRequisitos(BaseModel):
@@ -106,5 +120,6 @@ def cargar(p: ProyectoDep, entrada: EntradaRequisitos, srv: ServicioDep) -> dict
         if previo and previo.proyecto_id != p.proyecto_id:
             raise HTTPException(422, f"requisito {i}: {o.reproceso_de} es del proyecto {previo.proyecto_id}, "
                                      f"no de {p.proyecto_id}")
-    ciclo, ids = srv.solicitar_lote([(r.texto, r.origen) for r in entrada.requisitos], p.proyecto_id)
+    ciclo, ids = srv.solicitar_lote([(r.texto, r.origen, r.triaje.model_dump() if r.triaje else None)
+                                     for r in entrada.requisitos], p.proyecto_id)
     return {"proyecto_id": p.proyecto_id, "ciclo": ciclo, "req_ids": ids}

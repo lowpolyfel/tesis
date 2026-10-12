@@ -22,6 +22,7 @@ from app.artefactos import (
     metas_proyecto,
 )
 from app.artefactos import mapa_conceptual as mc
+from app.llm.perfiles import con_perfil
 from app.models import Proyecto, Traza
 from app.orchestration import Servicio
 from app.orchestration.grafo import COLECCION_FORMALIZADOS
@@ -92,7 +93,9 @@ def _mapa_guardado(p: Proyecto, srv: Servicio, solo: set[str] | None) -> tuple[d
     """(Big Picture, huella, mapa guardado si sigue al día)."""
     formalizados, lel, trazas = _insumos(p.proyecto_id, srv)
     bp = big_picture_proyecto(formalizados, lel, trazas, srv.deps.analizador, solo)
-    h = mc.huella(bp, p.nombre, p.contexto, srv.deps.modelador.cliente.modelo, solo)
+    with con_perfil(srv.perfil(p.proyecto_id)):  # el modelo que eligió la cuenta (ADR 0021)
+        modelo = srv.deps.modelador.cliente.modelo
+    h = mc.huella(bp, p.nombre, p.contexto, modelo, solo)
     doc = srv.repo.obtener_doc(mc.COLECCION, mc.id_guardado(p.proyecto_id, solo))
     return bp, h, (doc["mapa"] if doc and doc.get("huella") == h else None)
 
@@ -120,7 +123,7 @@ def generar_mapa(entrada: EntradaMapa, p: ProyectoDep, srv: ServicioDep) -> Stre
         if not any(n["tipo"] == "requisito" for n in bp["nodos"]):
             yield {"tipo": "error", "mensaje": "El mapa se arma con los requisitos listos. Todavía no hay ninguno."}
             return
-        for e in mc.generar_mapa(bp, p.nombre, p.contexto, srv.deps.modelador):
+        for e in mc.generar_mapa(bp, p.nombre, p.contexto, srv.deps.modelador, srv.perfil(p.proyecto_id)):
             if e["tipo"] == "mapa":
                 e["mapa"]["creado"] = datetime.now(UTC).isoformat(timespec="seconds")
                 srv.repo.guardar_doc(mc.COLECCION, mc.id_guardado(p.proyecto_id, solo), {

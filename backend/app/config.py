@@ -57,6 +57,13 @@ class Settings(BaseSettings):
     critico_provider: Literal["ollama", "anthropic", "openai"] = "ollama"
     critico_model: str = "qwen2.5:7b"
     critico_api_key: str | None = None
+    # Revisor del contexto (ADR 0022): ficha del contexto del proyecto y triaje de requisitos
+    revisor_model: str = "qwen2.5:7b"
+    # Claves de API que cada cuenta guarda en su configuración (ADR 0021): se cifran con esta clave
+    # (Fernet). Sin CLAVE_CIFRADO se crea una en CLAVE_CIFRADO_PATH; con Atlas compartido entre
+    # máquinas, pon la misma CLAVE_CIFRADO en todas.
+    clave_cifrado: str | None = None
+    clave_cifrado_path: str = "data/clave_cifrado.key"
 
     # Reproducibilidad
     llm_temperature: float = 0.0

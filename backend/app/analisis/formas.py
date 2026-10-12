@@ -228,6 +228,7 @@ class VistaRequisito(Forma):
     terminos: list[TerminoVista]
     resumen: ResumenTerminos
     solicitud: dict[str, Any] | None
+    triaje: dict[str, Any] | None = None  # veredicto del Revisor al cargarlo (ADR 0022)
     validacion: ValidacionVista | None
     formalizacion: dict[str, Any] | None
     errores: list[ErrorVista]

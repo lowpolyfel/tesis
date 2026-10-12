@@ -13,6 +13,9 @@ import { generarMapaConceptual } from "../../services/backend";
  */
 const SALIDA_MS = 700; // lo que tarda la esfera en volver a su lugar
 const espera = (ms) => new Promise((r) => setTimeout(r, ms));
+// bajar la esfera se retrasa SALIDA_MS; si la pantalla se vuelve a montar antes (React lo hace
+// en desarrollo, o al regenerar) hay que cancelarlo, o la esfera queda detrás del velo
+let bajada = null;
 
 export default function GeneracionMapa({ proyectoId, seleccion, nuevo, onListo, onCancelar }) {
   const orb = useOrb();
@@ -23,12 +26,13 @@ export default function GeneracionMapa({ proyectoId, seleccion, nuevo, onListo, 
 
   // la esfera al frente mientras dure la pantalla; al irse, de vuelta a su lugar
   useEffect(() => {
-    orb.setElevada(true);
+    clearTimeout(bajada);
+    orb.setElevada(true, "mapa");
     return () => {
       orb.setPose(poseSeccion("mapa"));
       orb.setMood("mapa");
       orb.update("core", { label: null, sub: null, active: false });
-      setTimeout(() => orb.setElevada(false), SALIDA_MS);
+      bajada = setTimeout(() => orb.setElevada(false, "mapa"), SALIDA_MS);
     };
   }, [orb]);
 
