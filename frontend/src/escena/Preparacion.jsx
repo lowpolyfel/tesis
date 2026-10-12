@@ -48,7 +48,7 @@ export default function Preparacion({ proyecto, onListo }) {
     colocar();
     addEventListener("resize", colocar);
     orb.setMood("thinking");
-    orb.update("core", { label: "Preparando", sub: "", active: true });
+    orb.update("core", { label: "Preparando", sub: "", active: true, desde: Date.now() });
     setFallo(false);
 
     (async () => {
@@ -102,14 +102,14 @@ export default function Preparacion({ proyecto, onListo }) {
       if (!vivo) return;
       if (bloqueado) {
         orb.setMood("error");
-        orb.update("core", { label: "Falta algo", sub: "revisa los pasos", active: false });
+        orb.update("core", { label: "Falta algo", sub: "revisa los pasos", active: false, desde: null });
         setFallo(true);
         return;
       }
       nuevo("Listo para analizar");
       cerrar(hechos.at(-1), "ok");
       orb.setMood("success");
-      orb.update("core", { label: "Listo", sub: "", active: false });
+      orb.update("core", { label: "Listo", sub: "", active: false, desde: null });
       await espera(650);
       if (vivo) onListo();
     });
@@ -117,7 +117,7 @@ export default function Preparacion({ proyecto, onListo }) {
     return () => {
       vivo = false;
       removeEventListener("resize", colocar);
-      orb.update("core", { active: false });
+      orb.update("core", { active: false, desde: null });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [intento]);

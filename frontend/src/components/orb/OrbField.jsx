@@ -210,6 +210,7 @@ export default function OrbField({ controller, rootRef }) {
         // Sin inclinación 3D: obligaba a recortar la esfera con una máscara en cada cuadro
         el.scene.style.transform = `scale(${escala.toFixed(4)}) rotate(${(f.vx * 0.004).toFixed(2)}deg)`;
         if (el.label) el.label.style.transform = `translate(-50%, ${(escala * 128 + 14).toFixed(1)}px)`;
+        if (el.reloj) el.reloj.style.transform = `translate(-50%, calc(-100% - ${(escala * 128 + 10).toFixed(1)}px))`;
 
         const s = 1 + breath + f.pop;
         el.orb.style.transform =
@@ -341,9 +342,21 @@ export default function OrbField({ controller, rootRef }) {
 
 /* ---------------------------------------------------------------- */
 
+/* Tiempo transcurrido de un proceso: lo pone quien trabaja con orb.update(id, { desde: Date.now() }) */
+export function Cronometro({ desde }) {
+  const [ahora, setAhora] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setAhora(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [desde]);
+  const s = Math.max(0, Math.floor((ahora - desde) / 1000));
+  const m = Math.floor(s / 60);
+  return <span className="orb-reloj-t">{`${m > 59 ? `${Math.floor(m / 60)}:` : ""}${String(m % 60).padStart(m > 59 ? 2 : 1, "0")}:${String(s % 60).padStart(2, "0")}`}</span>;
+}
+
 function Esfera({ body, registrar }) {
   const uid = useId().replace(/:/g, "");
-  const wrap = useRef(null), scene = useRef(null), orb = useRef(null), shadow = useRef(null), label = useRef(null), spec = useRef(null);
+  const wrap = useRef(null), scene = useRef(null), orb = useRef(null), shadow = useRef(null), label = useRef(null), spec = useRef(null), reloj = useRef(null);
   const paths = useRef([]);
   const svg = useRef(null);
 
@@ -354,6 +367,7 @@ function Esfera({ body, registrar }) {
       orb: orb.current,
       shadow: shadow.current,
       label: label.current,
+      reloj: reloj.current,
       spec: spec.current,
       paths: paths.current,
       stops: [...svg.current.querySelectorAll("stop[data-c]")],
@@ -410,6 +424,9 @@ function Esfera({ body, registrar }) {
             <div ref={spec} className="orb-spec" />
           </div>
         </div>
+      </div>
+      <div ref={reloj} className={`orb-reloj${body.desde ? "" : " is-empty"}`} aria-hidden={!body.desde}>
+        {body.desde && <Cronometro desde={body.desde} />}
       </div>
       <div ref={label} className={`orb-label${body.label ? "" : " is-empty"}`}>
         <span className="orb-label-name">{body.label}</span>

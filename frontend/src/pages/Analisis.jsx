@@ -165,10 +165,17 @@ export default function Analisis() {
     return () => removeEventListener("resize", alCambiar);
   }, [coreografia]);
 
+  /* Cronómetro arriba de la esfera mientras se analiza */
+  const analizando = fase === "division" || fase === "trabajo";
+  useEffect(() => {
+    if (analizando) orb.update("core", { desde: Date.now() });
+    else orb.update("core", { desde: null });
+  }, [orb, analizando]);
+
   /* Al salir, la esfera vuelve a ser una */
   useEffect(() => () => {
     coreografia.desmontar();
-    orb.update("core", { label: null, sub: null });
+    orb.update("core", { label: null, sub: null, desde: null });
     orb.setMood("idle");
   }, [orb, coreografia]);
 

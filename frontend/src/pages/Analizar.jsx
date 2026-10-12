@@ -99,7 +99,11 @@ export default function Analizar() {
     const t = setInterval(paso, RESPIRO_MS);
     return () => clearInterval(t);
   }, [orb, trabajando]);
-  useEffect(() => () => orb.update("core", { label: null, sub: null }), [orb]);
+  // cronómetro arriba de la esfera: se reinicia en cada fase que toma tiempo
+  useEffect(() => {
+    orb.update("core", { desde: trabajando ? Date.now() : null });
+  }, [orb, fase, trabajando]);
+  useEffect(() => () => orb.update("core", { label: null, sub: null, desde: null }), [orb]);
 
   /* ---- arrastrar y soltar sobre toda la pantalla (la esfera lo "atrae") ---- */
   // el manejador lee siempre la versión vigente (con el proyecto elegido ahora)

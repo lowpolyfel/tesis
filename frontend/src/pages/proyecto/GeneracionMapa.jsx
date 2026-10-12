@@ -31,7 +31,7 @@ export default function GeneracionMapa({ proyectoId, seleccion, nuevo, onListo, 
     return () => {
       orb.setPose(poseSeccion("mapa"));
       orb.setMood("mapa");
-      orb.update("core", { label: null, sub: null, active: false });
+      orb.update("core", { label: null, sub: null, active: false, desde: null });
       bajada = setTimeout(() => orb.setElevada(false, "mapa"), SALIDA_MS);
     };
   }, [orb]);
@@ -43,7 +43,7 @@ export default function GeneracionMapa({ proyectoId, seleccion, nuevo, onListo, 
     colocar();
     addEventListener("resize", colocar);
     orb.setMood("mapa_generando");
-    orb.update("core", { label: "Mapa conceptual", sub: "", active: true });
+    orb.update("core", { label: "Mapa conceptual", sub: "", active: true, desde: Date.now() });
     setPasos([]);
     setError(null);
 
@@ -66,7 +66,7 @@ export default function GeneracionMapa({ proyectoId, seleccion, nuevo, onListo, 
         if (!mapa) throw new Error("El servidor cerró la conexión antes de terminar el mapa.");
         if (vistos.length) { // si estaba guardado, no hay pantalla de carga que cerrar con calma
           orb.setMood("success");
-          orb.update("core", { label: "Listo", sub: `${mapa.conceptos.length} conceptos` });
+          orb.update("core", { label: "Listo", sub: `${mapa.conceptos.length} conceptos`, desde: null });
           await espera(650);
           if (!vivo) return;
         }
@@ -80,7 +80,7 @@ export default function GeneracionMapa({ proyectoId, seleccion, nuevo, onListo, 
       .catch((e) => {
         if (!vivo || e.name === "AbortError") return;
         orb.setMood("error");
-        orb.update("core", { label: "No se pudo", sub: "revisa los pasos", active: false });
+        orb.update("core", { label: "No se pudo", sub: "revisa los pasos", active: false, desde: null });
         setError(e.message);
       });
 
