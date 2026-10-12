@@ -48,6 +48,17 @@ export const MOODS = {
     scale: 1, fog: 1.05, glow: 0.55,
     amp: 0.9, speed: 1, turbulence: 0, pulse: 0, breathe: 0.03, wobble: 0,
   },
+  /* ---- el mapa conceptual: turquesa a índigo (la sección y su pantalla de carga) ---- */
+  mapa: {
+    c1: "#34d3be", c2: "#5b6cff", bg: "#020a0c",
+    scale: 1, fog: 0.9, glow: 0.56,
+    amp: 1, speed: 1, turbulence: 0.05, pulse: 0, breathe: 0.03, wobble: 0,
+  },
+  mapa_generando: {
+    c1: "#34d3be", c2: "#7b5cff", bg: "#03090f",
+    scale: 0.95, fog: 1.05, glow: 0.64,
+    amp: 1.4, speed: 1.8, turbulence: 0.3, pulse: 0.5, breathe: 0.045, wobble: 0,
+  },
   /* ---- nodos que no son agentes LLM: filtros, divergencia, humano, sistema ---- */
   filtros: {
     c1: "#7dd3fc", c2: "#38bdf8", bg: "#02080d",

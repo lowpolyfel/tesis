@@ -21,5 +21,6 @@ Una modificación de fondo crea una versión nueva (`_v2`) en lugar de editar la
 | `modelador_v2` | Modelador | Igual que v1, nombrando las cosas como en el dominio del proyecto (ADR 0017) |
 | `modelador_requisito_v1` | Modelador | Requisito reescrito sin ambigüedad y sus metas (modelo de metas KMoS-SSA; se conserva para reproducir corridas anteriores) |
 | `modelador_requisito_v2` | Modelador | Requisito reescrito completo con el contexto del proyecto (lo vago y lo regional se concreta y se anota como supuesto), funcional o no funcional con su categoría, y sus metas (ADR 0017) |
+| `modelador_mapa_v1` | Modelador | Organiza el mapa conceptual del proyecto: elige entre los conceptos candidatos que preparó el código, los agrupa en ramas y nombra las relaciones (ADR 0020) |
 | `comparador_v1` | Comparador (fuera del núcleo) | Relación entre dos requisitos con citas; módulo exploratorio (ADR 0012) |
 | `agente_unico_v1` | Línea base | Un solo agente que detecta, clasifica e interpreta, para la evaluación (ADR 0014) |

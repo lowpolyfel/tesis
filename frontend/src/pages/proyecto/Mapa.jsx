@@ -1,54 +1,161 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { useApi } from "../../hooks/useApi";
-import { bigPictureDeProyecto, metasDeProyecto } from "../../services/backend";
+import { bigPictureDeProyecto, mapaConceptual, metasDeProyecto } from "../../services/backend";
 import { ESTADOS as E } from "../../constants/estados";
 import { tipo as infoTipo } from "../../constants/agentes";
 import Diagrama from "../../components/artefactos/Diagrama";
 import { Aviso, Cargando, Plegable, Vacio } from "../../components/ui";
+import GeneracionMapa from "./GeneracionMapa";
 
 /*
- * El Big Picture del proyecto (ADR 0011): el grafo de actores, metas, requisitos
- * y términos del léxico, de todos los requisitos listos o solo de los elegidos.
- * El backend lo arma sin LLM desde lo formalizado. Debajo, plegados, el modelo
- * de metas y el panorama en texto.
+ * El mapa conceptual del proyecto (ADR 0020): pocos conceptos unidos por frases
+ * «concepto — enlace → concepto», de todos los requisitos listos o solo de los
+ * elegidos. Lo organiza el Modelador sobre lo que el código preparó del Big Picture
+ * y se guarda; si no hay uno al día, se genera con la esfera al centro
+ * (GeneracionMapa). Debajo, plegados, sus frases, el modelo de metas, el panorama
+ * y el grafo completo (ADR 0011), que sirve para rastrear cada relación.
  */
 const TIPO_META = {
   meta: { etiqueta: "Meta", tono: "#57f7a7" },
-  meta_blanda: { etiqueta: "Meta blanda", tono: "#ffc457" },
+  meta_blanda: { etiqueta: "Meta blanda", tono: "#f9a8d4" },
   tarea: { etiqueta: "Tarea", tono: "#5cc8ff" },
   recurso: { etiqueta: "Recurso", tono: "#cbd5e1" },
 };
 
 export default function Mapa({ proyectoId, requisitos, seleccion, onSeleccion }) {
   const clave = seleccion.join(",");
+  const { datos: guardado, setDatos: setGuardado, error: e0 } = useApi(() => mapaConceptual(proyectoId, seleccion), [proyectoId, clave]);
   const { datos: bp, error: e1 } = useApi(() => bigPictureDeProyecto(proyectoId, seleccion), [proyectoId, clave]);
   const { datos: metas, error: e2 } = useApi(() => metasDeProyecto(proyectoId, seleccion), [proyectoId, clave]);
+  const [generando, setGenerando] = useState(null); // { nuevo } mientras se genera
   const listos = requisitos.filter((q) => q.estado === E.FORMALIZADO);
-  const error = e1 ?? e2;
+  const error = e0 ?? e1 ?? e2;
+
+  // sin un mapa al día, se genera solo
+  useEffect(() => {
+    if (guardado && !guardado.mapa && guardado.requisitos > 0) setGenerando({ nuevo: false });
+  }, [guardado]);
+  const mapa = guardado?.mapa;
 
   return (
     <div className="space-y-6">
       <Eleccion listos={listos} seleccion={seleccion} onSeleccion={onSeleccion} />
       <Aviso error={error} />
-      {!error && (!bp || !metas) && <Cargando>Armando el mapa…</Cargando>}
-      {bp && metas && !bp.nodos.length && (
+      {!error && !guardado && <Cargando>Buscando el mapa…</Cargando>}
+      {guardado && !guardado.requisitos && (
         <Vacio>{seleccion.length ? "Los requisitos elegidos todavía no están listos." : "El mapa se arma con los requisitos listos. Todavía no hay ninguno."}</Vacio>
       )}
-      {bp && metas && bp.nodos.length > 0 && (
-        <>
-          <Diagrama mermaid={bp.mermaid} plantuml={bp.plantuml} nombre={`mapa-${proyectoId}${seleccion.length ? `-${seleccion.join("-")}` : ""}`} />
-          <p className="mono text-[10px] text-[var(--bone-faint)]">
-            {bp.nodos.filter((n) => n.tipo === "requisito").length} requisito{bp.nodos.filter((n) => n.tipo === "requisito").length === 1 ? "" : "s"} · {metas.metas.length} metas · {metas.actores.length} actor{metas.actores.length === 1 ? "" : "es"} · {bp.nodos.filter((n) => n.tipo === "simbolo").length} términos del léxico
-          </p>
+      {generando && (
+        <GeneracionMapa
+          key={`${clave}-${generando.nuevo}`}
+          proyectoId={proyectoId}
+          seleccion={seleccion}
+          nuevo={generando.nuevo}
+          onListo={(m) => { setGuardado((g) => ({ ...g, mapa: m })); setGenerando(null); }}
+          onCancelar={() => setGenerando(null)}
+        />
+      )}
+      {guardado?.requisitos > 0 && !mapa && !generando && (
+        <div className="tarjeta flex flex-wrap items-center gap-4 px-5 py-4">
+          <p className="min-w-0 flex-1 text-[14.5px] text-[var(--bone-dim)]">Todavía no hay un mapa al día con lo validado.</p>
+          <button className="pill sm" onClick={() => setGenerando({ nuevo: false })}>Generar el mapa</button>
+        </div>
+      )}
+      {mapa && (
+        <MapaConceptual mapa={mapa} nombre={`mapa-${proyectoId}${seleccion.length ? `-${seleccion.join("-")}` : ""}`}
+          onRegenerar={generando ? null : () => setGenerando({ nuevo: true })} />
+      )}
+      {mapa && bp && metas && bp.nodos.length > 0 && (
+        <div className="space-y-1">
+          <Plegable titulo="Frases del mapa" nota="cada relación y de qué requisito sale">
+            <Frases mapa={mapa} />
+          </Plegable>
           <Plegable titulo="Modelo de metas" nota="quién persigue qué">
             <Metas m={metas} />
           </Plegable>
           <Plegable titulo="Panorama" nota="acciones, restricciones y dependencias">
             <Panorama bp={bp} />
           </Plegable>
-        </>
+          <Plegable titulo="Grafo completo" nota={`los ${bp.nodos.length} nodos y ${bp.aristas.length} relaciones de lo validado, para rastrear`}>
+            <GrafoCompleto bp={bp} metas={metas} nombre={`grafo-${proyectoId}${seleccion.length ? `-${seleccion.join("-")}` : ""}`} />
+          </Plegable>
+        </div>
       )}
+    </div>
+  );
+}
+
+function MapaConceptual({ mapa, nombre, onRegenerar }) {
+  const n = mapa.requisitos.length;
+  return (
+    <section className="aparece space-y-3">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <p className="min-w-0 flex-1 text-[13.5px] text-[var(--bone-dim)]">
+          {mapa.generado_por === "modelador"
+            ? <>Organizado por el Modelador{mapa.modelo && <span className="mono text-[11px] text-[var(--bone-faint)]"> · {mapa.modelo}</span>}</>
+            : <span className="text-[var(--aviso)]">{mapa.aviso ?? "Armado en código."}</span>}
+        </p>
+        {onRegenerar && <button className="pill ghost sm" onClick={onRegenerar}>Volver a generar</button>}
+      </div>
+      <Ramas mapa={mapa} />
+      <Diagrama mermaid={mapa.mermaid} nombre={nombre} />
+      <p className="mono text-[10px] text-[var(--bone-faint)]">
+        {mapa.conceptos.length} conceptos · {mapa.proposiciones.length} relaciones · de {n} requisito{n === 1 ? "" : "s"}
+        {mapa.grafo && <> · el grafo completo tiene {mapa.grafo.nodos} nodos</>}
+      </p>
+    </section>
+  );
+}
+
+/* Las ramas del mapa como leyenda: el color de cada concepto es el de su tipo en el diagrama */
+const TONO_CONCEPTO = { actor: "#5b5bd6", termino: "#0f8f80", objeto: "#0f8f80", recurso: "#8a7f6a", cualidad: "#c2417a" };
+
+function Ramas({ mapa }) {
+  const por_id = Object.fromEntries(mapa.conceptos.map((c) => [c.id, c]));
+  return (
+    <dl className="grid gap-x-6 gap-y-2 text-[13px] sm:grid-cols-2">
+      {mapa.ramas.map((r) => (
+        <div key={r.nombre} className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <dt className="etiqueta mr-1 text-[var(--bone-dim)]">{r.nombre}</dt>
+          {r.conceptos.map((id) => por_id[id] && (
+            <dd key={id} className="flex items-center gap-1.5 text-[var(--bone-dim)]" title={por_id[id].detalle ?? undefined}>
+              <span className="punto" style={{ background: TONO_CONCEPTO[por_id[id].tipo] ?? "var(--bone-faint)" }} />{por_id[id].etiqueta}
+            </dd>
+          ))}
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/* El mapa leído como frases, cada una con los requisitos que la respaldan */
+function Frases({ mapa }) {
+  const etiqueta = useMemo(() => Object.fromEntries([[mapa.central.id, mapa.central.etiqueta], ...mapa.conceptos.map((c) => [c.id, c.etiqueta])]), [mapa]);
+  return (
+    <ul className="space-y-1.5 text-[14px]">
+      {mapa.proposiciones.map((p, i) => (
+        <li key={i} className="flex flex-wrap items-baseline gap-x-2">
+          <span className="text-[var(--bone)]">{etiqueta[p.origen]}</span>
+          <span className="text-[var(--bone-dim)]">{p.enlace}</span>
+          <span className="text-[var(--bone)]">{etiqueta[p.destino]}</span>
+          <span className="mono text-[10px] text-[var(--bone-faint)]">
+            {p.req_ids.map((r, j) => <span key={r}>{j > 0 && ", "}<Link className="hover:text-[var(--bone)]" to={`/requisitos/${r}`}>{r}</Link></span>)}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function GrafoCompleto({ bp, metas, nombre }) {
+  const requisitos = bp.nodos.filter((n) => n.tipo === "requisito").length;
+  return (
+    <div className="space-y-3">
+      <Diagrama mermaid={bp.mermaid} plantuml={bp.plantuml} nombre={nombre} />
+      <p className="mono text-[10px] text-[var(--bone-faint)]">
+        {requisitos} requisito{requisitos === 1 ? "" : "s"} · {metas.metas.length} metas · {metas.actores.length} actor{metas.actores.length === 1 ? "" : "es"} · {bp.nodos.filter((n) => n.tipo === "simbolo").length} términos del léxico
+      </p>
     </div>
   );
 }

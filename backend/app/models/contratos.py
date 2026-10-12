@@ -345,3 +345,36 @@ class EntradaLELFormalizada(EntradaLEL):
     fecha: str
     # fecha de la última corrección manual de la entrada ya formalizada (ADR 0017)
     corregida: str | None = None
+
+
+# ---------------------------------------------------------------- Mapa conceptual (ADR 0020)
+
+class ConceptoMapa(Contrato):
+    """Un concepto que el Modelador conserva, con una etiqueta corta (puede acortar la propuesta)."""
+
+    id: str = Field(min_length=1)
+    etiqueta: str = Field(min_length=1, max_length=60)
+
+
+class RamaMapa(Contrato):
+    nombre: str = Field(min_length=1, max_length=40)
+    conceptos: list[str] = Field(min_length=1)
+
+
+class ProposicionMapa(Contrato):
+    """«origen —enlace→ destino». `origen` o `destino` pueden ser «central»."""
+
+    origen: str = Field(min_length=1)
+    enlace: str = Field(min_length=1, max_length=40)
+    destino: str = Field(min_length=1)
+
+
+class SalidaMapaConceptual(Contrato):
+    """Lo que pide el código al Modelador para el mapa conceptual del proyecto. Solo puede usar
+    los conceptos candidatos que le da el código (sus ids); el código verifica las referencias
+    (`verificar_mapa` en app/artefactos/mapa_conceptual.py) y descarta lo que no pueda rastrear."""
+
+    central: str = Field(min_length=1, max_length=60)
+    conceptos: list[ConceptoMapa] = Field(min_length=1, max_length=24)
+    ramas: list[RamaMapa] = Field(min_length=1, max_length=6)
+    proposiciones: list[ProposicionMapa] = Field(min_length=1, max_length=30)

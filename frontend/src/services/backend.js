@@ -9,7 +9,7 @@
  *   - corpus y evaluación: app/evaluacion (ADR 0014)
  *   - metas y Big Picture: app/artefactos (ADR 0011)
  */
-import { borrar, get, patch, post, postArchivo } from "./http";
+import { borrar, get, patch, post, postArchivo, postFlujo } from "./http";
 
 const id = (x) => encodeURIComponent(x);
 
@@ -114,6 +114,14 @@ export const obtenerLel = (proyectoId) => get("/lel", { proyecto_id: proyectoId 
 const seleccion = (reqIds) => ({ req_ids: reqIds?.length ? reqIds.join(",") : undefined });
 export const metasDeProyecto = (proyectoId, reqIds) => get(`/proyectos/${id(proyectoId)}/metas`, seleccion(reqIds));
 export const bigPictureDeProyecto = (proyectoId, reqIds) => get(`/proyectos/${id(proyectoId)}/big-picture`, seleccion(reqIds));
+/** Mapa conceptual guardado (ADR 0020) → { mapa | null (no hay o ya no está al día), requisitos } */
+export const mapaConceptual = (proyectoId, reqIds) => get(`/proyectos/${id(proyectoId)}/mapa-conceptual`, seleccion(reqIds));
+/**
+ * Genera el mapa conceptual y avisa cada paso: onEvento({tipo: "paso", id, texto, estado, detalle}),
+ * ({tipo: "mapa", mapa}) al final o ({tipo: "error", mensaje}). `nuevo` lo regenera aunque esté guardado.
+ */
+export const generarMapaConceptual = (proyectoId, reqIds, { nuevo = false, onEvento, senal } = {}) =>
+  postFlujo(`/proyectos/${id(proyectoId)}/mapa-conceptual`, { req_ids: reqIds ?? [], nuevo }, onEvento, senal);
 /** Requisitos funcionales y no funcionales reescritos, con supuestos, y el glosario */
 export const especificacionDeProyecto = (proyectoId, reqIds) => get(`/proyectos/${id(proyectoId)}/especificacion`, seleccion(reqIds));
 

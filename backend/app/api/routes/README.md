@@ -17,3 +17,5 @@ Todo exige sesión salvo `/auth/*` y `/salud` (ADR 0019); lo de otra cuenta resp
 | GET | `/sandbox`, `/salud`, `/conexion` | `sandbox.py` |
 | GET | `/preparacion` (base, Ollama y modelos del análisis) | `preparacion.py` |
 | POST | `/preparacion/cargar` (precarga un modelo configurado; 422 si no lo es, 502 si Ollama falla) | `preparacion.py` |
+| GET | `/proyectos/{id}/metas`, `/big-picture`, `/especificacion`, `/requisitos/{req_id}/artefactos` | `artefactos.py` |
+| GET/POST | `/proyectos/{id}/mapa-conceptual` (el guardado / generarlo con progreso en NDJSON, ADR 0020) | `artefactos.py` |

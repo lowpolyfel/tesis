@@ -24,7 +24,7 @@ _ESTILOS = {
     "requisito": "fill:#ffffff,stroke:#555555,color:#1b1712",
     "actor": "fill:#eef0ff,stroke:#5b5bd6,color:#1b1712",
     "meta": "fill:#ecfbf3,stroke:#0f9a6a,color:#1b1712",
-    "meta_blanda": "fill:#fff6e5,stroke:#d38b00,color:#1b1712,stroke-dasharray:4 3",
+    "meta_blanda": "fill:#f3eefe,stroke:#7c4dd6,color:#1b1712,stroke-dasharray:4 3",
     "tarea": "fill:#e8f4ff,stroke:#2a7bd6,color:#1b1712",
     "recurso": "fill:#f3f0ea,stroke:#8a7f6a,color:#1b1712",
     "simbolo": "fill:#fdeef4,stroke:#c2417a,color:#1b1712",
@@ -35,7 +35,7 @@ _RESERVADAS = {"end", "graph", "flowchart", "subgraph", "direction", "style", "l
                "click", "call", "href", "default", "interpolate", "acctitle", "accdescr"}
 _COLORES_PLANTUML = {"actor": ("#EEF0FF", "#5B5BD6"), "sujeto": ("#EEF0FF", "#5B5BD6"),
                      "objeto": ("#ECFBF3", "#0F9A6A"), "verbo": ("#E8F4FF", "#2A7BD6"),
-                     "estado": ("#FFF6E5", "#D38B00")}
+                     "estado": ("#F3EEFE", "#7C4DD6")}
 
 
 def ids_saneados(ids: list[str]) -> dict[str, str]:

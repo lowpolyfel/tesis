@@ -61,7 +61,8 @@ def _pausa(snapshot) -> str | None:
 
 
 # Lo que cuelga de un proyecto, además de sus trazas y su LEL (campo `proyecto_id`)
-COLECCIONES_DEL_PROYECTO = ("documentos", "comparaciones", "evaluaciones", COLECCION_FORMALIZADOS)
+COLECCIONES_DEL_PROYECTO = ("documentos", "comparaciones", "evaluaciones", COLECCION_FORMALIZADOS,
+                            "mapas_conceptuales")  # app/artefactos/mapa_conceptual.py
 
 
 class Servicio:

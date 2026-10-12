@@ -78,6 +78,10 @@ html,body{margin:0;min-height:100%;background:var(--bg);color:var(--bone);
 /* Velo del menú de la esfera */
 .velo{background:radial-gradient(ellipse at center,color-mix(in oklab,var(--bg) 80%,transparent),color-mix(in oklab,var(--bg) 96%,transparent));
   animation:aparece .2s ease-out both}
+/* Pantalla de carga sobre una sección (el mapa conceptual): tapa más el contenido */
+.velo-denso{background:radial-gradient(ellipse at center,color-mix(in oklab,var(--bg) 88%,transparent),color-mix(in oklab,var(--bg) 98%,transparent))}
+.se-va{animation:desaparece .5s ease-in both;pointer-events:none}
+@keyframes desaparece{to{opacity:0}}
 .punto-menu{outline:none}
 .punto-menu:focus-visible{box-shadow:0 0 0 2px var(--bone)}
 
