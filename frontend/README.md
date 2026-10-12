@@ -48,6 +48,14 @@ con un fundido corto.
 
 ## La escena en vivo
 
+Antes de empezar, la esfera grande al centro prepara todo y lo va diciendo
+(`escena/Preparacion.jsx`): conecta con el servidor, con la base de datos
+(`GET /preparacion`) y con Ollama, y carga en memoria cada modelo del análisis
+que no esté cargado (`POST /preparacion/cargar`), para que el primer requisito
+no espere a que Ollama lea el modelo del disco. Si falta algo (Ollama apagado,
+un modelo sin descargar) lo dice y ofrece reintentar o seguir de todos modos.
+Si todos los requisitos ya terminaron, se salta.
+
 `/analisis` sigue cada requisito por SSE (`GET /eventos/{req_id}`) y anima
 **los mensajes reales de la traza**, en orden (`escena/coreografia.js`):
 
@@ -61,7 +69,12 @@ con un fundido corto.
   funden; en el arbitraje el Crítico absorbe las demás; si la validación fue
   automática (ADR 0017) lo acordado pasa directo al Modelador.
 
-Abajo se lee un paso por mensaje en una frase (`escena/pasoSimple.js`); la
+En escritorio los requisitos van en una columna vertical a la derecha (el que
+se analiza arriba, con su paso actual, y la lista del lote con su estado) y las
+esferas ocupan el resto de la pantalla, más grandes. En móvil, el requisito va
+arriba y el paso abajo.
+
+Se lee un paso por mensaje en una frase (`escena/pasoSimple.js`); la
 bitácora técnica (`escena/resumenMensaje.js`) va plegada. El ritmo se puede
 cambiar y «saltar» aplica los mensajes pendientes sin animarlos. Al terminar, se
 ve la versión reescrita de cada requisito y lo que espera revisión.

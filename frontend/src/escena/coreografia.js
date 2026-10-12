@@ -4,7 +4,9 @@
  *
  *   - Cada nodo real es una esfera: extractor, filtros, clasificador,
  *     divergencia, crítico, humano, modelador. La esfera principal (core)
- *     queda arriba, pequeña, como el sistema (la orquestación).
+ *     queda arriba, grande, como el sistema (la orquestación).
+ *   - En escritorio la columna de requisitos ocupa la derecha (`COLUMNA_ESCENA`):
+ *     la escena se centra en el resto y los nodos van en zigzag, en dos filas.
  *   - Un nodo nace por mitosis la primera vez que interviene en el
  *     requisito (del nodo que le escribe, o del sistema), en su lugar fijo
  *     del flujo; al pasar al siguiente requisito todos vuelven al sistema.
@@ -27,25 +29,33 @@ const corto = (t, n = 26) => (t && t.length > n ? `${t.slice(0, n - 1)}…` : t 
 /* Minúsculas y sin acentos (app.nlp.normalizar / app.analisis.traza.clave) */
 export const clave = (termino) => (termino ?? "").normalize("NFD").replace(/\p{Mn}/gu, "").toLowerCase().trim();
 
+/* Ancho de la columna de requisitos de la escena (pages/Analisis.jsx) y lo que ocupa con su margen */
+export const COLUMNA_ESCENA = "clamp(340px, 30vw, 460px)";
+const anchoColumna = () => (isMobile() ? 0 : Math.min(460, Math.max(340, innerWidth * 0.3)) + 32);
+/* Centro horizontal de la escena (fracción del ancho desde el centro de la pantalla) */
+export const centroEscena = () => -anchoColumna() / innerWidth / 2;
+
 function geometria() {
   const m = isMobile();
   const n = ORDEN_NODOS.length;
-  // en móvil los nodos alternan en dos filas: los de una misma fila quedan a ~100 px
-  // y sus rótulos (más estrechos, ver orb.css) no se enciman
-  const ancho = 0.74;
-  const xs = ORDEN_NODOS.map((_, i) => -ancho / 2 + (ancho * i) / (n - 1));
-  // arco suave: los extremos un poco más abajo que el centro
-  const ys = xs.map((x, i) => (m ? -0.17 + (i % 2) * 0.11 : -0.11 + Math.abs(x) * 0.1));
+  const libre = 1 - anchoColumna() / innerWidth; // fracción del ancho que queda para la escena
+  const cx = centroEscena();
+  // los nodos alternan en dos filas: los de una misma fila quedan lejos y sus rótulos
+  // (más estrechos en móvil, ver orb.css) no se enciman
+  const ancho = m ? 0.74 : libre * 0.84;
+  const xs = ORDEN_NODOS.map((_, i) => cx - ancho / 2 + (ancho * i) / (n - 1));
+  const ys = ORDEN_NODOS.map((_, i) => (m ? -0.135 + (i % 2) * 0.11 : -0.08 + (i % 2) * 0.15));
   return {
     pos: Object.fromEntries(ORDEN_NODOS.map((id, i) => [id, { x: xs[i], y: ys[i] }])),
-    s: m ? 0.14 : 0.22,
-    sActivo: m ? 0.2 : 0.3,
-    sistema: { x: 0, y: m ? -0.27 : -0.26, s: m ? 0.09 : 0.11 },
-    grupo: { x: 0, y: m ? 0.08 : 0.06 }, // centro de las interpretaciones
+    s: m ? 0.14 : 0.3,
+    sActivo: m ? 0.2 : 0.4,
+    sistema: { x: cx, y: m ? -0.235 : -0.3, s: m ? 0.09 : 0.36 },
+    grupo: { x: cx, y: m ? 0.115 : 0.27 }, // centro de las interpretaciones
+    disponible: m ? 0.8 : libre * 0.86, // ancho para repartir las interpretaciones
     radioMax: m ? 0.15 : 0.19,
     radioMin: m ? 0.035 : 0.045,
-    sInterp: m ? 0.1 : 0.14,
-    sParticula: 0.05,
+    sInterp: m ? 0.1 : 0.18,
+    sParticula: m ? 0.05 : 0.07,
   };
 }
 
@@ -120,8 +130,7 @@ export function crearCoreografia(orb) {
     const hueco = isMobile() ? 0.16 : 0.12;
     const bruto = anchos.reduce((a, w) => a + w, 0) + hueco * Math.max(0, claves.length - 1);
     // si no cabe, todo se comprime en la misma proporción (la distancia relativa se conserva)
-    const disponible = isMobile() ? 0.8 : 0.78;
-    const f = bruto > disponible ? disponible / bruto : 1;
+    const f = bruto > g.disponible ? g.disponible / bruto : 1;
     let x = g.grupo.x - (bruto * f) / 2;
     claves.forEach((k, i) => {
       const t = terminos.get(k);
@@ -365,6 +374,7 @@ export function crearCoreografia(orb) {
 
     reacomodar() {
       g = geometria();
+      if (montada) orb.setPose({ ...g.sistema });
       for (const n of ORDEN_NODOS) {
         const id = idNodo(n);
         if (orb.has(id)) orb.update(id, { ...g.pos[n] });

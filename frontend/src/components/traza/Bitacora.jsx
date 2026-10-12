@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { obtenerTraza } from "../../services/backend";
-import { nodo } from "../../constants/agentes";
+import { tintaNodo } from "../../constants/agentes";
 import { resumenMensaje } from "../../escena/resumenMensaje";
 
 /*
@@ -47,7 +47,7 @@ export default function Bitacora({ reqId, total, ultima }) {
                 <td className="px-2 py-1 font-mono text-slate-500">{m.secuencia}</td>
                 <td className="px-2 py-1 font-mono text-slate-500">{m.ronda || ""}</td>
                 <td className="whitespace-nowrap px-2 py-1 font-mono">
-                  <span style={{ color: nodo(m.emisor).tono }}>{m.emisor}</span> → <span style={{ color: nodo(m.receptor).tono }}>{m.receptor}</span>
+                  <span style={{ color: tintaNodo(m.emisor) }}>{m.emisor}</span> → <span style={{ color: tintaNodo(m.receptor) }}>{m.receptor}</span>
                 </td>
                 <td className="px-2 py-1 font-mono text-slate-600">{m.tipo}</td>
                 <td className="px-2 py-1">{resumenMensaje(m)}</td>

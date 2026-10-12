@@ -4,8 +4,9 @@ import { useOrb } from "../components/orb/useOrb";
 import { isMobile } from "../components/orb/poses";
 import { especificacionDeProyecto, obtenerCola, obtenerRequisito, obtenerProyecto, requisitosDeProyecto } from "../services/backend";
 import { ESTADOS as E, esTerminal, estadoSimple } from "../constants/estados";
-import { TIPO_REQUISITO, nodo } from "../constants/agentes";
-import { crearCoreografia } from "../escena/coreografia";
+import { TIPO_REQUISITO, nodo, tintaNodo } from "../constants/agentes";
+import { COLUMNA_ESCENA, centroEscena, crearCoreografia } from "../escena/coreografia";
+import Preparacion from "../escena/Preparacion";
 import { useEnVivo } from "../escena/useEnVivo";
 import { resumenMensaje } from "../escena/resumenMensaje";
 import { pasoSimple } from "../escena/pasoSimple";
@@ -14,6 +15,11 @@ import { EstadoChip, Volver } from "../components/ui";
 
 /*
  * Analizar, paso 3: la escena en vivo.
+ *
+ * Primero la preparación: la esfera grande al centro revisa el servidor, la base,
+ * Ollama y los modelos, y deja los modelos en memoria (escena/Preparacion.jsx).
+ * En escritorio, a la derecha va una columna con el requisito en foco, el paso
+ * actual, la lista de requisitos del lote y la bitácora; la escena ocupa el resto.
  *
  * La esfera se divide en los nodos reales del sistema (Extractor, Filtros,
  * Clasificador, Divergencia, Crítico, Humano, Modelador). Cada mensaje del
@@ -43,7 +49,8 @@ export default function Analisis() {
   const [foco, setFoco] = useState(null);
   const [vistos, setVistos] = useState([]); // requisitos cuya escena ya se mostró completa
   const [repetir, setRepetir] = useState(params.get("escena") === "1");
-  const [fase, setFase] = useState("division"); // division → trabajo → fusion → resultados
+  const [fase, setFase] = useState("preparacion"); // preparacion → division → trabajo → fusion → resultados
+  const [lateral, setLateral] = useState(() => !isMobile()); // columna de requisitos a la derecha
   const [nombreProyecto, setNombreProyecto] = useState(null);
 
   useEffect(() => {
@@ -108,6 +115,11 @@ export default function Analisis() {
   const todosEnReposo = Boolean(lista?.length) && lista.length === ids.length && lista.every((r) => enReposo(r.estado));
   const todosVistos = Boolean(lista) && lista.every((r) => vistos.includes(r.req_id) || r.req_id === foco);
 
+  /* ---- 0. preparación: solo si hay algo por analizar (repetir la escena de lo terminado no la necesita) ---- */
+  useEffect(() => {
+    if (lista && fase === "preparacion" && todosEnReposo) setFase("division");
+  }, [lista, fase, todosEnReposo]);
+
   /* ---- 1. mitosis inicial (si todo ya estaba listo, directo a resultados salvo que se pida la escena) ---- */
   useEffect(() => {
     if (!lista || fase !== "division") return undefined;
@@ -116,7 +128,7 @@ export default function Analisis() {
       setFase("resultados");
       return undefined;
     }
-    orb.setPose({ x: 0, y: -0.06, s: 0.9 });
+    orb.setPose({ x: centroEscena(), y: -0.06, s: 0.9 });
     orb.setMood("idle");
     orb.update("core", { label: "Sistema", sub: `${ids.length} ${ids.length === 1 ? "requisito" : "requisitos"}` });
     const t = setTimeout(() => { coreografia.montar(); setFase("trabajo"); }, 700);
@@ -128,7 +140,7 @@ export default function Analisis() {
     if (fase !== "trabajo" || !todosEnReposo || !todosVistos || !alDia || !enReposo(vivo.estado ?? E.CARGADO)) return undefined;
     const t = setTimeout(() => {
       coreografia.desmontar();
-      orb.setPose({ x: 0, y: -0.06, s: 0.95 });
+      orb.setPose({ x: centroEscena(), y: -0.06, s: 0.95 });
       orb.setMood("success");
       setFase("fusion");
     }, 1600);
@@ -147,7 +159,7 @@ export default function Analisis() {
   }, [fase, orb]);
 
   useEffect(() => {
-    const alCambiar = () => coreografia.reacomodar();
+    const alCambiar = () => { coreografia.reacomodar(); setLateral(!isMobile()); };
     addEventListener("resize", alCambiar);
     return () => removeEventListener("resize", alCambiar);
   }, [coreografia]);
@@ -178,10 +190,15 @@ export default function Analisis() {
       <div className="fixed top-20 left-5 z-20 md:top-24 md:left-10">
         <Volver a={`/proyectos/${proyecto}`}>{nombreProyecto ?? "Proyecto"}</Volver>
       </div>
-      {fase === "trabajo" && focoInfo && (
+      {fase === "preparacion" && !todosEnReposo && <Preparacion proyecto={proyecto} onListo={() => setFase("division")} />}
+      {fase === "trabajo" && lateral && (
+        <Columna vivo={vivo} lista={lista} foco={foco} focoInfo={focoInfo} pendientes={pendientes} proyecto={proyecto}
+          onSeguir={(id) => setFoco(id)} />
+      )}
+      {fase === "trabajo" && !lateral && focoInfo && (
         <Foco r={focoInfo} i={lista.indexOf(focoInfo)} total={lista.length} mensajes={vivo.mensajes} animados={vivo.animados} estadoVivo={vivo.estado} />
       )}
-      {fase === "trabajo" && (
+      {fase === "trabajo" && !lateral && (
         <Panel
           vivo={vivo} lista={lista} foco={foco} pendientes={pendientes} proyecto={proyecto}
           onSeguir={(id) => setFoco(id)}
@@ -209,7 +226,7 @@ const SIN_CLASIFICADOR = ["resuelto_por_lel", "vaguedad"];
  * animación: el estado es el de la última transición anterior al último
  * mensaje animado, y las marcas del Clasificador aparecen cuando se anima.
  */
-function Foco({ r, i, total, mensajes, animados, estadoVivo }) {
+function Foco({ r, i, total, mensajes, animados, estadoVivo, enColumna = false }) {
   const [vista, setVista] = useState(null);
   useEffect(() => {
     let activo = true;
@@ -226,8 +243,20 @@ function Foco({ r, i, total, mensajes, animados, estadoVivo }) {
   const marcas = !v || !vio("filtrado") ? []
     : v.marcados.filter((m) => m.tipo && (vio("interpretaciones") || SIN_CLASIFICADOR.includes(m.decision_filtro)));
   const largo = r.texto.length > 110;
+  if (enColumna) {
+    return (
+      <section key={r.req_id} className="border-b border-[var(--line)] px-5 py-4">
+        <p className="mono aparece text-[10px] text-[var(--bone-faint)]">
+          Requisito {i + 1} de {total}{estado && <> · <span className="text-[var(--bone-dim)]">{estadoSimple(estado).texto}</span></>}
+        </p>
+        <p className={`serif aparece mt-2 leading-snug ${largo ? "text-[18px]" : "text-[21px]"}`}>
+          «<TextoMarcado texto={r.texto} marcados={marcas} />»
+        </p>
+      </section>
+    );
+  }
   return (
-    <section key={r.req_id} className="pointer-events-none fixed inset-x-0 top-[max(9vh,92px)] z-10 px-6 text-center">
+    <section key={r.req_id} className="pointer-events-none fixed inset-x-0 top-[116px] z-10 px-6 text-center">
       <p className="mono aparece text-[10px] text-[var(--bone-faint)]">
         Requisito {i + 1} de {total}{estado && <> · <span className="text-[var(--bone-dim)]">{estadoSimple(estado).texto}</span></>}
       </p>
@@ -242,33 +271,126 @@ function Foco({ r, i, total, mensajes, animados, estadoVivo }) {
  * Abajo: el paso actual en una frase, el avance del lote y lo que espera
  * revisión. La bitácora técnica (emisor → receptor, tipo, payload) va plegada.
  */
-function Panel({ vivo, lista, foco, pendientes, proyecto, onSeguir }) {
-  const [bitacora, setBitacora] = useState(false);
+function PasoActual({ vivo, className = "" }) {
+  const actual = vivo.mensajes[vivo.animados - 1];
+  return actual ? (
+    <p className={`min-w-0 flex-1 text-[15px] ${className}`}>
+      <span className="mono mr-2 text-[10px]" style={{ color: tintaNodo(actual.emisor) }}>{nodo(actual.emisor).nombre}</span>
+      {pasoSimple(actual)}
+    </p>
+  ) : <p className={`min-w-0 flex-1 text-[15px] text-[var(--bone-dim)] ${className}`}>{vivo.error ? vivo.error.message : "Esperando el primer paso…"}</p>;
+}
+
+function Controles({ vivo, bitacora, onBitacora }) {
+  const siguienteRitmo = RITMOS[(RITMOS.indexOf(vivo.ritmo) + 1) % RITMOS.length];
+  return (
+    <span className="mono flex items-center gap-3 text-[10px] text-[var(--bone-faint)]">
+      <button onClick={() => vivo.setRitmo(siguienteRitmo)} className="hover:text-[var(--bone)]" title="Velocidad de la animación">{vivo.ritmo}×</button>
+      {vivo.animados < vivo.mensajes.length && <button onClick={vivo.acelerar} className="hover:text-[var(--bone)]">saltar</button>}
+      <button onClick={onBitacora} className="hover:text-[var(--bone)]">{bitacora ? "ocultar bitácora" : "bitácora"}</button>
+    </span>
+  );
+}
+
+function BotonRevisar({ pendientes, lista, proyecto, className = "" }) {
+  if (!pendientes.length) return null;
+  const volver = encodeURIComponent(`/analisis?proyecto=${proyecto}&ids=${lista.map((x) => x.req_id).join(",")}`);
+  return (
+    <Link className={`pill sm ${className}`} to={`/requisitos/${pendientes[0].req_id}/validacion?volver=${volver}`}>
+      Revisar {pendientes.length > 1 ? `(${pendientes.length})` : pendientes[0].req_id}
+    </Link>
+  );
+}
+
+/* Bitácora técnica: cada mensaje del protocolo (emisor → receptor, tipo y resumen) */
+function Bitacora({ vivo, compacta = false, className = "" }) {
   const lineas = useRef(null);
   const visibles = vivo.mensajes.slice(0, Math.max(vivo.animados, 0));
-  const actual = vivo.mensajes[vivo.animados - 1];
-  const listos = lista.filter((r) => enReposo(r.estado)).length;
-  const siguienteRitmo = RITMOS[(RITMOS.indexOf(vivo.ritmo) + 1) % RITMOS.length];
-
   useEffect(() => {
     lineas.current?.scrollTo({ top: lineas.current.scrollHeight, behavior: "smooth" });
-  }, [visibles.length, bitacora]);
+  }, [visibles.length]);
+  return (
+    <ol ref={lineas} className={`overflow-y-auto px-5 py-2 font-mono text-[11.5px] leading-relaxed ${className}`}>
+      {visibles.map((m, i) => (
+        <li key={m.secuencia} className={`py-0.5 ${compacta ? "" : "flex gap-3"} ${i === visibles.length - 1 ? "text-[var(--bone)]" : "text-[var(--bone-dim)]"}`}>
+          <span className={compacta ? "mr-2 text-[var(--bone-faint)]" : "w-7 shrink-0 text-right text-[var(--bone-faint)]"}>{m.secuencia}</span>
+          <span className={compacta ? "" : "w-44 shrink-0 truncate"}>
+            <span style={{ color: tintaNodo(m.emisor) }}>{m.emisor}</span>
+            <span className="text-[var(--bone-faint)]"> → </span>
+            <span style={{ color: tintaNodo(m.receptor) }}>{m.receptor}</span>
+          </span>
+          <span className={compacta ? "ml-2 text-[var(--bone-faint)]" : "w-32 shrink-0 text-[var(--bone-faint)]"}>{m.tipo}{m.ronda ? ` r${m.ronda}` : ""}</span>
+          <span className={compacta ? "block break-words pb-1 font-sans" : "min-w-0 flex-1 break-words font-sans"}>{resumenMensaje(m)}</span>
+        </li>
+      ))}
+      {!visibles.length && <li className="py-1 text-[var(--bone-faint)]">Sin mensajes todavía.</li>}
+    </ol>
+  );
+}
+
+/*
+ * Escritorio: columna a la derecha, de arriba abajo: el requisito en foco, el paso
+ * actual con los controles, la lista vertical de requisitos del lote (o la
+ * bitácora) y el avance. La escena de las esferas ocupa el resto de la pantalla.
+ */
+function Columna({ vivo, lista, foco, focoInfo, pendientes, proyecto, onSeguir }) {
+  const [bitacora, setBitacora] = useState(false);
+  const enFoco = useRef(null);
+  const listos = lista.filter((r) => enReposo(r.estado)).length;
+  useEffect(() => { enFoco.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, [foco, bitacora]);
+
+  return (
+    <aside className="aparece fixed top-24 right-4 bottom-4 z-10 flex" style={{ width: COLUMNA_ESCENA }} aria-label="Análisis en curso">
+      <div className="tarjeta flex min-h-0 w-full flex-col overflow-hidden">
+        {focoInfo && (
+          <Foco r={focoInfo} i={lista.indexOf(focoInfo)} total={lista.length} mensajes={vivo.mensajes}
+            animados={vivo.animados} estadoVivo={vivo.estado} enColumna />
+        )}
+        <div className="space-y-2.5 border-b border-[var(--line)] px-5 py-3.5">
+          <PasoActual vivo={vivo} className="block" />
+          <Controles vivo={vivo} bitacora={bitacora} onBitacora={() => setBitacora((x) => !x)} />
+        </div>
+        {bitacora ? <Bitacora vivo={vivo} compacta className="min-h-0 flex-1" /> : (
+          <ol className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-3">
+            {lista.map((r) => {
+              const e = estadoSimple(r.estado);
+              const actual = r.req_id === foco;
+              return (
+                <li key={r.req_id} ref={actual ? enFoco : undefined}>
+                  <button onClick={() => onSeguir(r.req_id)} aria-current={actual || undefined}
+                    className={`flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-[color-mix(in_oklab,var(--bone)_5%,transparent)] ${actual ? "bg-[color-mix(in_oklab,var(--bone)_8%,transparent)]" : ""}`}>
+                    <span className="punto mt-1.5" style={{ background: e.tono, opacity: e.id === "cola" ? 0.4 : 1 }} />
+                    <span className="min-w-0 flex-1">
+                      <span className="mono block text-[10px] text-[var(--bone-faint)]">{r.req_id} · {e.texto}</span>
+                      <span className={`mt-0.5 block line-clamp-2 text-[13.5px] leading-snug ${actual ? "text-[var(--bone)]" : "text-[var(--bone-dim)]"}`}>{r.texto}</span>
+                    </span>
+                    {e.id === "analizando" && <span className="gira mt-1 shrink-0" />}
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+        <div className="flex items-center gap-3 border-t border-[var(--line)] px-5 py-3">
+          <span className="mono text-[10px] text-[var(--bone-faint)]">{listos} de {lista.length} listos</span>
+          <BotonRevisar pendientes={pendientes} lista={lista} proyecto={proyecto} className="ml-auto" />
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+/* Teléfono: abajo, el paso actual, el avance del lote y la bitácora plegada */
+function Panel({ vivo, lista, foco, pendientes, proyecto, onSeguir }) {
+  const [bitacora, setBitacora] = useState(false);
+  const listos = lista.filter((r) => enReposo(r.estado)).length;
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-10 px-4 pb-4 md:px-8">
       <div className="tarjeta mx-auto max-w-4xl">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3.5">
-          {actual ? (
-            <p className="min-w-0 flex-1 text-[15px]">
-              <span className="mono mr-2 text-[10px]" style={{ color: nodo(actual.emisor).tono }}>{nodo(actual.emisor).nombre}</span>
-              {pasoSimple(actual)}
-            </p>
-          ) : <p className="min-w-0 flex-1 text-[15px] text-[var(--bone-dim)]">{vivo.error ? vivo.error.message : "Esperando el primer paso…"}</p>}
-          <span className="mono flex items-center gap-3 text-[10px] text-[var(--bone-faint)]">
-            <button onClick={() => vivo.setRitmo(siguienteRitmo)} className="hover:text-[var(--bone)]" title="Velocidad de la animación">{vivo.ritmo}×</button>
-            {vivo.animados < vivo.mensajes.length && <button onClick={vivo.acelerar} className="hover:text-[var(--bone)]">saltar</button>}
-            <button onClick={() => setBitacora((x) => !x)} className="hover:text-[var(--bone)]">{bitacora ? "ocultar bitácora" : "bitácora"}</button>
-          </span>
+          <PasoActual vivo={vivo} />
+          <Controles vivo={vivo} bitacora={bitacora} onBitacora={() => setBitacora((x) => !x)} />
         </div>
 
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-[var(--line)] px-5 py-2.5">
@@ -283,30 +405,10 @@ function Panel({ vivo, lista, foco, pendientes, proyecto, onSeguir }) {
               );
             })}
           </span>
-          {pendientes.length > 0 && (
-            <Link className="pill sm ml-auto" to={`/requisitos/${pendientes[0].req_id}/validacion?volver=${encodeURIComponent(`/analisis?proyecto=${proyecto}&ids=${lista.map((x) => x.req_id).join(",")}`)}`}>
-              Revisar {pendientes.length > 1 ? `(${pendientes.length})` : pendientes[0].req_id}
-            </Link>
-          )}
+          <BotonRevisar pendientes={pendientes} lista={lista} proyecto={proyecto} className="ml-auto" />
         </div>
 
-        {bitacora && (
-          <ol ref={lineas} className="max-h-[22vh] overflow-y-auto border-t border-[var(--line)] px-5 py-2 font-mono text-[11.5px] leading-relaxed">
-            {visibles.map((m, i) => (
-              <li key={m.secuencia} className={`flex gap-3 py-0.5 ${i === visibles.length - 1 ? "text-[var(--bone)]" : "text-[var(--bone-dim)]"}`}>
-                <span className="w-7 shrink-0 text-right text-[var(--bone-faint)]">{m.secuencia}</span>
-                <span className="w-44 shrink-0 truncate">
-                  <span style={{ color: nodo(m.emisor).tono }}>{m.emisor}</span>
-                  <span className="text-[var(--bone-faint)]"> → </span>
-                  <span style={{ color: nodo(m.receptor).tono }}>{m.receptor}</span>
-                </span>
-                <span className="w-32 shrink-0 text-[var(--bone-faint)]">{m.tipo}{m.ronda ? ` r${m.ronda}` : ""}</span>
-                <span className="min-w-0 flex-1 break-words font-sans">{resumenMensaje(m)}</span>
-              </li>
-            ))}
-            {!visibles.length && <li className="py-1 text-[var(--bone-faint)]">Sin mensajes todavía.</li>}
-          </ol>
-        )}
+        {bitacora && <Bitacora vivo={vivo} className="max-h-[22vh] border-t border-[var(--line)]" />}
       </div>
     </div>
   );

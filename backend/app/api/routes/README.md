@@ -15,3 +15,5 @@ Todo exige sesión salvo `/auth/*` y `/salud` (ADR 0019); lo de otra cuenta resp
 | POST | `/validar/{req_id}` | `requisitos.py` |
 | GET | `/lel` | `lel.py` |
 | GET | `/sandbox`, `/salud`, `/conexion` | `sandbox.py` |
+| GET | `/preparacion` (base, Ollama y modelos del análisis) | `preparacion.py` |
+| POST | `/preparacion/cargar` (precarga un modelo configurado; 422 si no lo es, 502 si Ollama falla) | `preparacion.py` |

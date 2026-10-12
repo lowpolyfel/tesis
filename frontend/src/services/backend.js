@@ -35,6 +35,13 @@ export const CONTRASENA_MIN = 8;
 
 /* ======================= Servidor ======================= */
 export const salud = () => get("/salud");
+/**
+ * Antes de analizar (app/preparacion.py): { listo, base: {ok, tipo, host, ms, error, aviso},
+ * ollama: {ok, url, ms, error} | null, modelos: [{modelo, proveedor, tipo, roles, disponible, cargado, error}] }
+ */
+export const prepararAnalisis = () => get("/preparacion");
+/** Deja en memoria un modelo de Ollama del análisis → { modelo, ms } */
+export const cargarModelo = (modelo) => post("/preparacion/cargar", { modelo });
 export const obtenerConfiguracion = () => get("/configuracion");
 export const obtenerCatalogos = () => get("/catalogos");
 export const obtenerCola = () => get("/cola");
