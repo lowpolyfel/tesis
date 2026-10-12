@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { useApi } from "../hooks/useApi";
-import { guardarModelos, obtenerModelos, probarModelo } from "../services/backend";
+import { guardarModelos, listarModelos, obtenerModelos, probarModelo } from "../services/backend";
 import { Aviso, Cargando, Encabezado, Volver } from "../components/ui";
 
 /*
@@ -9,7 +9,12 @@ import { Aviso, Cargando, Encabezado, Volver } from "../components/ui";
  * cuando esta cuenta analiza, y las claves de los proveedores. Se guarda en la base
  * (perfiles_llm); las claves van cifradas y no se vuelven a mostrar: solo sus últimos
  * cuatro caracteres. Un agente sin elección usa lo que dice el .env del servidor.
+ *
+ * Los modelos se eligen de la lista que da el propio proveedor con tu clave
+ * (POST /cuenta/modelos/listar): cambian cada pocas semanas y una lista fija se queda
+ * vieja. Sin clave se ven unos sugeridos; «Otro modelo…» deja escribir cualquiera.
  */
+const OTRO = "__otro__";
 const QUE_HACE = {
   extractor: "Separa el vocabulario del dominio en cada requisito.",
   clasificador: "Propone las interpretaciones de los términos ambiguos.",
@@ -27,6 +32,17 @@ export default function Configuracion() {
   const [guardando, setGuardando] = useState(false);
   const [aviso, setAviso] = useState(null);
   const [fallo, setFallo] = useState(null);
+  const [listas, setListas] = useState({}); // {proveedor: {estado: cargando|ok|error, modelos, error}}
+
+  const cargarLista = async (pid, clave = null, url = null) => {
+    setListas((l) => ({ ...l, [pid]: { ...l[pid], estado: "cargando" } }));
+    try {
+      const r = await listarModelos({ proveedor: pid, api_key: clave || null, base_url: url || null });
+      setListas((l) => ({ ...l, [pid]: { estado: r.error ? "error" : "ok", modelos: r.modelos, error: r.error } }));
+    } catch (e) {
+      setListas((l) => ({ ...l, [pid]: { estado: "error", modelos: [], error: e.message } }));
+    }
+  };
 
   useEffect(() => {
     if (!datos) return;
@@ -34,6 +50,12 @@ export default function Configuracion() {
     setUrls(Object.fromEntries(Object.entries(datos.proveedores).map(([k, v]) => [k, v.base_url ?? ""])));
     setClaves({});
     setBorrar(new Set());
+    // la lista real de cada proveedor que ya tiene clave (y la de Ollama, que no la pide)
+    const usaOllama = datos.agentes.some((a) => a.proveedor === "ollama");
+    for (const p of datos.catalogo) {
+      if (datos.proveedores[p.id]?.tiene_clave || (p.id === "ollama" && usaOllama)) cargarLista(p.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [datos]);
 
   const catalogo = useMemo(() => Object.fromEntries((datos?.catalogo ?? []).map((p) => [p.id, p])), [datos]);
@@ -47,7 +69,11 @@ export default function Configuracion() {
   const elegir = (rol, cambio) => setAgentes((a) => {
     const actual = { ...a[rol], ...cambio, propio: true };
     // al cambiar de proveedor, el modelo sugerido de ese proveedor
-    if (cambio.proveedor && cambio.proveedor !== a[rol].proveedor) actual.modelo = catalogo[cambio.proveedor]?.modelos[0] ?? "";
+    if (cambio.proveedor && cambio.proveedor !== a[rol].proveedor) {
+      const lista = listas[cambio.proveedor];
+      actual.modelo = (lista?.estado === "ok" && lista.modelos[0]?.id) || catalogo[cambio.proveedor]?.modelos[0] || "";
+      if (!lista && (datos.proveedores[cambio.proveedor]?.tiene_clave || cambio.proveedor === "ollama")) cargarLista(cambio.proveedor);
+    }
     return { ...a, [rol]: actual };
   });
   const delServidor = (rol) => {
@@ -115,12 +141,8 @@ export default function Configuracion() {
                     {datos.catalogo.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
                   </select>
                 </label>
-                <label className="block">
-                  <span className="sr-only">Modelo de {a.nombre}</span>
-                  <input className="campo" list={`modelos-${e.proveedor}`} value={e.modelo} placeholder="nombre del modelo"
-                    onChange={(ev) => elegir(a.rol, { modelo: ev.target.value })} />
-                  <datalist id={`modelos-${e.proveedor}`}>{(p?.modelos ?? []).map((m) => <option key={m} value={m} />)}</datalist>
-                </label>
+                <ModeloSelect nombre={a.nombre} valor={e.modelo} lista={listas[e.proveedor]} sugeridos={p?.modelos ?? []}
+                  pideClave={p?.pide_clave} onCambio={(m) => elegir(a.rol, { modelo: m })} />
               </li>
             );
           })}
@@ -134,6 +156,7 @@ export default function Configuracion() {
           {visibles.map((pid) => (
             <Proveedor key={pid} p={catalogo[pid]} guardado={datos.proveedores[pid]} clave={claves[pid] ?? ""} url={urls[pid] ?? ""}
               borrar={borrar.has(pid)} modelo={Object.values(agentes).find((a) => a.proveedor === pid)?.modelo ?? catalogo[pid].modelos[0]}
+              lista={listas[pid]} onListar={() => cargarLista(pid, claves[pid], urls[pid])}
               onClave={(v) => setClaves((c) => ({ ...c, [pid]: v }))} onUrl={(v) => setUrls((u) => ({ ...u, [pid]: v }))}
               onBorrar={() => setBorrar((b) => { const n = new Set(b); if (n.has(pid)) n.delete(pid); else n.add(pid); return n; })} />
           ))}
@@ -151,7 +174,42 @@ export default function Configuracion() {
   );
 }
 
-function Proveedor({ p, guardado, clave, url, borrar, modelo, onClave, onUrl, onBorrar }) {
+/*
+ * El modelo de un agente: de la lista del proveedor si ya se cargó con la clave; si no, los
+ * sugeridos. «Otro modelo…» deja escribir el nombre exacto.
+ */
+function ModeloSelect({ nombre, valor, lista, sugeridos, pideClave, onCambio }) {
+  const deLaCuenta = lista?.estado === "ok" && lista.modelos.length > 0;
+  const opciones = deLaCuenta ? lista.modelos : sugeridos.map((m) => ({ id: m, nombre: m }));
+  const conocido = opciones.some((o) => o.id === valor);
+  const [escribir, setEscribir] = useState(false);
+  const libre = escribir || (valor && !conocido && !deLaCuenta);
+  return (
+    <div className="space-y-1">
+      <label className="block">
+        <span className="sr-only">Modelo de {nombre}</span>
+        <select className="campo" value={libre ? OTRO : valor}
+          onChange={(ev) => { if (ev.target.value === OTRO) setEscribir(true); else { setEscribir(false); onCambio(ev.target.value); } }}>
+          {valor && !conocido && !libre && <option value={valor}>{valor} (ya no está en la lista)</option>}
+          {opciones.map((o) => <option key={o.id} value={o.id}>{o.nombre !== o.id ? `${o.nombre} · ${o.id}` : o.id}</option>)}
+          <option value={OTRO}>Otro modelo…</option>
+        </select>
+      </label>
+      {libre && (
+        <input className="campo" autoFocus value={valor} placeholder="nombre exacto del modelo" onChange={(ev) => onCambio(ev.target.value)} />
+      )}
+      <p className="mono text-[9.5px] text-[var(--bone-faint)]">
+        {lista?.estado === "cargando" ? "cargando los modelos de tu cuenta…"
+          : deLaCuenta ? `${lista.modelos.length} modelos disponibles con tu cuenta`
+            : lista?.estado === "error" ? <span className="text-[var(--danger)] normal-case tracking-normal">{lista.error}</span>
+              : pideClave ? "sugeridos: guarda tu clave para ver los de tu cuenta" : "sugeridos"}
+        {valor && deLaCuenta && !conocido && !libre && <span className="text-[var(--aviso)]"> · el elegido ya no está disponible</span>}
+      </p>
+    </div>
+  );
+}
+
+function Proveedor({ p, guardado, clave, url, borrar, modelo, lista, onListar, onClave, onUrl, onBorrar }) {
   const [prueba, setPrueba] = useState(null); // null | "probando" | {ok, ms, error}
   const probar = async () => {
     setPrueba("probando");
@@ -190,6 +248,10 @@ function Proveedor({ p, guardado, clave, url, borrar, modelo, onClave, onUrl, on
       <div className="mono flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-[var(--bone-faint)]">
         <button className="hover:text-[var(--bone)] disabled:opacity-40" disabled={prueba === "probando" || !modelo} onClick={probar}>
           {prueba === "probando" ? "probando…" : `probar con ${modelo || "un modelo"}`}
+        </button>
+        <button className="hover:text-[var(--bone)] disabled:opacity-40" disabled={lista?.estado === "cargando" || (p.pide_clave && !clave && !guardado?.tiene_clave)}
+          onClick={onListar}>
+          {lista?.estado === "cargando" ? "buscando modelos…" : lista?.estado === "ok" ? `actualizar la lista (${lista.modelos.length})` : "ver los modelos de mi cuenta"}
         </button>
         {guardado?.tiene_clave && <button className="hover:text-[var(--danger)]" onClick={onBorrar}>{borrar ? "conservar la clave" : "quitar la clave"}</button>}
         {prueba && prueba !== "probando" && (

@@ -253,6 +253,7 @@ class ResumenRequisito(Forma):
     tipos: dict[str, int]
     vaguedad: list[str]
     en_proceso: bool
+    reemplazado_por: str | None = None  # se volvió a analizar como este req_id (reproceso)
 
 
 # ---------------------------------------------------------------- proyecto

@@ -100,13 +100,14 @@ trabajador, ADR 0008):
 | Proyecto | `GET /proyectos/{id}/especificacion` (RF/RNF y glosario), `/ambiguedades`, `/flujo`, `/metas`, `/big-picture` (las tres de artefactos aceptan `?req_ids=`), `GET /lel?proyecto_id=` |
 | Mapa conceptual | `GET /proyectos/{id}/mapa-conceptual` (el guardado, si sigue al día), `POST /proyectos/{id}/mapa-conceptual` (lo genera con el Modelador y responde su progreso en NDJSON; ADR 0020) |
 | Contexto y triaje | `GET/POST /proyectos/{id}/ficha` (ficha del contexto, ADR 0022), `POST /proyectos/{id}/triaje` (claro, ambiguo o incompleto, contra la ficha) |
-| Modelos por cuenta | `GET/PUT /cuenta/modelos` (proveedor y modelo por agente, claves cifradas), `POST /cuenta/modelos/probar` (ADR 0021) |
+| Modelos por cuenta | `GET/PUT /cuenta/modelos` (proveedor y modelo por agente, claves cifradas), `POST /cuenta/modelos/probar`, `POST /cuenta/modelos/listar` (ADR 0021) |
 | Exploratorio | `POST/GET /proyectos/{id}/comparaciones`, `GET /comparaciones/{id}` (ADR 0012) |
 | Experimentación | `GET /calibracion`, `GET /proyectos/{id}/calibracion`, `GET /corpus`, `GET /corpus/{nombre}`, `POST/GET /evaluaciones`, `GET /evaluaciones/{id}` |
 | Configuración | `GET /configuracion`, `GET /catalogos`, `GET /salud`, `GET /conexion` |
 | Preparación | `GET /preparacion` (base, Ollama y modelos del análisis: descargados y en memoria), `POST /preparacion/cargar` (precarga uno de esos modelos) |
 | Cuenta | `POST /auth/registro`, `/auth/verificar`, `/auth/reenviar`, `/auth/entrar`, `/auth/salir`, `/auth/recuperar`, `/auth/restablecer`, `GET /auth/yo` |
 | Borrar | `DELETE /proyectos/{id}` (con todo lo suyo), `DELETE /requisitos/{id}` |
+| Reanalizar | `POST /proyectos/{id}/reanalizar` (los que terminaron en error, como reproceso) |
 
 ## Pruebas
 

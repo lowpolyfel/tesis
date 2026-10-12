@@ -430,7 +430,8 @@ def test_resumen_requisito(tmp_path, analizador):
     formas.ResumenRequisito.model_validate(r)
     v = vista_requisito(t)
     assert set(r) == {"req_id", "proyecto_id", "ciclo", "texto", "origen", "estado", "creado", "actualizado",
-                      "similitud_minima", "via", "rondas_max", "n_ambiguos", "tipos", "vaguedad", "en_proceso"}
+                      "similitud_minima", "via", "rondas_max", "n_ambiguos", "tipos", "vaguedad", "en_proceso",
+                      "reemplazado_por"}
     assert {k: r[k] for k in ("similitud_minima", "via", "rondas_max", "n_ambiguos", "tipos", "vaguedad")} == {
         k: v["resumen"][k] for k in ("similitud_minima", "via", "rondas_max", "n_ambiguos", "tipos", "vaguedad")}
     assert r["en_proceso"] is False and r["estado"] == "pendiente_validacion"

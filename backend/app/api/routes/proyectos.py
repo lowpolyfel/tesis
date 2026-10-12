@@ -123,3 +123,20 @@ def cargar(p: ProyectoDep, entrada: EntradaRequisitos, srv: ServicioDep) -> dict
     ciclo, ids = srv.solicitar_lote([(r.texto, r.origen, r.triaje.model_dump() if r.triaje else None)
                                      for r in entrada.requisitos], p.proyecto_id)
     return {"proyecto_id": p.proyecto_id, "ciclo": ciclo, "req_ids": ids}
+
+
+class EntradaReanalizar(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    req_ids: list[str] = Field(min_length=1, max_length=200)
+
+
+@router.post("/proyectos/{proyecto_id}/reanalizar", status_code=202)
+def reanalizar(p: ProyectoDep, entrada: EntradaReanalizar, srv: ServicioDep) -> dict:
+    """Vuelve a analizar requisitos que terminaron en error (p. ej. la clave no daba acceso al
+    modelo). Crea una versión nueva de cada uno (`origen.reproceso_de`) en un ciclo nuevo.
+    422 si alguno no es del proyecto, no está en error o ya se volvió a analizar."""
+    try:
+        ciclo, ids = srv.reanalizar(p.proyecto_id, entrada.req_ids)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+    return {"proyecto_id": p.proyecto_id, "ciclo": ciclo, "req_ids": ids}

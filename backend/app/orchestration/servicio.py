@@ -358,6 +358,33 @@ class Servicio:
         finally:
             self._liberar(req_id)
 
+    def reemplazados(self, proyecto_id: str) -> dict[str, str]:
+        """{req_id viejo: req_id del reproceso que lo sustituye} en el proyecto."""
+        return {t["origen"]["reproceso_de"]: t["req_id"] for t in self.repo.listar_trazas(proyecto_id)
+                if isinstance(t.get("origen"), dict) and t["origen"].get("reproceso_de")}
+
+    def reanalizar(self, proyecto_id: str, req_ids: list[str]) -> tuple[int, list[str]]:
+        """Vuelve a analizar requisitos que terminaron en error por algo ajeno al texto (una clave
+        sin acceso al modelo, Ollama apagado…). Cada uno se carga otra vez como reproceso
+        (`origen.reproceso_de`) con su texto, su origen y su triaje: la traza con el error se
+        conserva, pero ya no cuenta. ValueError si alguno no es del proyecto, no está en
+        error o ya se volvió a analizar."""
+        ya = self.reemplazados(proyecto_id)
+        lote = []
+        for req_id in dict.fromkeys(req_ids):
+            t = self.repo.obtener_traza(req_id)
+            if t is None or t.proyecto_id != proyecto_id:
+                raise ValueError(f"{req_id} no es un requisito de este proyecto")
+            if t.estado != Estado.ERROR:
+                raise ValueError(f"{req_id} está en '{t.estado.value}': solo se vuelve a analizar lo que terminó en error")
+            if req_id in ya:
+                raise ValueError(f"{req_id} ya se volvió a analizar como {ya[req_id]}")
+            origen = (t.origen or Origen()).model_copy(update={"reproceso_de": req_id})
+            lote.append((t.texto, origen, (t.config or {}).get("triaje")))
+        if not lote:
+            raise ValueError("No hay requisitos que volver a analizar")
+        return self.solicitar_lote(lote, proyecto_id)
+
     def borrar_proyecto(self, proyecto_id: str) -> None:
         """El proyecto con sus requisitos, su LEL, documentos, comparaciones y evaluaciones.
         409 si algo del proyecto se está analizando o espera turno en la cola."""

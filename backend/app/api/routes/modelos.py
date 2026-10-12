@@ -11,7 +11,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.llm import PromptRenderizado
-from app.llm.proveedores import CATALOGO, POR_ID, FalloProveedor, crear_cliente_de
+from app.llm.proveedores import (
+    CATALOGO,
+    POR_ID,
+    FalloProveedor,
+    crear_cliente_de,
+    listar_modelos,
+)
 from app.orchestration import Servicio
 
 from ..dependencias import UsuarioDep, obtener_servicio
@@ -86,3 +92,29 @@ def probar(entrada: EntradaPrueba, srv: ServicioDep, usuario: UsuarioDep) -> dic
         return {"ok": False, "ms": None, "error": f"{type(e).__name__}: {str(e)[:300]}"}
     return {"ok": True, "ms": round((perf_counter() - t0) * 1000), "error": None, "respuesta": respuesta[:120]}
 
+
+
+class EntradaListar(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    proveedor: str = Field(min_length=1, max_length=40)
+    base_url: str | None = Field(None, max_length=300)
+    api_key: str | None = Field(None, max_length=500)  # vacía: la guardada
+
+
+@router.post("/cuenta/modelos/listar")
+def listar(entrada: EntradaListar, srv: ServicioDep, usuario: UsuarioDep) -> dict:
+    """Los modelos de texto que el proveedor ofrece ahora con esta clave (o la guardada):
+    {modelos: [{id, nombre}], error}. Sin clave, {modelos: [], error}."""
+    p = POR_ID.get(entrada.proveedor)
+    if p is None:
+        raise HTTPException(422, f"proveedor desconocido: {entrada.proveedor}")
+    clave = (entrada.api_key or "").strip() or srv.perfiles.clave_guardada(usuario.usuario_id, p.id)
+    if p.pide_clave and not clave:
+        return {"modelos": [], "error": f"Falta la clave de {p.nombre}."}
+    base = (entrada.base_url or "").strip() or srv.perfiles.url_guardada(usuario.usuario_id, p.id)
+    if p.id == "ollama" and not base:
+        base = srv.deps.settings.ollama_base_url
+    try:
+        return {"modelos": listar_modelos({"proveedor": p.id, "base_url": base, "api_key": clave}), "error": None}
+    except FalloProveedor as e:
+        return {"modelos": [], "error": str(e)}

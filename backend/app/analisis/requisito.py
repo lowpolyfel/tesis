@@ -386,11 +386,11 @@ def resumen_de(a: Analisis) -> dict:
     r = a.resumen()
     return {**{k: cabecera[k] for k in _CABECERA},
             **{k: r[k] for k in ("similitud_minima", "via", "rondas_max", "n_ambiguos", "tipos", "vaguedad")},
-            "en_proceso": a.en_proceso}
+            "en_proceso": a.en_proceso, "reemplazado_por": None}  # el proyecto lo completa
 
 
 def resumen_requisito(traza: Traza) -> dict:
     """Versión ligera para listas: {req_id, proyecto_id, ciclo, texto, origen, estado,
     creado, actualizado, similitud_minima, via, rondas_max, n_ambiguos, tipos, vaguedad,
-    en_proceso}. Forma exacta: `formas.ResumenRequisito`."""
+    en_proceso, reemplazado_por}. Forma exacta: `formas.ResumenRequisito`."""
     return resumen_de(analizar(traza))

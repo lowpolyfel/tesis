@@ -154,6 +154,10 @@ export const obtenerModelos = () => get("/cuenta/modelos");
 export const guardarModelos = (cambios) => put("/cuenta/modelos", cambios);
 /** → { ok, ms, error } con lo del formulario (sin api_key usa la guardada) */
 export const probarModelo = (datos) => post("/cuenta/modelos/probar", datos);
+/** Los modelos de texto que el proveedor ofrece ahora con esa clave (o la guardada) → { modelos: [{id, nombre}], error } */
+export const listarModelos = (datos) => post("/cuenta/modelos/listar", datos);
+/** Vuelve a analizar requisitos que terminaron en error → { ciclo, req_ids } (las versiones nuevas) */
+export const reanalizarRequisitos = (proyectoId, reqIds) => post(`/proyectos/${id(proyectoId)}/reanalizar`, { req_ids: reqIds });
 
 /* ======================= Ficha del contexto y triaje (ADR 0022) ======================= */
 /** { ficha: {ficha, markdown, modelo, creada} | null, al_dia, tiene_contexto } */
