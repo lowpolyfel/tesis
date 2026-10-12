@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.preparacion import conexiones
 from app.contexto import COLECCION_FICHAS, ficha_al_dia, generar_ficha, triar
 from app.llm.perfiles import con_perfil
 from app.models import Proyecto
@@ -93,6 +94,9 @@ def triaje_en_vivo(entrada: EntradaTriaje, p: ProyectoDep, srv: ServicioDep) -> 
 
     def trabajar():
         try:
+            u = p.propietario
+            conexiones(srv.repo, srv.deps.settings, srv.perfiles.eleccion(u, "revisor"), eventos.put,
+                       ollama_url=srv.perfiles.url_ollama(u))
             eventos.put({"tipo": "resultado", "triaje": _triaje(entrada, p, srv, avance=eventos.put)})
         except Exception as e:  # noqa: BLE001 — se informa en el flujo
             eventos.put({"tipo": "error", "mensaje": f"{type(e).__name__}: {e}"})

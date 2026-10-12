@@ -12,6 +12,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.preparacion import conexiones
 from app.contexto import COLECCION_FICHAS, ficha_al_dia
 from app.documentos import (
     DemasiadoGrande,
@@ -116,9 +117,13 @@ def separar_en_vivo(entrada: EntradaSeparar, srv: ServicioDep, usuario: UsuarioD
     estado, encontrados} · al final {"tipo": "resultado", separacion} o {"tipo": "error", mensaje}."""
     ia = _preparar(entrada, srv, usuario)
     eventos: queue.Queue = queue.Queue()
+    proyecto = srv.proyectos.obtener(entrada.proyecto_id) if entrada.proyecto_id else None
+    u = proyecto.propietario if proyecto else usuario.usuario_id
 
     def trabajar():
         try:
+            conexiones(srv.repo, srv.deps.settings, srv.perfiles.eleccion(u, "revisor") if ia else None, eventos.put,
+                       ollama_url=srv.perfiles.url_ollama(u))
             s = separar_texto(entrada.texto, ia=ia, avance=eventos.put)
             eventos.put({"tipo": "resultado", "separacion": s.model_dump(mode="json")})
         except Exception as e:  # noqa: BLE001 — se informa en el flujo

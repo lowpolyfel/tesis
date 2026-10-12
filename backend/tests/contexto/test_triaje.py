@@ -143,6 +143,8 @@ def test_triaje_en_vivo(entorno):
     r = c.post(f"/proyectos/{pid}/triaje/flujo", json={"requisitos": [
         "El cajero debe registrar cada venta.", "El sistema debe hacer reportes."]})
     eventos = [json.loads(x) for x in r.text.splitlines()]
+    assert eventos[0]["id"] == "servidor" and any(e.get("id") == "modelo" for e in eventos)
+    eventos = [e for e in eventos if e.get("id") not in ("servidor", "base", "modelo")]
     assert [e["tipo"] for e in eventos] == ["paso", "paso", "tanda", "tanda", "resultado"]
     assert eventos[3]["cuenta"] == {"claro": 1, "ambiguo": 0, "incompleto": 1}
     assert [x["veredicto"] for x in eventos[-1]["triaje"]["resultados"]] == ["claro", "incompleto"]
