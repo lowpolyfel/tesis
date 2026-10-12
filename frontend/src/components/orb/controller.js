@@ -5,7 +5,7 @@
  * Hay siempre una esfera principal ("core"). Puede dividirse (mitosis) en
  * otras esferas —los agentes— y volver a fusionarlas.
  *
- * Cada esfera: { id, mood, target: { x, y, s, deriva }, label, sub, active, dim, onClick }
+ * Cada esfera: { id, mood, target: { x, y, s, deriva }, label, sub, desde (ms: muestra el tiempo transcurrido), active, dim, onClick }
  *   x, y:    desplazamiento desde el centro como fracción del viewport
  *   s:       escala (1 = esfera de 218 px)
  *   deriva:  amplitud (fracción del alto) de un vaivén lento a lo largo del borde
@@ -114,7 +114,7 @@ export function createOrbController() {
       if (x != null || y != null || s != null) {
         b.target = { ...b.target, x: x ?? b.target.x, y: y ?? b.target.y, s: s ?? b.target.s };
       }
-      if ("label" in patch || "sub" in patch || "onClick" in patch) emit();
+      if ("label" in patch || "desde" in patch || "sub" in patch || "onClick" in patch) emit();
     },
 
     /* Lo llama el motor cuando una esfera terminó de fusionarse */

@@ -55,6 +55,18 @@ function explicar(e, enviadas) {
   }).join(" · ");
 }
 
+/* Los que faltan por precisar se pueden apartar: se guardan en este navegador y se retoman al volver a Analizar */
+const llaveApartados = (pid) => `apartados:${pid}`;
+function leerApartados(pid) {
+  try { return JSON.parse(localStorage.getItem(llaveApartados(pid)) || "[]"); } catch { return []; }
+}
+function guardarApartados(pid, textos) {
+  try {
+    if (textos.length) localStorage.setItem(llaveApartados(pid), JSON.stringify(textos));
+    else localStorage.removeItem(llaveApartados(pid));
+  } catch { /* sin almacenamiento: no se recuerdan */ }
+}
+
 export default function Analizar() {
   const orb = useOrb();
   const navigate = useNavigate();
@@ -74,6 +86,7 @@ export default function Analizar() {
   const [progreso, setProgreso] = useState(PROGRESO_VACIO); // pasos en vivo de la lectura o la revisión
   const [metodo, setMetodo] = useState(null); // { metodo: "ia" | "patrones", modelo } de la separación
   const archivo = useRef(null);
+  const [apartados, setApartados] = useState(() => leerApartados(proyectoId));
 
   usePoseEsfera(POSES[arrastrando ? "arrastre" : fase], [fase, arrastrando]);
 
@@ -99,7 +112,11 @@ export default function Analizar() {
     const t = setInterval(paso, RESPIRO_MS);
     return () => clearInterval(t);
   }, [orb, trabajando]);
-  useEffect(() => () => orb.update("core", { label: null, sub: null }), [orb]);
+  // cronómetro arriba de la esfera: se reinicia en cada fase que toma tiempo
+  useEffect(() => {
+    orb.update("core", { desde: trabajando ? Date.now() : null });
+  }, [orb, fase, trabajando]);
+  useEffect(() => () => orb.update("core", { label: null, sub: null, desde: null }), [orb]);
 
   /* ---- arrastrar y soltar sobre toda la pantalla (la esfera lo "atrae") ---- */
   // el manejador lee siempre la versión vigente (con el proyecto elegido ahora)
@@ -226,12 +243,13 @@ export default function Analizar() {
   const sobran = Math.max(0, validas.length - LIMITES_CARGA.requisitos);
   const destino = proyectoId;
 
-  const analizar = async () => {
+  const analizar = async (apartar = false) => {
     setSaliendo(true);
     setError(null);
     orb.poke(1.4);
+    const enviar = apartar ? validas.filter((p) => !porPrecisar(p)) : validas;
     try {
-      const requisitos = validas.map((p) => ({
+      const requisitos = enviar.map((p) => ({
         texto: p.texto.trim(),
         triaje: p.triaje ? {
           veredicto: p.triaje.veredicto, motivo: p.triaje.motivo, faltantes: p.triaje.faltantes, preguntas: p.triaje.preguntas,
@@ -247,11 +265,12 @@ export default function Analizar() {
         },
       }));
       const { req_ids: ids } = await cargarRequisitos(destino, requisitos);
+      if (apartar) guardarApartados(destino, [...apartados, ...validas.filter(porPrecisar).map((p) => p.texto.trim())]);
       navigate(`/analisis?proyecto=${destino}&ids=${ids.join(",")}`);
     } catch (e) {
       setSaliendo(false);
       orb.setMood("error", { revertAfter: 1600 });
-      setError(explicar(e, validas));
+      setError(explicar(e, enviar));
     }
   };
 
@@ -316,6 +335,17 @@ export default function Analizar() {
             <button className="pill" onClick={() => archivo.current.click()} onPointerEnter={() => orb.poke(0.25)}>Sube tu archivo</button>
             <button className="pill ghost" onClick={() => setFase("pegar")} onPointerEnter={() => orb.poke(0.25)}>Pegar texto</button>
           </div>
+          {apartados.length > 0 && (
+            <p className="text-[13px] text-[var(--bone-dim)]">
+              Tienes {apartados.length} {apartados.length === 1 ? "requisito apartado" : "requisitos apartados"} por precisar ·{" "}
+              <button className="underline hover:text-[var(--bone)]" onClick={() => {
+                setTexto(apartados.map((t, i) => `${i + 1}. ${t}`).join("\n"));
+                guardarApartados(proyectoId, []);
+                setApartados([]);
+                setFase("pegar");
+              }}>retomarlos</button>
+            </p>
+          )}
           <LineaContexto proyecto={proyecto} onEditar={() => setFase("contexto")} />
           {error && <p className="text-sm text-[var(--danger)]">{error}</p>}
         </section>
@@ -526,10 +556,14 @@ function grupoDe(p) {
   return p.triaje?.veredicto ?? "sin";
 }
 
+// sin precisar o editado sin volver a revisar: no se puede analizar todavía
+function porPrecisar(p) {
+  return Boolean(p.texto.trim()) && (p.texto.trim() !== p.revisado || grupoDe(p) === "incompleto");
+}
+
 function Triaje({ piezas, proyecto, aviso, error, saliendo, onEditar, onQuitar, onRevisar, onForzar, onAnalizar, onVolver }) {
   const editado = (p) => p.texto.trim() !== p.revisado;
-  const pendiente = (p) => p.texto.trim() && (editado(p) || (grupoDe(p) === "incompleto"));
-  const pendientes = piezas.filter(pendiente).length;
+  const pendientes = piezas.filter(porPrecisar).length;
   const total = piezas.filter((p) => p.texto.trim()).length;
   const cuenta = (g) => piezas.filter((p) => grupoDe(p) === g).length;
 
@@ -564,9 +598,15 @@ function Triaje({ piezas, proyecto, aviso, error, saliendo, onEditar, onQuitar, 
 
       <div className="sticky bottom-4 z-10 -mx-3 flex flex-wrap items-center gap-3 rounded-[28px] bg-[color-mix(in_oklab,var(--bg)_90%,transparent)] px-3 py-2">
         {error && <p className="basis-full px-2 text-sm text-[var(--danger)]">{error}</p>}
-        <button className="pill" disabled={!total || pendientes > 0 || saliendo} onClick={onAnalizar}>
+        <button className="pill" disabled={!total || pendientes > 0 || saliendo} onClick={() => onAnalizar(false)}>
           {pendientes ? `Faltan ${pendientes} por precisar o revisar` : `Analizar ${total} ${total === 1 ? "requisito" : "requisitos"}`}
         </button>
+        {pendientes > 0 && pendientes < total && (
+          <button className="pill" disabled={saliendo} onClick={() => onAnalizar(true)}
+            title="Los que faltan por precisar quedan guardados; los retomas al volver a Analizar">
+            Apartar {pendientes} y analizar {total - pendientes}
+          </button>
+        )}
         <button className="pill ghost" onClick={onVolver}>Volver a la separación</button>
       </div>
     </section>
