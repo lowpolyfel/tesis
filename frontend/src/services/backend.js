@@ -168,9 +168,9 @@ export const armarFicha = (proyectoId) => post(`/proyectos/${id(proyectoId)}/fic
 /** → { resultados: [{indice, veredicto: claro|ambiguo|incompleto|null, motivo, faltantes, preguntas,
  *       terminos_ambiguos, origen}], modelo, aviso, ficha } */
 /** Igual que separarRequisitos, avisando cada paso (NDJSON): onEvento({tipo: paso|tanda|resultado|error, …}) */
-export const separarRequisitosFlujo = (texto, proyectoId, onEvento) =>
-  postFlujo("/requisitos/separar/flujo", { texto, proyecto_id: proyectoId ?? null }, onEvento);
+export const separarRequisitosFlujo = (texto, proyectoId, onEvento, senal) =>
+  postFlujo("/requisitos/separar/flujo", { texto, proyecto_id: proyectoId ?? null }, onEvento, senal);
 /** Igual que triarRequisitos, avisando cada paso (NDJSON) */
-export const triarRequisitosFlujo = (proyectoId, textos, onEvento) =>
-  postFlujo(`/proyectos/${id(proyectoId)}/triaje/flujo`, { requisitos: textos }, onEvento);
+export const triarRequisitosFlujo = (proyectoId, textos, onEvento, senal) =>
+  postFlujo(`/proyectos/${id(proyectoId)}/triaje/flujo`, { requisitos: textos }, onEvento, senal);
 export const triarRequisitos = (proyectoId, textos) => post(`/proyectos/${id(proyectoId)}/triaje`, { requisitos: textos });

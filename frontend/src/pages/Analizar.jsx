@@ -86,6 +86,24 @@ export default function Analizar() {
   const [progreso, setProgreso] = useState(PROGRESO_VACIO); // pasos en vivo de la lectura o la revisión
   const [metodo, setMetodo] = useState(null); // { metodo: "ia" | "patrones", modelo } de la separación
   const archivo = useRef(null);
+  // cada lectura o revisión abre un turno; cancelar lo cierra y lo que llegue después se ignora
+  const turno = useRef({ n: 0, control: null, volver: "inicio" });
+  const abrirTurno = (volver) => {
+    turno.current.control?.abort();
+    turno.current = { n: turno.current.n + 1, control: new AbortController(), volver };
+    return turno.current;
+  };
+  const vigente = (t) => turno.current.n === t.n;
+  const cancelarProceso = () => {
+    const { volver, control } = turno.current;
+    turno.current = { n: turno.current.n + 1, control: null, volver };
+    control?.abort();
+    setProgreso(PROGRESO_VACIO);
+    setError(null);
+    orb.setMood("idle");
+    setFase(volver);
+  };
+  useEffect(() => () => turno.current.control?.abort(), []);
   const [apartados, setApartados] = useState(() => leerApartados(proyectoId));
 
   usePoseEsfera(POSES[arrastrando ? "arrastre" : fase], [fase, arrastrando]);
@@ -198,17 +216,21 @@ export default function Analizar() {
     setDocumento(null);
     setProgreso({ ...PROGRESO_VACIO, inicio: Date.now() });
     setFase("leyendo");
+    const t = abrirTurno("pegar");
     try {
       let r = null;
       const avanzar = seguir("lectura");
       await Promise.all([separarRequisitosFlujo(contenido, proyectoId, (e) => {
+        if (!vigente(t)) return;
         if (e.tipo === "resultado") r = e.separacion;
         else if (e.tipo === "error") throw new Error(e.mensaje);
         else avanzar(e);
-      }), new Promise((ok) => setTimeout(ok, MIN_LECTURA_MS))]);
+      }, t.control.signal), new Promise((ok) => setTimeout(ok, MIN_LECTURA_MS))]);
+      if (!vigente(t)) return;
       if (!r) throw new Error("El servidor cerró la conexión antes de terminar.");
       mostrar(r, "pegar");
     } catch (e) {
+      if (!vigente(t)) return;
       orb.setMood("error", { revertAfter: 1600 });
       setError(e.message);
       setFase("pegar");
@@ -221,11 +243,14 @@ export default function Analizar() {
     setProgreso({ ...PROGRESO_VACIO, inicio: Date.now(),
       pasos: [{ id: "archivo", texto: `Leyendo ${f.name}`, estado: "curso", detalle: "extrae el texto y el Revisor reconoce cada requisito" }] });
     setFase("leyendo");
+    const t = abrirTurno("inicio");
     try {
       const [doc] = await Promise.all([subirDocumento(proyectoId, f), new Promise((ok) => setTimeout(ok, MIN_LECTURA_MS))]);
+      if (!vigente(t)) return;
       setDocumento({ documento_id: doc.documento_id, proyecto_id: doc.proyecto_id, archivo: doc.archivo, paginas: doc.paginas });
       mostrar(doc, "inicio");
     } catch (e) {
+      if (!vigente(t)) return;
       orb.setMood("error", { revertAfter: 1600 });
       setError(e.message);
       setFase("inicio");
@@ -279,14 +304,17 @@ export default function Analizar() {
     setError(null);
     setProgreso({ ...PROGRESO_VACIO, inicio: Date.now() });
     setFase("revisando");
+    const t = abrirTurno("confirmar");
     try {
       let r = null;
       const avanzar = seguir("revision");
       await Promise.all([triarRequisitosFlujo(proyectoId, validas.map((p) => p.texto.trim()), (e) => {
+        if (!vigente(t)) return;
         if (e.tipo === "resultado") r = e.triaje;
         else if (e.tipo === "error") throw new Error(e.mensaje);
         else avanzar(e);
-      }), new Promise((ok) => setTimeout(ok, MIN_LECTURA_MS))]);
+      }, t.control.signal), new Promise((ok) => setTimeout(ok, MIN_LECTURA_MS))]);
+      if (!vigente(t)) return;
       if (!r) throw new Error("El servidor cerró la conexión antes de terminar.");
       setPiezas(validas.map((p, i) => ({ ...p, triaje: r.resultados[i], revisado: p.texto.trim(), textoInicial: p.texto.trim(), forzado: false })));
       setAvisoTriaje(r.aviso);
@@ -294,6 +322,7 @@ export default function Analizar() {
       orb.poke(1);
       setFase("triaje");
     } catch (e) {
+      if (!vigente(t)) return;
       orb.setMood("error", { revertAfter: 1600 });
       setError(`No se pudo revisar con el contexto: ${e.message}`);
       setFase("confirmar");
@@ -379,7 +408,7 @@ export default function Analizar() {
       )}
 
       {trabajando && (
-        <Progreso key={fase} progreso={progreso}
+        <Progreso key={fase} progreso={progreso} onCancelar={cancelarProceso}
           titulo={fase === "leyendo" ? "El Revisor lee el texto y reconoce cada requisito" : "El Revisor compara cada requisito con la ficha del contexto"} />
       )}
 
@@ -651,7 +680,7 @@ function PiezaRevisada({ p, compacta, editado, onEditar, onQuitar, onRevisar, on
 }
 
 /* Lo que está haciendo el Revisor: título, pasos en vivo, barra y tiempo transcurrido */
-function Progreso({ progreso, titulo }) {
+function Progreso({ progreso, titulo, onCancelar }) {
   const [ahora, setAhora] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setAhora(Date.now()), 500);
@@ -671,6 +700,7 @@ function Progreso({ progreso, titulo }) {
             : <div className="h-full rounded-full bg-[var(--c1)] transition-[width] duration-700" style={{ width: `${Math.max(4, progreso.barra * 100)}%` }} />}
         </div>
         <Pasos pasos={pasos} />
+        <button className="pill ghost sm" onClick={onCancelar}>Cancelar</button>
       </div>
     </section>
   );
