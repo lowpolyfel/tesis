@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from app.api.main import avisar_al_apagar, create_app
 from tests.escenarios import SESION, guiones_sesion_cercana, montar
+from tests.fakes import como_usuario
 
 ORIGEN = "http://localhost:5173"
 
@@ -25,13 +26,13 @@ def test_un_error_interno_sale_como_json_con_cors(servicio):
         raise RuntimeError("traza corrupta")
 
     servicio.trazas = falla
-    c = TestClient(create_app(servicio), raise_server_exceptions=False)
+    c = TestClient(como_usuario(create_app(servicio)), raise_server_exceptions=False)
     r = c.get("/trazas", headers={"Origin": ORIGEN})
     assert r.status_code == 500 and r.headers["access-control-allow-origin"] == ORIGEN
     assert "RuntimeError" in r.json()["detail"]
     # la excepción sigue llegando a uvicorn (y a las pruebas) para que quede en el registro
     with pytest.raises(RuntimeError):
-        TestClient(create_app(servicio)).get("/trazas")
+        TestClient(como_usuario(create_app(servicio))).get("/trazas")
 
 
 @pytest.mark.parametrize("origen,admitido", [
@@ -39,7 +40,7 @@ def test_un_error_interno_sale_como_json_con_cors(servicio):
     ("http://127.0.0.1:5174", True), ("http://otro.ejemplo.com", False), ("http://localhost.ejemplo.com", False),
 ])
 def test_cors_por_omision_admite_cualquier_puerto_local(servicio, origen, admitido):
-    c = TestClient(create_app(servicio))
+    c = TestClient(como_usuario(create_app(servicio)))
     r = c.options("/proyectos", headers={"Origin": origen, "Access-Control-Request-Method": "GET"})
     assert (r.status_code == 200 and r.headers.get("access-control-allow-origin") == origen) == admitido
 
@@ -49,8 +50,8 @@ def _post_crudo(c, ruta, cuerpo: str):
 
 
 def test_texto_con_sustitutos_sueltos_se_rechaza_con_422(servicio):
-    with TestClient(create_app(servicio)) as c:
-        assert _post_crudo(c, "/procesar", '{"texto": "registrar \\ud800 usuarios"}').status_code == 422
+    with TestClient(como_usuario(create_app(servicio))) as c:
+        assert _post_crudo(c, "/procesar", '{"texto": "registrar \\ud800 usuarios", "proyecto_id": "P00"}').status_code == 422
         r = _post_crudo(c, "/proyectos", '{"nombre": "x", "descripcion": "d \\ud83d"}')
         assert r.status_code == 422 and json.loads(r.text)["detail"][0]["loc"] == ["body", "descripcion"]
 
@@ -64,7 +65,7 @@ def test_texto_con_sustitutos_sueltos_se_rechaza_con_422(servicio):
         assert c.get(f"/proyectos/{p}/requisitos").json() == []
 
         # una validación con un comentario inválido se rechaza antes de aceptarla
-        c.post("/procesar", json={"texto": SESION})
+        c.post("/procesar", json={"texto": SESION, "proyecto_id": "P00"})
         servicio.cola.esperar(10)
         req_id = c.get("/trazas").json()[-1]["req_id"]
         assert _post_crudo(c, f"/validar/{req_id}", '{"decision": "aprobar", "comentario": "ok \\ud83d"}').status_code == 422
@@ -81,7 +82,7 @@ def test_texto_con_sustitutos_sueltos_se_rechaza_con_422(servicio):
 
 def test_el_sse_de_un_requisito_en_pausa_termina_al_apagar(servicio):
     req_id = servicio.procesar(SESION)  # queda en pendiente_validacion, sin estado terminal
-    app = create_app(servicio)
+    app = como_usuario(create_app(servicio))
     app.state.apagando.set()
     salida = {}
     # en un hilo: sin la corrección, el stream no termina nunca

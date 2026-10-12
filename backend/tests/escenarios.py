@@ -5,7 +5,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from app.config import Settings
 from app.db import RepositorioJson
 from app.orchestration import Servicio, armar
-from tests.fakes import EmbeddingsFalsos, LLMFalso, interp
+from tests.fakes import USUARIO_PRUEBA, EmbeddingsFalsos, LLMFalso, interp
 
 SESION = "El sistema debe registrar la sesión del usuario."
 P1 = "El sistema debe registrar el periodo de uso del usuario."
@@ -52,7 +52,11 @@ def montar(tmp_path, analizador, guiones, checkpointer=None, **ajustes):
     repo = RepositorioJson(settings.ruta(settings.resultados_dir))
     deps = armar(settings, repo, analizador, extractor=llm, clasificador=llm, critico=llm, modelador=llm,
                  embeddings=EmbeddingsFalsos(VECTORES), comparador=llm, agente_unico=llm)
-    return Servicio(deps, checkpointer or InMemorySaver()), llm, repo
+    srv = Servicio(deps, checkpointer or InMemorySaver())
+    # La API ya no crea `P00 General`: las pruebas lo usan como proyecto por omisión
+    srv.proyectos.asegurar_general()
+    srv.proyectos.actualizar("P00", propietario=USUARIO_PRUEBA.usuario_id)
+    return srv, llm, repo
 
 
 def guiones_sesion_cercana():

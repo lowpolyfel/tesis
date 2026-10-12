@@ -21,7 +21,7 @@ from app.evaluacion import CorpusInvalido, CorpusNoEncontrado, SinAgenteUnico, f
 from app.evaluacion.corpus import PATRON_NOMBRE
 from app.orchestration import Servicio
 
-from ..dependencias import obtener_servicio
+from ..dependencias import UsuarioDep, es_suyo, obtener_servicio, proyectos_de
 
 log = logging.getLogger(__name__)
 
@@ -55,11 +55,11 @@ def _invalido(e: CorpusInvalido) -> HTTPException:
 
 
 @router.post("/evaluaciones", status_code=202, response_model=formas.EvaluacionCreada)
-def crear(entrada: EntradaEvaluacion, srv: ServicioDep) -> dict:
+def crear(entrada: EntradaEvaluacion, srv: ServicioDep, usuario: UsuarioDep) -> dict:
     """Crea el proyecto de evaluación, encola los requisitos del corpus y la línea base.
     404 si el corpus no existe, 422 si no es válido, 503 sin cliente para la línea base."""
     try:
-        ev = evaluacion.solicitar(srv, entrada.corpus, entrada.nombre)
+        ev = evaluacion.solicitar(srv, entrada.corpus, entrada.nombre, propietario=usuario.usuario_id)
     except CorpusNoEncontrado as e:
         raise HTTPException(404, f"No existe el corpus {entrada.corpus}") from e
     except CorpusInvalido as e:
@@ -70,14 +70,15 @@ def crear(entrada: EntradaEvaluacion, srv: ServicioDep) -> dict:
 
 
 @router.get("/evaluaciones", response_model=list[formas.ResumenEvaluacion])
-def listar(srv: ServicioDep) -> list[dict]:
-    """Resúmenes con su progreso, la más reciente primero."""
-    return evaluacion.listar(srv)
+def listar(srv: ServicioDep, usuario: UsuarioDep) -> list[dict]:
+    """Resúmenes de las evaluaciones de la cuenta con su progreso, la más reciente primero."""
+    return evaluacion.listar(srv, proyectos_de(srv, usuario))
 
 
 @router.get("/evaluaciones/{evaluacion_id}", response_model=formas.InformeEvaluacion)
-def obtener(evaluacion_id: str, srv: ServicioDep) -> dict:
-    r = evaluacion.informe(srv, evaluacion_id)
+def obtener(evaluacion_id: str, srv: ServicioDep, usuario: UsuarioDep) -> dict:
+    ev = evaluacion.obtener(srv, evaluacion_id)
+    r = evaluacion.informe(srv, evaluacion_id) if ev and es_suyo(srv, usuario, ev.proyecto_id) else None
     if r is None:
         raise HTTPException(404, f"No existe la evaluación {evaluacion_id}")
     return r

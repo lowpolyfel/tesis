@@ -10,12 +10,11 @@ import Landing from "./Landing";
 import "./intro.css";
 
 /*
- * Portada de Dudamel: carga en blanco, clic para empezar y bienvenida, que
- * lleva directo a «Analizar». No hay cuentas (monousuario local): una pantalla
- * de registro o de inicio de sesión mostraría algo que el sistema no tiene.
+ * Portada de Dudamel: carga en blanco, clic para empezar y bienvenida, que lleva
+ * a «Entrar» o «Crear cuenta» (o directo a los proyectos si ya hay sesión).
  */
 const PAGES = { welcome: Welcome, landing: Landing };
-const EXIT_MS = 420;
+const EXIT_MS = 240;
 
 export default function Intro() {
   const navigate = useNavigate();
@@ -43,11 +42,11 @@ export default function Intro() {
     }, EXIT_MS);
   }, [orb, pose]);
 
-  // Salida de la portada hacia la aplicación
-  const enter = useCallback(() => {
+  // Salida de la portada hacia la aplicación (o hacia la cuenta)
+  const enter = useCallback((destino = "/proyectos") => {
     pose("welcome");
     setLeaving(true);
-    exitTimer.current = setTimeout(() => navigate("/proyectos"), EXIT_MS + 200);
+    exitTimer.current = setTimeout(() => navigate(destino), EXIT_MS + 120);
   }, [navigate, pose]);
 
   useEffect(() => {
@@ -77,7 +76,7 @@ export default function Intro() {
           <Loader
             onReveal={() => {
               pose("bloom");
-              setTimeout(() => go("welcome"), 900);
+              setTimeout(() => go("welcome"), 450);
             }}
             onFinished={() => setBooting(false)}
           />

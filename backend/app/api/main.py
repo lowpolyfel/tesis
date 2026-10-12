@@ -8,7 +8,7 @@ import threading
 from contextlib import asynccontextmanager
 from typing import Callable
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,9 +17,11 @@ from fastapi.responses import JSONResponse
 from app.config import get_settings
 from app.orchestration import Servicio, crear_dependencias
 
+from .dependencias import usuario_actual
 from .routes import (
     analisis,
     artefactos,
+    auth,
     calibracion,
     comparaciones,
     documentos,
@@ -116,13 +118,17 @@ def create_app(servicio: Servicio | None = None) -> FastAPI:
     app.add_exception_handler(RequestValidationError, entrada_invalida)
     # Va antes que CORS para quedar dentro de su pila (el último que se agrega es el más externo)
     app.add_middleware(ErroresInternosComoJson)
-    # El frontend (Vite, otro puerto) llama a la API y abre EventSource
+    # El frontend (Vite, otro puerto) llama a la API y abre EventSource con la cookie de
+    # sesión: con credenciales, los orígenes van en lista (nunca «*»)
     app.add_middleware(CORSMiddleware, allow_origins=settings.origenes_cors(),
                        allow_origin_regex=settings.cors_origenes_regex or None, allow_methods=["*"],
-                       allow_headers=["*"], allow_credentials=False)
+                       allow_headers=["*"], allow_credentials=True)
+    app.include_router(auth.router)
+    app.include_router(sandbox.router)  # /salud es pública; /conexion pide sesión en la propia ruta
+    # Todo lo demás exige una sesión (cookie); cada ruta comprueba además que lo pedido sea de la cuenta
     for r in (requisitos.router, proyectos.router, documentos.router, analisis.router, comparaciones.router,
-              calibracion.router, evaluaciones.router, artefactos.router, lel.router, sandbox.router):
-        app.include_router(r)
+              calibracion.router, evaluaciones.router, artefactos.router, lel.router):
+        app.include_router(r, dependencies=[Depends(usuario_actual)])
     return app
 
 

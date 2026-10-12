@@ -1,4 +1,5 @@
-"""Procesar un requisito, seguir su traza en vivo y validarlo."""
+"""Procesar un requisito, seguir su traza en vivo, validarlo y borrarlo. Solo los
+requisitos de los proyectos de la cuenta con sesión; los de otra cuenta responden 404."""
 from __future__ import annotations
 
 import asyncio
@@ -10,8 +11,9 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.comparacion.ejecucion import COLECCION as COLECCION_COMPARACIONES
+from app.evaluacion.modelos import COLECCION as COLECCION_EVALUACIONES
 from app.models import (
-    PROYECTO_GENERAL,
     ESTADOS_TERMINALES,
     Categoria,
     CategoriaNoFuncional,
@@ -23,7 +25,7 @@ from app.models import (
 )
 from app.orchestration import ConflictoDeEstado, Servicio
 
-from ..dependencias import apagando, obtener_servicio, traza_existente
+from ..dependencias import TrazaDep, UsuarioDep, apagando, exigir_suyo, obtener_servicio, proyectos_de
 
 router = APIRouter(tags=["requisitos"])
 ServicioDep = Annotated[Servicio, Depends(obtener_servicio)]
@@ -32,7 +34,7 @@ ServicioDep = Annotated[Servicio, Depends(obtener_servicio)]
 class EntradaProcesar(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     texto: str = Field(min_length=1, max_length=2000)
-    proyecto_id: str = PROYECTO_GENERAL
+    proyecto_id: str = Field(min_length=1)
 
 
 class Aceptado(BaseModel):
@@ -41,8 +43,10 @@ class Aceptado(BaseModel):
 
 
 @router.post("/procesar", status_code=202, response_model=Aceptado)
-def procesar(entrada: EntradaProcesar, srv: ServicioDep) -> Aceptado:
-    """Registra el requisito y lo encola; los mensajes se siguen en `/eventos/{req_id}`."""
+def procesar(entrada: EntradaProcesar, srv: ServicioDep, usuario: UsuarioDep) -> Aceptado:
+    """Registra el requisito en un proyecto de la cuenta y lo encola; los mensajes se siguen
+    en `/eventos/{req_id}`."""
+    exigir_suyo(srv, usuario, entrada.proyecto_id, f"el proyecto {entrada.proyecto_id}")
     try:
         req_id = srv.solicitar(entrada.texto, entrada.proyecto_id)
     except KeyError:
@@ -51,27 +55,51 @@ def procesar(entrada: EntradaProcesar, srv: ServicioDep) -> Aceptado:
 
 
 @router.get("/trazas")
-def trazas(srv: ServicioDep, proyecto_id: str | None = None) -> list[dict]:
-    """Resumen de los requisitos procesados, opcionalmente de un proyecto."""
-    return srv.trazas(proyecto_id)
+def trazas(srv: ServicioDep, usuario: UsuarioDep, proyecto_id: str | None = None) -> list[dict]:
+    """Resumen de los requisitos de la cuenta, opcionalmente de uno de sus proyectos."""
+    if proyecto_id is not None:
+        exigir_suyo(srv, usuario, proyecto_id, f"el proyecto {proyecto_id}")
+        return srv.trazas(proyecto_id)
+    suyos = proyectos_de(srv, usuario)
+    return [t for t in srv.trazas() if t["proyecto_id"] in suyos]
 
 
 @router.get("/cola")
-def cola(srv: ServicioDep) -> dict:
-    """Qué se está procesando y qué espera turno."""
-    return srv.cola.estado()
+def cola(srv: ServicioDep, usuario: UsuarioDep) -> dict:
+    """Qué se está procesando y qué espera turno de la cuenta. La cola es una sola para
+    todas: `de_otras_cuentas` cuenta los trabajos ajenos (sin decir cuáles)."""
+    suyos = proyectos_de(srv, usuario)
+    claves = {t["req_id"] for t in srv.trazas() if t["proyecto_id"] in suyos}
+    for coleccion, campo in ((COLECCION_COMPARACIONES, "comparacion_id"), (COLECCION_EVALUACIONES, "evaluacion_id")):
+        claves |= {d.get(campo) for d in srv.repo.listar_docs(coleccion) if d.get("proyecto_id") in suyos}
+    estado = srv.cola.estado()
+    todos = ([estado["en_proceso"]] if estado["en_proceso"] else []) + estado["pendientes"]
+    propio = lambda t: t is not None and t["clave"] in claves  # noqa: E731
+    return {"en_proceso": estado["en_proceso"] if propio(estado["en_proceso"]) else None,
+            "pendientes": [t for t in estado["pendientes"] if propio(t)],
+            "de_otras_cuentas": sum(not propio(t) for t in todos)}
 
 
 @router.get("/traza/{req_id}", response_model=Traza)
-def traza(t: Annotated[Traza, Depends(traza_existente)]) -> Traza:
+def traza(t: TrazaDep) -> Traza:
     return t
+
+
+@router.delete("/requisitos/{req_id}", status_code=204)
+def borrar(t: TrazaDep, srv: ServicioDep) -> None:
+    """Borra el requisito con lo que salió de él (entradas del LEL, documento formalizado).
+    409 si se está analizando o espera turno."""
+    try:
+        srv.borrar_requisito(t.req_id)
+    except ConflictoDeEstado as e:
+        raise HTTPException(409, str(e)) from e
 
 
 @router.get("/eventos/{req_id}", response_class=EventSourceResponse)
 async def eventos(
     request: Request,
     srv: ServicioDep,
-    t: Annotated[Traza, Depends(traza_existente)],
+    t: TrazaDep,
     desde: int = 0,
     last_event_id: Annotated[str | None, Header()] = None,
 ) -> AsyncIterable[ServerSentEvent]:
@@ -85,6 +113,8 @@ async def eventos(
     ultimo_estado = None
     while True:
         actual = await run_in_threadpool(srv.traza, t.req_id)
+        if actual is None:  # se borró mientras se seguía
+            return
         for m in actual.mensajes:
             if m.secuencia > enviados:
                 yield ServerSentEvent(data=m.model_dump(mode="json"), event="mensaje", id=str(m.secuencia))
@@ -101,7 +131,7 @@ async def eventos(
 
 
 @router.post("/validar/{req_id}", status_code=202)
-def validar(req_id: str, validacion: Validacion, srv: ServicioDep) -> dict:
+def validar(req_id: str, validacion: Validacion, srv: ServicioDep, _: TrazaDep) -> dict:
     """Aprobar, rechazar o editar. `interpretaciones_editadas` lleva, por término,
     la interpretación elegida (otra existente) o reescrita. Se encola con prioridad."""
     try:
@@ -141,7 +171,7 @@ def _cambios(c: BaseModel, anulables: tuple[str, ...] = ()) -> dict:
 
 
 @router.patch("/requisitos/{req_id}/formalizacion")
-def corregir_formalizacion(req_id: str, correccion: CorreccionFormalizacion, srv: ServicioDep) -> dict:
+def corregir_formalizacion(req_id: str, correccion: CorreccionFormalizacion, srv: ServicioDep, _: TrazaDep) -> dict:
     """Corrige el requisito reescrito, su tipo, categoría o supuestos. 409 si no está formalizado."""
     cambios = _cambios(correccion, anulables=("categoria",))
     if not cambios:
@@ -155,7 +185,8 @@ def corregir_formalizacion(req_id: str, correccion: CorreccionFormalizacion, srv
 
 
 @router.patch("/requisitos/{req_id}/lel/{termino}", response_model=EntradaLELFormalizada)
-def corregir_lel(req_id: str, termino: str, correccion: CorreccionLEL, srv: ServicioDep) -> EntradaLELFormalizada:
+def corregir_lel(req_id: str, termino: str, correccion: CorreccionLEL, srv: ServicioDep,
+                 _: TrazaDep) -> EntradaLELFormalizada:
     """Corrige la entrada del LEL que salió de este requisito para `termino`."""
     cambios = _cambios(correccion)
     if not cambios:

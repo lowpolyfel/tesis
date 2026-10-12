@@ -81,7 +81,8 @@ export default function Analisis() {
   }, [proyecto, ids]);
 
   const coreografia = useMemo(() => crearCoreografia(orb), [orb]);
-  const vivo = useEnVivo(fase === "trabajo" ? foco : null, { coreografia });
+  // A 2× por omisión: el ritmo de 1× se sentía lento; el botón de velocidad sigue cambiándolo
+  const vivo = useEnVivo(fase === "trabajo" ? foco : null, { coreografia, ritmoInicial: 2 });
   const alDia = vivo.animados >= vivo.mensajes.length;
 
   /*

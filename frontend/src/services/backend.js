@@ -9,9 +9,29 @@
  *   - corpus y evaluación: app/evaluacion (ADR 0014)
  *   - metas y Big Picture: app/artefactos (ADR 0011)
  */
-import { get, patch, post, postArchivo } from "./http";
+import { borrar, get, patch, post, postArchivo } from "./http";
 
 const id = (x) => encodeURIComponent(x);
+
+/* ======================= Cuenta (app/api/routes/auth.py) ======================= */
+/*
+ * La sesión es una cookie HttpOnly que pone el backend. Los errores traen
+ * e.detalle = { codigo, mensaje }: "sin_verificar" pide el código del correo,
+ * "espera" trae `segundos` para volver a pedirlo.
+ * Las que dejan algo pendiente responden { pendiente, correo, sin_smtp, minutos }:
+ * sin_smtp = el backend no tiene correo configurado y escribió el código en su consola.
+ */
+export const miCuenta = () => get("/auth/yo");
+export const registrarCuenta = ({ nombre, correo, contrasena }) => post("/auth/registro", { nombre, correo, contrasena });
+export const verificarCodigo = (correo, codigo) => post("/auth/verificar", { correo, codigo });
+export const reenviarCodigo = (correo) => post("/auth/reenviar", { correo });
+/** → la cuenta, o { pendiente: "entrar", … } si el backend pide además un código */
+export const entrar = (correo, contrasena) => post("/auth/entrar", { correo, contrasena });
+export const salir = () => post("/auth/salir");
+export const pedirRestablecer = (correo) => post("/auth/recuperar", { correo });
+export const restablecerContrasena = ({ correo, codigo, contrasena }) => post("/auth/restablecer", { correo, codigo, contrasena });
+/** Contraseñas: mínimo del backend (Contrasena en app/api/routes/auth.py) */
+export const CONTRASENA_MIN = 8;
 
 /* ======================= Servidor ======================= */
 export const salud = () => get("/salud");
@@ -29,6 +49,8 @@ export const crearProyecto = ({ nombre, descripcion, contexto }) =>
 export const CONTEXTO_MAX = 4000;
 export const obtenerProyecto = (proyectoId) => get(`/proyectos/${id(proyectoId)}`);
 export const editarProyecto = (proyectoId, cambios) => patch(`/proyectos/${id(proyectoId)}`, cambios);
+/** Borra el proyecto con sus requisitos, léxico, documentos y análisis (409 si algo se está analizando) */
+export const borrarProyecto = (proyectoId) => borrar(`/proyectos/${id(proyectoId)}`);
 export const resumenProyecto = (proyectoId) => get(`/proyectos/${id(proyectoId)}/resumen`);
 export const requisitosDeProyecto = (proyectoId) => get(`/proyectos/${id(proyectoId)}/requisitos`);
 
@@ -69,6 +91,8 @@ export const listarTrazas = (proyectoId) => get("/trazas", { proyecto_id: proyec
 export const validarRequisito = (reqId, { decision, interpretacionesEditadas = {}, comentario = null }) =>
   post(`/validar/${id(reqId)}`, { decision, interpretaciones_editadas: interpretacionesEditadas, comentario: comentario || null });
 export const artefactosDeRequisito = (reqId) => get(`/requisitos/${id(reqId)}/artefactos`);
+/** Borra el requisito con lo que salió de él (409 si se está analizando o espera turno) */
+export const borrarRequisito = (reqId) => borrar(`/requisitos/${id(reqId)}`);
 /**
  * Corregir un resultado ya formalizado (ADR 0017); cada corrección queda en la traza.
  * cambios: { requisito_reescrito?, tipo_requisito?, categoria?, supuestos? }

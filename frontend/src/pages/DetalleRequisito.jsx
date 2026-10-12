@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { useOrb } from "../components/orb/useOrb";
 import { useRequisitoVivo } from "../hooks/useRequisitoVivo";
-import { reprocesarRequisito } from "../services/backend";
+import { borrarRequisito, reprocesarRequisito } from "../services/backend";
 import { ESTADOS as E, INFO_VIA, MOOD_SIMPLE, estadoSimple } from "../constants/estados";
 import { CATEGORIAS_NF, HALLAZGO, TIPOS, TIPO_REQUISITO, tipo as infoTipo } from "../constants/agentes";
 import { recordarProyecto } from "../components/proyectoRecordado";
@@ -11,7 +11,7 @@ import TextoMarcado, { tonoMarcado } from "../components/TextoMarcado";
 import RutaEstados from "../components/traza/RutaEstados";
 import TerminoTraza from "../components/traza/TerminoTraza";
 import Bitacora from "../components/traza/Bitacora";
-import { Aviso, Cargando, Chip, EstadoChip, Plegable, Volver } from "../components/ui";
+import { Aviso, Cargando, Chip, Confirmar, EstadoChip, Plegable, Volver } from "../components/ui";
 import { Editor } from "./proyecto/Especificacion";
 
 /*
@@ -100,6 +100,8 @@ const CAMBIO_SIMPLE = { eleccion: "elegido por ti", edicion: "escrito por ti" };
 
 function Resultado({ v, id, ambiguos, reprocesar, aviso, onCorregido }) {
   const [corrigiendo, setCorrigiendo] = useState(false);
+  const [borrando, setBorrando] = useState(false);
+  const navigate = useNavigate();
   const f = v.formalizacion;
   const tipoReq = f?.tipo_requisito ? TIPO_REQUISITO[f.tipo_requisito] : null;
   const hallazgos = [
@@ -121,9 +123,22 @@ function Resultado({ v, id, ambiguos, reprocesar, aviso, onCorregido }) {
             {v.estado === E.PENDIENTE_VALIDACION && <Link to={`/requisitos/${id}/validacion`} className="pill sm">Revisar</Link>}
             {v.terminal && <button onClick={reprocesar} className="pill ghost sm">Volver a analizar</button>}
             <Link to={`/analisis?proyecto=${v.proyecto_id}&ids=${id}&escena=1`} className="pill ghost sm">Ver en la escena</Link>
+            {!v.en_proceso && <button onClick={() => setBorrando(true)} className="pill ghost sm">Borrar</button>}
           </span>
         </div>
         <Aviso>{aviso}</Aviso>
+        {borrando && (
+          <Confirmar
+            pregunta={`¿Borrar el requisito ${v.req_id}?`}
+            detalle="Se borran también su resultado y las entradas del léxico que salieron de él. No se puede deshacer."
+            accion="Borrar requisito"
+            onCancelar={() => setBorrando(false)}
+            onConfirmar={async () => {
+              await borrarRequisito(id);
+              navigate(`/proyectos/${v.proyecto_id}`, { replace: true });
+            }}
+          />
+        )}
       </header>
 
       <section className="space-y-2">

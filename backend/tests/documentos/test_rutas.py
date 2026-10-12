@@ -13,6 +13,7 @@ from tests.documentos.muestras import (
 )
 from tests.documentos.pdf_prueba import pdf_con_operadores, pdf_con_tounicode, pdf_sin_texto
 from tests.escenarios import montar
+from tests.fakes import como_usuario
 
 CAMPOS_DOCUMENTO = {"documento_id", "proyecto_id", "archivo", "tipo", "paginas", "caracteres", "creado",
                     "requisitos_propuestos", "fragmentos_descartados", "total_descartados", "advertencias",
@@ -22,7 +23,7 @@ CAMPOS_REQUISITO = {"indice", "texto", "pagina", "marca", "texto_original", "adv
 
 def _cliente(tmp_path, analizador, **ajustes):
     srv, _, _ = montar(tmp_path, analizador, {}, **ajustes)
-    app = FastAPI()
+    app = como_usuario(FastAPI())
     app.include_router(proyectos.router)
     app.include_router(documentos.router)
     app.state.servicio = srv

@@ -15,12 +15,13 @@ from app.analisis import (
 )
 from app.api.routes import analisis, proyectos
 from app.config import RAIZ_REPO
+from tests.fakes import como_usuario
 
 
 @pytest.fixture(scope="module")
 def cliente(proyecto):
     srv = proyecto[0]
-    app = FastAPI()
+    app = como_usuario(FastAPI())
     app.include_router(analisis.router)
     app.include_router(proyectos.router)
     app.state.servicio = srv
@@ -93,7 +94,7 @@ def test_catalogo_ausente(tmp_path):
 def test_las_rutas_estan_en_la_app_real_con_sus_formas(proyecto):
     from app.api.main import create_app
 
-    esquema = create_app(proyecto[0]).openapi()
+    esquema = como_usuario(create_app(proyecto[0])).openapi()
     respuestas = {ruta: esquema["paths"][ruta]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
                   for ruta in ("/requisitos/{req_id}", "/proyectos/{proyecto_id}/resumen",
                                "/proyectos/{proyecto_id}/ambiguedades", "/proyectos/{proyecto_id}/flujo",
@@ -103,7 +104,7 @@ def test_las_rutas_estan_en_la_app_real_con_sus_formas(proyecto):
 
 
 def _app_con(servicio) -> TestClient:
-    app = FastAPI()
+    app = como_usuario(FastAPI())
     app.include_router(analisis.router)
     app.state.servicio = servicio
     return TestClient(app, raise_server_exceptions=False)
@@ -151,7 +152,7 @@ def test_similitud_nan_en_la_traza_sale_como_null(proyecto):
     t = t.model_copy(update={"mensajes": [
         m.model_copy(update={"payload": {**m.payload, "similitud": float("nan"), "pares": {"I1-I2": float("nan")}}})
         if m.tipo == "similitud" else m for m in t.mensajes]})
-    stub = SimpleNamespace(traza=lambda req_id: t if req_id == "R01" else None,
+    stub = SimpleNamespace(traza=lambda req_id: t if req_id == "R01" else None, proyectos=srv.proyectos,
                            repo=SimpleNamespace(obtener_doc=lambda coleccion, doc_id: None))
     r = _app_con(stub).get("/requisitos/R01")
     assert r.status_code == 200

@@ -73,6 +73,9 @@ class Proyecto(BaseModel):
     descripcion: str | None = None
     contexto: str | None = None
     tipo: Literal["normal", "evaluacion"] = "normal"
+    # La cuenta dueña (usuario_id): solo ella ve el proyecto. Los creados antes de las
+    # cuentas no tienen dueño y ninguna cuenta los ve.
+    propietario: str | None = None
     creado: datetime = Field(default_factory=ahora)
 
 

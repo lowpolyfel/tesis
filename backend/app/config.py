@@ -82,6 +82,21 @@ class Settings(BaseSettings):
     resultados_dir: str = "data/resultados"
     catalogos_dir: str = "data/catalogos"
 
+    # Cuentas: el código de seguridad va por correo (SMTP). Sin SMTP_HOST (desarrollo) no se
+    # envía: el backend escribe el código en su registro.
+    smtp_host: str | None = None
+    smtp_puerto: int = Field(587, ge=1, le=65535)
+    smtp_usuario: str | None = None
+    smtp_contrasena: str | None = None
+    smtp_remitente: str | None = None  # por omisión, SMTP_USUARIO
+    smtp_seguridad: Literal["starttls", "ssl", "ninguna"] = "starttls"
+    codigo_minutos: int = Field(15, ge=1)  # vigencia del código
+    codigo_intentos: int = Field(5, ge=1)  # intentos por código
+    codigo_reenvio_s: int = Field(60, ge=0)  # espera mínima para pedir otro
+    auth_codigo_al_entrar: bool = False  # true: también pide un código por correo al entrar
+    sesion_dias: int = Field(7, ge=1)
+    sesion_cookie_segura: bool = False  # true si el backend se sirve por HTTPS
+
     # API: cada cuánto la sandbox recibe mensajes nuevos por SSE (no afecta resultados)
     sse_intervalo_s: float = Field(0.3, gt=0)
     # Orígenes permitidos para el frontend, separados por coma, y además los que cumplan la

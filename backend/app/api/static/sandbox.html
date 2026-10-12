@@ -168,6 +168,15 @@ async function api(ruta, opciones = {}) {
   return cuerpo;
 }
 
+// Pide sesión (ADR 0019): entra primero desde el frontend; la cookie vale también aquí.
+// Los requisitos van a un proyecto «Sandbox» de la cuenta (se crea la primera vez).
+async function proyectoSandbox() {
+  const propios = await api("/proyectos");
+  const p = propios.find((x) => x.nombre === "Sandbox")
+    ?? await api("/proyectos", {method: "POST", body: JSON.stringify({nombre: "Sandbox"})});
+  return p.proyecto_id;
+}
+
 // ------------------------------------------------------------------ estado
 
 function pintarEstado(estado, transiciones) {
@@ -308,7 +317,8 @@ $("procesar").addEventListener("click", async () => {
   if (!texto) return;
   $("procesar").disabled = true;
   try {
-    const r = await api("/procesar", {method: "POST", body: JSON.stringify({texto})});
+    const proyecto_id = await proyectoSandbox();
+    const r = await api("/procesar", {method: "POST", body: JSON.stringify({texto, proyecto_id})});
     seguir(r.req_id);
     cargarRecientes();
   } catch (err) {

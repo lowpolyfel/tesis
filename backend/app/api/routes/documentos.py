@@ -20,6 +20,7 @@ from app.documentos import (
 )
 from app.orchestration import Servicio
 
+from ..dependencias import UsuarioDep, es_suyo
 from .proyectos import ProyectoDep, ServicioDep
 
 router = APIRouter(tags=["documentos"])
@@ -54,9 +55,9 @@ def listar(p: ProyectoDep, srv: ServicioDep) -> list[ResumenDocumento]:
 
 
 @router.get("/documentos/{documento_id}", response_model=Documento)
-def obtener(documento_id: str, srv: ServicioDep) -> Documento:
+def obtener(documento_id: str, srv: ServicioDep, usuario: UsuarioDep) -> Documento:
     documento = _documentos(srv).obtener(documento_id)
-    if documento is None:
+    if documento is None or not es_suyo(srv, usuario, documento.proyecto_id):
         raise HTTPException(404, f"No existe el documento {documento_id}")
     return documento
 

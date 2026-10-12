@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { useApi } from "../../hooks/useApi";
-import { CONTEXTO_MAX, editarProyecto, resumenProyecto } from "../../services/backend";
+import { CONTEXTO_MAX, borrarProyecto, editarProyecto, resumenProyecto } from "../../services/backend";
 import { ESTADOS as E } from "../../constants/estados";
 import { seccion } from "../../components/orb/secciones";
-import { recordarProyecto } from "../../components/proyectoRecordado";
+import { olvidarProyecto, recordarProyecto } from "../../components/proyectoRecordado";
 import { useOrb } from "../../components/orb/useOrb";
-import { Aviso, Cargando, Encabezado, Pestanas, Volver } from "../../components/ui";
+import { Aviso, Cargando, Confirmar, Encabezado, Pestanas, Volver } from "../../components/ui";
 import Requisitos from "./Requisitos";
 import Especificacion from "./Especificacion";
 import Lexico from "./Lexico";
@@ -30,6 +30,10 @@ export default function Proyecto() {
   const seleccion = (params.get("req") ?? "").split(",").filter(Boolean);
   const { datos: r, setDatos, error, recargar } = useApi(() => resumenProyecto(id), [id]);
   const enProceso = r?.contadores.en_proceso ?? 0;
+  const navigate = useNavigate();
+  const orb = useOrb();
+  const [editarPedido, setEditarPedido] = useState(0);
+  const [borrando, setBorrando] = useState(false);
 
   useEffect(() => recordarProyecto(id), [id]);
   useEffect(() => {
@@ -59,9 +63,29 @@ export default function Proyecto() {
         volver={<Volver a="/proyectos">Proyectos</Volver>}
         antetitulo={`${p.proyecto_id}${evaluacion ? " · evaluación" : ""}`}
         titulo={p.nombre}
-        acciones={!evaluacion && <Link className="pill" to={`/proyectos/${id}/analizar`}>+ Analizar requisitos</Link>}
+        acciones={(
+          <>
+            {!evaluacion && <Link className="pill" to={`/proyectos/${id}/analizar`}>+ Analizar requisitos</Link>}
+            {!evaluacion && <button className="pill ghost" onClick={() => setEditarPedido((n) => n + 1)}>Editar</button>}
+            <button className="pill ghost" onClick={() => setBorrando(true)}>Borrar</button>
+          </>
+        )}
       >
-        <Contexto p={p} editable={!evaluacion} onGuardado={(nuevo) => setDatos((x) => ({ ...x, proyecto: nuevo }))} />
+        {borrando && (
+          <Confirmar
+            pregunta={`¿Borrar el proyecto «${p.nombre}»?`}
+            detalle={`Se borran también sus ${c.requisitos} requisitos, su léxico, sus documentos y sus análisis. No se puede deshacer.`}
+            accion="Borrar proyecto"
+            onCancelar={() => setBorrando(false)}
+            onConfirmar={async () => {
+              await borrarProyecto(id);
+              olvidarProyecto();
+              orb.setMood("idle");
+              navigate("/proyectos", { replace: true });
+            }}
+          />
+        )}
+        <Contexto p={p} editable={!evaluacion} pedirEdicion={editarPedido} onGuardado={(nuevo) => setDatos((x) => ({ ...x, proyecto: nuevo }))} />
         <p className="mono flex flex-wrap gap-x-5 gap-y-1 text-[10.5px] text-[var(--bone-faint)]">
           <span><b className="font-normal text-[var(--bone)]">{c.requisitos}</b> requisitos</span>
           <span><b className="font-normal text-[#57f7a7]">{c.formalizados}</b> listos</span>
@@ -109,7 +133,7 @@ export default function Proyecto() {
  * El contexto general: lo leen los agentes con cada requisito. Plegado a tres
  * renglones; editable en el sitio, junto con el nombre.
  */
-function Contexto({ p, editable, onGuardado }) {
+function Contexto({ p, editable, pedirEdicion, onGuardado }) {
   const orb = useOrb();
   const [editando, setEditando] = useState(false);
   const [completo, setCompleto] = useState(false);
@@ -118,6 +142,9 @@ function Contexto({ p, editable, onGuardado }) {
   const [error, setError] = useState(null);
 
   const abrir = () => { setNombre(p.nombre); setContexto(p.contexto ?? ""); setError(null); setEditando(true); };
+  // «Editar» del encabezado abre este mismo formulario
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (pedirEdicion) abrir(); }, [pedirEdicion]);
   const guardar = async (e) => {
     e.preventDefault();
     try {

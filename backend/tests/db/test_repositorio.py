@@ -84,3 +84,25 @@ def test_respaldo_json_si_mongo_no_responde(tmp_path):
 def test_json_rechaza_ids_que_no_son_de_requisito(tmp_path):
     repo = RepositorioJson(tmp_path)
     assert repo.obtener_traza("../../etc/passwd") is None
+
+
+def test_borrar_trazas_lel_y_documentos(repo):
+    a = repo.crear_traza("uno", {}, proyecto_id="P01").req_id
+    b = repo.crear_traza("dos", {}, proyecto_id="P02").req_id
+    repo.guardar_lel([_entrada(a).model_copy(update={"proyecto_id": "P01"}),
+                      _entrada(b).model_copy(update={"proyecto_id": "P02"})])
+    for i, pid in enumerate(("P01", "P01", "P02"), 1):
+        repo.guardar_doc("documentos", f"D{i:02d}", {"documento_id": f"D{i:02d}", "proyecto_id": pid})
+
+    assert repo.borrar_traza(a) and not repo.borrar_traza(a) and not repo.borrar_traza("../x")
+    assert repo.obtener_traza(a) is None and repo.obtener_traza(b) is not None
+    assert repo.borrar_lel(req_id=a) == 1 and [e.req_id for e in repo.listar_lel()] == [b]
+    assert repo.borrar_lel(proyecto_id="P02") == 1 and repo.listar_lel() == []
+    with pytest.raises(ValueError):
+        repo.borrar_lel()
+
+    assert repo.borrar_docs("documentos", proyecto_id="P01") == 2
+    assert [d["documento_id"] for d in repo.listar_docs("documentos")] == ["D03"]
+    assert repo.borrar_doc("documentos", "D03") and not repo.borrar_doc("documentos", "D03")
+    with pytest.raises(ValueError):
+        repo.borrar_docs("documentos")

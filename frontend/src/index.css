@@ -8,12 +8,14 @@
 }
 
 /*
- * Tema oscuro de Dudamel para las pantallas de herramientas. Las utilidades
- * de Tailwind leen variables de color: aquí se reinterpretan sobre el fondo
- * vivo de la esfera (tintes translúcidos, texto hueso). Sin esta clase (vista
- * ?figura=1) la misma pantalla queda clara, lista para imprimir.
+ * Pantallas de herramientas. Las utilidades de Tailwind leen variables de color:
+ * en modo oscuro se reinterpretan sobre el fondo vivo de la esfera (tintes
+ * translúcidos, texto hueso); en modo claro quedan las de Tailwind, pensadas
+ * para fondo claro. Sin esta clase (vista ?figura=1) la pantalla queda clara,
+ * lista para imprimir.
  */
-.tema-oscuro {
+.tema-oscuro { color: var(--bone); }
+:root:not([data-tema="claro"]) .tema-oscuro {
   --color-sobre: #16130f;
   --color-white: rgba(239, 233, 222, 0.035);
   --color-slate-50: rgba(239, 233, 222, 0.025);
@@ -26,7 +28,6 @@
   --color-slate-700: rgba(239, 233, 222, 0.8);
   --color-slate-800: rgba(239, 233, 222, 0.9);
   --color-slate-900: #efe9de;
-  color: #efe9de;
 
   --color-sky-50: rgb(56 189 248 / 0.08);  --color-sky-100: rgb(56 189 248 / 0.14);  --color-sky-200: rgb(56 189 248 / 0.22);  --color-sky-300: rgb(56 189 248 / 0.38);  --color-sky-400: #38bdf8; --color-sky-500: #38bdf8; --color-sky-600: #38bdf8; --color-sky-700: #bae6fd; --color-sky-800: #bae6fd; --color-sky-900: #e0f2fe;
   --color-blue-50: rgb(96 165 250 / 0.08); --color-blue-100: rgb(96 165 250 / 0.14); --color-blue-200: rgb(96 165 250 / 0.22); --color-blue-300: rgb(96 165 250 / 0.38); --color-blue-400: #60a5fa; --color-blue-500: #60a5fa; --color-blue-600: #60a5fa; --color-blue-700: #bfdbfe; --color-blue-800: #bfdbfe; --color-blue-900: #dbeafe;
@@ -51,12 +52,12 @@
   letter-spacing: -0.02em;
 }
 .tema-oscuro h2 { font-family: var(--font-mono); letter-spacing: 0.14em; font-weight: 500; font-size: 11px; }
-.tema-oscuro option { background: #16130f; color: #efe9de; }
+.tema-oscuro option { background: var(--fondo-menu); color: var(--bone); }
 /* En una capa: fuera de capa ganaría a cualquier utilidad de color (text-…) de los campos */
 @layer base {
   .tema-oscuro input, .tema-oscuro textarea, .tema-oscuro select { color: inherit; }
 }
-.tema-oscuro ::placeholder { color: rgba(239, 233, 222, 0.32); }
+.tema-oscuro ::placeholder { color: var(--bone-faint); }
 
 @media print {
   .no-print { display: none !important; }

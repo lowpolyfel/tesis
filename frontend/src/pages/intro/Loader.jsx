@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
  * Pantalla de carga en blanco. Cuando todo está listo, el orbe nace pequeño
  * en el centro y su mundo oscuro se abre paso hasta cubrir la pantalla.
  */
-const MIN_WHITE_MS = 1500;
-const BLOOM_MS = 2600;
+const MIN_WHITE_MS = 700;
+const BLOOM_MS = 1500;
 
 export default function Loader({ onReveal, onFinished }) {
   const [phase, setPhase] = useState("white");

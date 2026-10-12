@@ -1,16 +1,32 @@
-/* Estética común de Dudamel: variables, fondo vivo y grano */
+/* Estética común de Dudamel: variables, fondo vivo y grano.
+   Dos temas: oscuro (por omisión) y claro (<html data-tema="claro">, components/tema.js).
+   Los nombres «bone» son el color del texto en cualquier tema; --bg lo escribe la esfera.
+   Sin backdrop-filter: desenfocar lo que pasa detrás (la esfera, que se mueve) obligaba
+   a recalcular cada tarjeta en cada cuadro; las superficies son un poco más opacas. */
 :root{
   --c1:#7482ff; --c2:#bc6dff; --bg:#0a0908;
   --glow:rgba(116,130,255,.5); --glowSoft:rgba(188,109,255,.22); --rim:rgba(116,130,255,.42);
   --fog:1; --glowOp:.5;
   --bone:#efe9de; --bone-dim:rgba(239,233,222,.6); --bone-faint:rgba(239,233,222,.34); --line:rgba(239,233,222,.14);
-  --danger:#ff7b88;
+  --danger:#ff7b88; --ok:#57f7a7; --aviso:#ffc457;
+  --tinta-sobre:#16130f; /* texto sobre un botón relleno (fondo --bone) */
+  --chip-mezcla:white;   /* las etiquetas aclaran su tono en oscuro y lo oscurecen en claro */
+  --fondo-menu:#16130f;  /* <option> de los <select> */
   --serif:"Instrument Serif",ui-serif,Georgia,serif;
   --sans:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
   --ease:cubic-bezier(.16,1,.3,1);
   color-scheme:dark;
 }
+:root[data-tema="claro"]{
+  --bg:#f5f1ea;
+  --bone:#1c1915; --bone-dim:rgba(28,25,21,.68); --bone-faint:rgba(28,25,21,.46); --line:rgba(28,25,21,.14);
+  --danger:#c42d45; --ok:#0e8a55; --aviso:#a86400;
+  --tinta-sobre:#faf7f1; --chip-mezcla:#000; --fondo-menu:#ffffff;
+  color-scheme:light;
+}
+/* El grano es luz sobre lo oscuro: en claro no se ve y solo ocuparía una capa */
+:root[data-tema="claro"] .grain{display:none}
 html,body{margin:0;min-height:100%;background:var(--bg);color:var(--bone);
   font-family:var(--sans);-webkit-font-smoothing:antialiased}
 
@@ -26,13 +42,13 @@ html,body{margin:0;min-height:100%;background:var(--bg);color:var(--bone);
 @keyframes sale{to{opacity:0}}
 
 /* Controles con la estética de la portada */
-.pill{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;
+.pill{appearance:none;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;
   border-radius:999px;padding:12px 24px;cursor:pointer;font-family:var(--mono);font-size:11px;letter-spacing:.16em;
   text-transform:uppercase;transition:background .4s ease,color .4s ease,transform .25s var(--ease),box-shadow .4s ease,opacity .3s;
-  background:var(--bone);color:#16130f;border:1px solid var(--bone)}
-.pill:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 10px 30px -10px var(--glow),0 0 0 4px rgba(239,233,222,.08)}
-.pill.ghost{background:rgba(239,233,222,.035);color:var(--bone-dim);border-color:var(--line);backdrop-filter:blur(18px)}
-.pill.ghost:hover:not(:disabled){background:rgba(239,233,222,.08);color:var(--bone)}
+  background:var(--bone);color:var(--tinta-sobre);border:1px solid var(--bone)}
+.pill:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 10px 30px -10px var(--glow),0 0 0 4px color-mix(in oklab,var(--bone) 8%,transparent)}
+.pill.ghost{background:color-mix(in oklab,var(--bg) 84%,transparent);color:var(--bone-dim);border-color:var(--line)}
+.pill.ghost:hover:not(:disabled){background:color-mix(in oklab,var(--bone) 8%,var(--bg));color:var(--bone)}
 .pill:disabled{opacity:.4;cursor:default}
 .mono{font-family:var(--mono);letter-spacing:.16em;text-transform:uppercase;font-size:11px}
 .serif{font-family:var(--serif);font-weight:400;letter-spacing:-.02em}
@@ -54,45 +70,44 @@ html,body{margin:0;min-height:100%;background:var(--bg);color:var(--bone);
 /* ---------------------------------------------------------------- piezas comunes */
 
 /* Tarjeta: se lee aunque la esfera pase por detrás */
-.tarjeta{border:1px solid var(--line);border-radius:18px;
-  background:color-mix(in oklab,var(--bg) 74%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
-.tarjeta-viva{transition:border-color .25s ease,background .25s ease}
-.tarjeta-viva:hover{border-color:color-mix(in oklab,var(--c1) 60%,var(--line));background:color-mix(in oklab,var(--bg) 66%,transparent)}
+.tarjeta{border:1px solid var(--line);border-radius:18px;background:color-mix(in oklab,var(--bg) 90%,transparent)}
+.tarjeta-viva{transition:border-color .2s ease,background .2s ease}
+.tarjeta-viva:hover{border-color:color-mix(in oklab,var(--c1) 60%,var(--line));background:color-mix(in oklab,var(--bone) 4%,var(--bg))}
 
 /* Velo del menú de la esfera */
-.velo{background:radial-gradient(ellipse at center,color-mix(in oklab,var(--bg) 70%,transparent),color-mix(in oklab,var(--bg) 92%,transparent));
-  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);animation:aparece .3s ease-out both}
+.velo{background:radial-gradient(ellipse at center,color-mix(in oklab,var(--bg) 80%,transparent),color-mix(in oklab,var(--bg) 96%,transparent));
+  animation:aparece .2s ease-out both}
 .punto-menu{outline:none}
 .punto-menu:focus-visible{box-shadow:0 0 0 2px var(--bone)}
 
 /* Pestañas */
 .pestanas{display:flex;flex-wrap:nowrap;gap:4px;padding:4px;border:1px solid var(--line);border-radius:999px;width:fit-content;max-width:100%;
   overflow-x:auto;scrollbar-width:none;
-  background:color-mix(in oklab,var(--bg) 70%,transparent);backdrop-filter:blur(12px)}
+  background:color-mix(in oklab,var(--bg) 92%,transparent)}
 .pestanas::-webkit-scrollbar{display:none}
 .pestana{flex:none;font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;padding:8px 14px;border-radius:999px;
   color:var(--bone-dim);transition:background .2s ease,color .2s ease}
 .pestana:hover{color:var(--bone)}
-.pestana[aria-selected="true"]{background:var(--bone);color:#16130f}
+.pestana[aria-selected="true"]{background:var(--bone);color:var(--tinta-sobre)}
 
 /* Etiqueta de estado o de tipo */
 .chip{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;border-radius:999px;padding:3px 10px;font-size:11.5px;
-  border:1px solid color-mix(in oklab,var(--tono,#efe9de) 45%,transparent);color:color-mix(in oklab,var(--tono,#efe9de) 85%,white);
-  background:color-mix(in oklab,var(--tono,#efe9de) 12%,transparent)}
-.chip .punto{background:var(--tono,#efe9de)}
+  border:1px solid color-mix(in oklab,var(--tono,var(--bone)) 45%,transparent);color:color-mix(in oklab,var(--tono,var(--bone)) 82%,var(--chip-mezcla));
+  background:color-mix(in oklab,var(--tono,var(--bone)) 12%,transparent)}
+.chip .punto{background:var(--tono,var(--bone))}
 
 .pill.sm{min-height:34px;padding:8px 16px;font-size:10px}
 .enlace{color:var(--bone-dim);text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:4px}
 .enlace:hover{color:var(--bone);text-decoration-color:var(--c1)}
 .etiqueta{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--bone-faint)}
-.campo{width:100%;border:1px solid var(--line);border-radius:12px;background:rgba(239,233,222,.03);padding:10px 12px;
+.campo{width:100%;border:1px solid var(--line);border-radius:12px;background:color-mix(in oklab,var(--bone) 3%,transparent);padding:10px 12px;
   color:var(--bone);outline:none;transition:border-color .2s ease}
 .campo:focus{border-color:var(--c1)}
 textarea.campo{resize:vertical;line-height:1.55}
 .casilla{appearance:none;width:18px;height:18px;border-radius:6px;border:1.5px solid var(--bone-faint);display:inline-grid;place-items:center;
   cursor:pointer;flex:none;transition:background .15s ease,border-color .15s ease}
 .casilla:checked{background:var(--bone);border-color:var(--bone)}
-.casilla:checked::after{content:"";width:9px;height:5px;border:2px solid #16130f;border-top:0;border-right:0;transform:translate(0,-1px) rotate(-45deg)}
+.casilla:checked::after{content:"";width:9px;height:5px;border:2px solid var(--tinta-sobre);border-top:0;border-right:0;transform:translate(0,-1px) rotate(-45deg)}
 details.plegable>summary{list-style:none;cursor:pointer}
 details.plegable>summary::-webkit-details-marker{display:none}
 details.plegable>summary .flecha{display:inline-block;transition:transform .2s ease}
@@ -103,3 +118,18 @@ details.plegable[open]>summary .flecha{transform:rotate(90deg)}
 
 /* Espiral del flujo: estática (el trazo punteado ya dice que es un ciclo) */
 .flujo-anillo{animation:none}
+
+/* Botón redondo con un símbolo (cambiar de tema) */
+.boton-icono{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:999px;border:1px solid var(--line);
+  color:var(--bone-dim);font-size:13px;line-height:1;transition:border-color .2s ease,color .2s ease}
+.boton-icono:hover{border-color:var(--c1);color:var(--bone)}
+
+/* Acción que no se puede deshacer */
+.pill.peligro{background:var(--danger);border-color:var(--danger);color:var(--tinta-sobre)}
+.tarjeta.confirmar{border-color:color-mix(in oklab,var(--danger) 45%,var(--line))}
+
+/* Modo claro: los acentos claros (pensados para fondo oscuro) se oscurecen para leerse sobre papel */
+:root[data-tema="claro"] .text-\[\#57f7a7\]{color:#0e8a55}
+:root[data-tema="claro"] .text-\[\#f9a8d4\]{color:#be2f7d}
+:root[data-tema="claro"] .text-\[\#ffc457\]{color:#a86400}
+:root[data-tema="claro"] .text-amber-300,:root[data-tema="claro"] .text-amber-200\/80,:root[data-tema="claro"] .text-amber-200\/70{color:#a16207}

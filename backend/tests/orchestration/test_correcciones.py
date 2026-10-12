@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.api.routes import analisis, artefactos, proyectos, requisitos
 from tests.escenarios import SESION, guiones_sesion_cercana, montar
+from tests.fakes import como_usuario
 
 
 @pytest.fixture
@@ -14,7 +15,7 @@ def entorno(tmp_path, analizador):
     srv, _, repo = montar(tmp_path, analizador, guiones, validacion_humana="si_hay_arbitraje")
     p = srv.proyectos.crear("Correcciones", contexto="Control de asistencia de una maquiladora.")
     req = srv.procesar(SESION, p.proyecto_id)
-    app = FastAPI()
+    app = como_usuario(FastAPI())
     for r in (requisitos.router, proyectos.router, artefactos.router, analisis.router):
         app.include_router(r)
     app.state.servicio = srv

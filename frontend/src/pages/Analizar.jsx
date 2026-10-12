@@ -4,7 +4,6 @@ import { useOrb, usePoseEsfera } from "../components/orb/useOrb";
 import {
   CONTEXTO_MAX, LIMITES_CARGA, cargarRequisitos, editarProyecto, obtenerProyecto, separarRequisitos, subirDocumento,
 } from "../services/backend";
-import { documentoEjemplo } from "../fixtures/documentoEjemplo";
 import { recordarProyecto } from "../components/proyectoRecordado";
 import { Volver } from "../components/ui";
 
@@ -235,9 +234,6 @@ export default function Analizar() {
           <div className="flex flex-wrap items-center gap-3">
             <button className="pill" disabled={!texto.trim()} onClick={() => { setOrigen("texto pegado"); detectar(texto); }}>Separar requisitos</button>
             <button className="pill ghost" onClick={() => setFase("inicio")}>Volver</button>
-            <button className="mono text-[10px] text-[var(--bone-faint)] underline underline-offset-4 hover:text-[var(--bone)]" onClick={() => setTexto(documentoEjemplo)}>
-              Usar ejemplo
-            </button>
           </div>
         </section>
       )}
@@ -328,7 +324,7 @@ export default function Analizar() {
             </details>
           )}
           {/* Fija abajo: con muchos requisitos el botón no se pierde */}
-          <div className="sticky bottom-4 z-10 -mx-3 flex flex-wrap items-center gap-3 rounded-[28px] px-3 py-2 backdrop-blur-xl">
+          <div className="sticky bottom-4 z-10 -mx-3 flex flex-wrap items-center gap-3 rounded-[28px] px-3 py-2 bg-[color-mix(in_oklab,var(--bg)_90%,transparent)]">
             {(error || sobran > 0 || largos.length > 0) && (
               <div className="basis-full space-y-1 px-2 text-sm text-[var(--danger)]">
                 {sobran > 0 && <p>El backend acepta hasta {LIMITES_CARGA.requisitos} requisitos por carga (cada carga abre un ciclo): quita {sobran} o reparte el documento en varias cargas.</p>}
