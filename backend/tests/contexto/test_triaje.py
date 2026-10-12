@@ -135,3 +135,14 @@ def test_rutas_de_la_ficha_y_el_triaje(entorno):
     t = srv.repo.obtener_traza(r.json()["req_ids"][0])
     assert t.config["triaje"]["veredicto"] == "incompleto" and t.config["triaje"]["precisado"] is True
 
+
+
+def test_triaje_en_vivo(entorno):
+    import json
+    c, _, _, pid, _ = entorno
+    r = c.post(f"/proyectos/{pid}/triaje/flujo", json={"requisitos": [
+        "El cajero debe registrar cada venta.", "El sistema debe hacer reportes."]})
+    eventos = [json.loads(x) for x in r.text.splitlines()]
+    assert [e["tipo"] for e in eventos] == ["paso", "paso", "tanda", "tanda", "resultado"]
+    assert eventos[3]["cuenta"] == {"claro": 1, "ambiguo": 0, "incompleto": 1}
+    assert [x["veredicto"] for x in eventos[-1]["triaje"]["resultados"]] == ["claro", "incompleto"]

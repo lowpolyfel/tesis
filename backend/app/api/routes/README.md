@@ -19,6 +19,7 @@ Todo exige sesión salvo `/auth/*` y `/salud` (ADR 0019); lo de otra cuenta resp
 | POST | `/preparacion/cargar` (precarga un modelo configurado; 422 si no lo es, 502 si Ollama falla) | `preparacion.py` |
 | GET | `/proyectos/{id}/metas`, `/big-picture`, `/especificacion`, `/requisitos/{req_id}/artefactos` | `artefactos.py` |
 | GET/POST | `/proyectos/{id}/mapa-conceptual` (el guardado / generarlo con progreso en NDJSON, ADR 0020) | `artefactos.py` |
-| GET/POST | `/proyectos/{id}/ficha` (ficha del contexto) · POST `/proyectos/{id}/triaje` (ADR 0022) | `contexto.py` |
+| GET/POST | `/proyectos/{id}/ficha` (ficha del contexto) · POST `/proyectos/{id}/triaje` y `/triaje/flujo` (NDJSON con el avance, ADR 0022) | `contexto.py` |
+| POST | `/requisitos/separar/flujo` (separación con avance en NDJSON, ADR 0023) · POST `/proyectos/{id}/cancelar` (`{req_ids}`: quita de la cola, detiene entre nodos y borra el rastro) | `documentos.py`, `proyectos.py` |
 | GET/PUT | `/cuenta/modelos` · POST `/cuenta/modelos/probar`, `/cuenta/modelos/listar` (la lista real del proveedor) (ADR 0021) | `modelos.py` |
 | POST | `/proyectos/{id}/reanalizar` (vuelve a analizar los que terminaron en error, como reproceso) | `proyectos.py` |

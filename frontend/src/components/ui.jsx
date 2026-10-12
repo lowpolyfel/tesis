@@ -112,7 +112,8 @@ export function Vacio({ children, accion }) {
 }
 
 /* Confirmación en el sitio para algo que no se puede deshacer (borrar) */
-export function Confirmar({ pregunta, detalle, accion = "Borrar", onConfirmar, onCancelar }) {
+export function Confirmar({ pregunta, detalle, accion = "Borrar", enviando: textoEnviando = "Borrando…", volver = "Cancelar",
+  onConfirmar, onCancelar }) {
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState(null);
   const confirmar = async () => {
@@ -131,8 +132,8 @@ export function Confirmar({ pregunta, detalle, accion = "Borrar", onConfirmar, o
       {detalle && <p className="text-[13.5px] leading-relaxed text-[var(--bone-dim)]">{detalle}</p>}
       <Aviso error={error} />
       <div className="flex flex-wrap gap-2">
-        <button className="pill sm peligro" onClick={confirmar} disabled={enviando} autoFocus>{enviando ? "Borrando…" : accion}</button>
-        <button className="pill ghost sm" onClick={onCancelar} disabled={enviando}>Cancelar</button>
+        <button className="pill sm peligro" onClick={confirmar} disabled={enviando} autoFocus>{enviando ? textoEnviando : accion}</button>
+        <button className="pill ghost sm" onClick={onCancelar} disabled={enviando}>{volver}</button>
       </div>
     </div>
   );

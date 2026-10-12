@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { useOrb, usePoseEsfera } from "../components/orb/useOrb";
 import {
-  CONTEXTO_MAX, LIMITES_CARGA, cargarRequisitos, editarProyecto, obtenerProyecto, separarRequisitos, subirDocumento,
-  triarRequisitos,
+  CONTEXTO_MAX, LIMITES_CARGA, cargarRequisitos, editarProyecto, obtenerProyecto, subirDocumento,
+  separarRequisitosFlujo, triarRequisitos, triarRequisitosFlujo,
 } from "../services/backend";
+import Pasos from "../escena/Pasos";
 import { recordarProyecto } from "../components/proyectoRecordado";
 import { Volver } from "../components/ui";
 
@@ -38,6 +39,10 @@ const POSES = {
 POSES.revisando = POSES.leyendo;
 POSES.triaje = POSES.confirmar;
 const MIN_LECTURA_MS = 1400;
+// la esfera respira por estos tonos mientras el Revisor lee o revisa (sin amarillo)
+const RESPIRO = ["listening", "clasificador", "mapa", "humano", "modelador"];
+const RESPIRO_MS = 1800;
+const PROGRESO_VACIO = { pasos: [], barra: null, sub: null, inicio: null };
 const MOTIVOS = { titulo: "título", sin_verbo_obligacion: "sin «debe» ni «podrá»", sin_texto: "sin texto", no_es_requisito: "no es requisito" };
 
 /* Un 422 del backend señala el requisito por su posición (base 0) en lo enviado; aquí se numeran desde 1 */
@@ -66,6 +71,7 @@ export default function Analizar() {
   const [error, setError] = useState(null);
   const [saliendo, setSaliendo] = useState(false);
   const [avisoTriaje, setAvisoTriaje] = useState(null);
+  const [progreso, setProgreso] = useState(PROGRESO_VACIO); // pasos en vivo de la lectura o la revisión
   const [metodo, setMetodo] = useState(null); // { metodo: "ia" | "patrones", modelo } de la separación
   const archivo = useRef(null);
 
@@ -76,13 +82,23 @@ export default function Analizar() {
     obtenerProyecto(proyectoId).then(setProyecto).catch((e) => setError(e.message));
   }, [proyectoId]);
 
+  const trabajando = fase === "leyendo" || fase === "revisando";
   useEffect(() => {
-    orb.setMood(fase === "leyendo" || fase === "revisando" ? "thinking" : arrastrando || fase === "contexto" ? "listening" : "idle");
+    if (!trabajando) orb.setMood(arrastrando || fase === "contexto" ? "listening" : "idle");
     orb.update("core", {
       label: fase === "leyendo" ? "Leyendo" : fase === "revisando" ? "Revisando" : fase === "confirmar" || fase === "triaje" ? `${piezas.length} requisitos` : null,
-      sub: fase === "leyendo" ? origen : fase === "revisando" ? "con el contexto del proyecto" : null,
+      sub: trabajando ? progreso.sub ?? (fase === "leyendo" ? origen : "con el contexto del proyecto") : null,
     });
-  }, [orb, fase, arrastrando, origen, piezas.length]);
+  }, [orb, fase, trabajando, arrastrando, origen, piezas.length, progreso.sub]);
+  // mientras el Revisor trabaja, la esfera respira cambiando de color: se nota que sigue vivo
+  useEffect(() => {
+    if (!trabajando) return undefined;
+    let i = 0;
+    const paso = () => { orb.setMood(RESPIRO[i++ % RESPIRO.length]); orb.poke(0.35); };
+    paso();
+    const t = setInterval(paso, RESPIRO_MS);
+    return () => clearInterval(t);
+  }, [orb, trabajando]);
   useEffect(() => () => orb.update("core", { label: null, sub: null }), [orb]);
 
   /* ---- arrastrar y soltar sobre toda la pantalla (la esfera lo "atrae") ---- */
@@ -133,12 +149,47 @@ export default function Analizar() {
     setFase("confirmar");
   };
 
+  /* Pasos en vivo (NDJSON) → la lista bajo la esfera, la barra y el texto de la esfera */
+  const seguir = (tipoTanda) => {
+    const pasos = [];
+    const poner = (p) => {
+      const i = pasos.findIndex((x) => x.id === p.id);
+      if (i === -1) pasos.push(p); else pasos[i] = { ...pasos[i], ...p };
+    };
+    return (e) => {
+      if (e.tipo === "paso") {
+        const texto = { limpieza: "Limpiando el texto", patrones: "Buscando verbos como «debe»", ficha: "Ficha del contexto" }[e.id] ?? e.id;
+        poner({ id: e.id, texto, estado: e.estado, detalle: e.detalle });
+        setProgreso((g) => ({ ...g, pasos: [...pasos] }));
+      } else if (e.tipo === "tanda") {
+        const total = e.parrafos ?? e.requisitos;
+        const texto = tipoTanda === "lectura"
+          ? `El Revisor lee los párrafos ${e.desde}–${e.hasta} de ${total}`
+          : `El Revisor compara los requisitos ${e.desde}–${e.hasta} de ${total} con el contexto`;
+        const detalle = e.estado === "curso" ? (e.total > 1 ? `parte ${e.i} de ${e.total}` : "pensando…")
+          : e.cuenta ? `${e.cuenta.claro} claros · ${e.cuenta.ambiguo} ambiguos · ${e.cuenta.incompleto} por precisar`
+            : e.estado === "aviso" ? "no respondió" : `${e.encontrados} requisitos encontrados`;
+        poner({ id: `tanda-${e.i}`, texto, estado: e.estado, detalle });
+        setProgreso((g) => ({ ...g, pasos: [...pasos], barra: (e.i - (e.estado === "curso" ? 1 : 0)) / e.total,
+          sub: e.total > 1 ? `parte ${e.i} de ${e.total}` : null }));
+      }
+    };
+  };
+
   const detectar = async (contenido) => {
     setError(null);
     setDocumento(null);
+    setProgreso({ ...PROGRESO_VACIO, inicio: Date.now() });
     setFase("leyendo");
     try {
-      const [r] = await Promise.all([separarRequisitos(contenido, proyectoId), new Promise((ok) => setTimeout(ok, MIN_LECTURA_MS))]);
+      let r = null;
+      const avanzar = seguir("lectura");
+      await Promise.all([separarRequisitosFlujo(contenido, proyectoId, (e) => {
+        if (e.tipo === "resultado") r = e.separacion;
+        else if (e.tipo === "error") throw new Error(e.mensaje);
+        else avanzar(e);
+      }), new Promise((ok) => setTimeout(ok, MIN_LECTURA_MS))]);
+      if (!r) throw new Error("El servidor cerró la conexión antes de terminar.");
       mostrar(r, "pegar");
     } catch (e) {
       orb.setMood("error", { revertAfter: 1600 });
@@ -150,6 +201,8 @@ export default function Analizar() {
   const leerArchivo = async (f) => {
     setOrigen(f.name);
     setError(null);
+    setProgreso({ ...PROGRESO_VACIO, inicio: Date.now(),
+      pasos: [{ id: "archivo", texto: `Leyendo ${f.name}`, estado: "curso", detalle: "extrae el texto y el Revisor reconoce cada requisito" }] });
     setFase("leyendo");
     try {
       const [doc] = await Promise.all([subirDocumento(proyectoId, f), new Promise((ok) => setTimeout(ok, MIN_LECTURA_MS))]);
@@ -205,12 +258,20 @@ export default function Analizar() {
   /* El Revisor compara cada requisito con la ficha del contexto (POST /proyectos/{id}/triaje) */
   const revisar = async () => {
     setError(null);
+    setProgreso({ ...PROGRESO_VACIO, inicio: Date.now() });
     setFase("revisando");
     try {
-      const [r] = await Promise.all([triarRequisitos(proyectoId, validas.map((p) => p.texto.trim())),
-        new Promise((ok) => setTimeout(ok, MIN_LECTURA_MS))]);
+      let r = null;
+      const avanzar = seguir("revision");
+      await Promise.all([triarRequisitosFlujo(proyectoId, validas.map((p) => p.texto.trim()), (e) => {
+        if (e.tipo === "resultado") r = e.triaje;
+        else if (e.tipo === "error") throw new Error(e.mensaje);
+        else avanzar(e);
+      }), new Promise((ok) => setTimeout(ok, MIN_LECTURA_MS))]);
+      if (!r) throw new Error("El servidor cerró la conexión antes de terminar.");
       setPiezas(validas.map((p, i) => ({ ...p, triaje: r.resultados[i], revisado: p.texto.trim(), textoInicial: p.texto.trim(), forzado: false })));
       setAvisoTriaje(r.aviso);
+      orb.setMood("success");
       orb.poke(1);
       setFase("triaje");
     } catch (e) {
@@ -219,6 +280,7 @@ export default function Analizar() {
       setFase("confirmar");
     }
   };
+
   const revisarUna = async (i) => {
     const p = piezas[i];
     setPiezas((ps) => ps.map((x, j) => (j === i ? { ...x, revisando: true } : x)));
@@ -286,10 +348,9 @@ export default function Analizar() {
         </section>
       )}
 
-      {(fase === "leyendo" || fase === "revisando") && (
-        <p key={fase} className="mono aparece fixed inset-x-0 bottom-[16vh] text-center text-[10px] text-[var(--bone-dim)]">
-          {fase === "leyendo" ? "El Revisor lee el texto y reconoce cada requisito…" : "El Revisor compara cada requisito con la ficha del contexto…"}
-        </p>
+      {trabajando && (
+        <Progreso key={fase} progreso={progreso}
+          titulo={fase === "leyendo" ? "El Revisor lee el texto y reconoce cada requisito" : "El Revisor compara cada requisito con la ficha del contexto"} />
       )}
 
       {fase === "triaje" && (
@@ -546,5 +607,31 @@ function PiezaRevisada({ p, compacta, editado, onEditar, onQuitar, onRevisar, on
         <button className="hover:text-[var(--danger)]" onClick={onQuitar}>quitar</button>
       </div>
     </li>
+  );
+}
+
+/* Lo que está haciendo el Revisor: título, pasos en vivo, barra y tiempo transcurrido */
+function Progreso({ progreso, titulo }) {
+  const [ahora, setAhora] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setAhora(Date.now()), 500);
+    return () => clearInterval(t);
+  }, []);
+  const segundos = progreso.inicio ? Math.max(0, Math.round((ahora - progreso.inicio) / 1000)) : 0;
+  const pasos = progreso.pasos.length ? progreso.pasos : [{ id: "inicio", texto: "Conectando con el Revisor", estado: "curso" }];
+  return (
+    <section className="aparece fixed inset-x-0 bottom-[7vh] z-10 px-6" aria-live="polite">
+      <div className="mx-auto max-w-lg space-y-4">
+        <p className="mono flex items-center justify-between gap-3 text-[10px] text-[var(--bone-dim)]">
+          <span>{titulo}</span><span className="tabular-nums text-[var(--bone-faint)]">{segundos} s</span>
+        </p>
+        <div className="h-[3px] overflow-hidden rounded-full bg-[var(--line)]">
+          {progreso.barra == null
+            ? <div className="barra-indeterminada h-full w-1/3 rounded-full bg-[var(--c1)]" />
+            : <div className="h-full rounded-full bg-[var(--c1)] transition-[width] duration-700" style={{ width: `${Math.max(4, progreso.barra * 100)}%` }} />}
+        </div>
+        <Pasos pasos={pasos} />
+      </div>
+    </section>
   );
 }

@@ -9,6 +9,7 @@ grafo interrumpido > ejecutar un requisito nuevo > análisis de proyecto.
 """
 from __future__ import annotations
 
+import heapq
 import itertools
 import logging
 import queue
@@ -66,6 +67,25 @@ class Cola:
         """Bloquea hasta que no haya trabajos pendientes ni en curso (para pruebas y scripts)."""
         with self._cond:
             return self._cond.wait_for(lambda: self._sin_terminar == 0, timeout=limite)
+
+    def quitar(self, claves: set[str]) -> set[str]:
+        """Saca de la cola los trabajos pendientes de esas claves (no el que está corriendo).
+        Devuelve las claves que sí estaban esperando."""
+        with self._q.mutex:
+            quedan = [t for t in self._q.queue if t.clave not in claves]
+            quitadas = {t.clave for t in self._q.queue if t.clave in claves}
+            n = len(self._q.queue) - len(quedan)
+            self._q.queue[:] = quedan
+            heapq.heapify(self._q.queue)
+            self._q.unfinished_tasks -= n
+        if n:
+            with self._cond:
+                self._sin_terminar -= n
+                self._cond.notify_all()
+        return quitadas
+
+    def corriendo(self) -> str | None:
+        return self._actual.clave if self._actual else None
 
     def estado(self) -> dict:
         with self._q.mutex:

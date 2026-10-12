@@ -184,17 +184,22 @@ def armar_separacion(candidatos: list[_Candidato], descartados: list[FragmentoDe
 
 
 def separar_paginas(paginas: list[str], con_paginas: bool, maquetado: bool,
-                    max_fragmentos: int = MAX_FRAGMENTOS, ia=None) -> Separacion:
+                    max_fragmentos: int = MAX_FRAGMENTOS, ia=None, avance=None) -> Separacion:
     """Limpieza + separación. Las advertencias de la limpieza van en el resultado.
     Con `ia` (párrafos -> Separacion, ADR 0023) los requisitos los reconoce el Revisor
-    en cualquier redacción; si falla, se separa por patrones y se avisa."""
+    en cualquier redacción; si falla, se separa por patrones y se avisa. `avance(evento)` recibe
+    los pasos ({"tipo": "paso", id, estado, detalle}) y las tandas del Revisor."""
+    avisar = avance or (lambda _e: None)
     limpieza = limpiar(paginas, con_paginas, maquetado)
+    avisar({"tipo": "paso", "id": "limpieza", "estado": "ok", "detalle": f"{len(limpieza.parrafos)} párrafos"})
     separacion = None
     if ia is not None:
         try:
-            separacion = ia(limpieza.parrafos)
+            separacion = ia(limpieza.parrafos, avance=avance) if avance else ia(limpieza.parrafos)
         except Exception as e:  # noqa: BLE001 — sin el Revisor quedan los patrones
             log.warning("La separación con IA falló: %s: %s", type(e).__name__, e)
+            avisar({"tipo": "paso", "id": "patrones", "estado": "aviso",
+                    "detalle": f"el Revisor no respondió ({type(e).__name__}): se buscan verbos como «debe»"})
             separacion = separar_parrafos(limpieza.parrafos, max_fragmentos)
             separacion.advertencias.insert(0, f"El Revisor no pudo separar el texto ({type(e).__name__}): "
                                               "se separó buscando verbos como «debe» o «podrá».")
@@ -204,8 +209,8 @@ def separar_paginas(paginas: list[str], con_paginas: bool, maquetado: bool,
     return separacion
 
 
-def separar_texto(texto: str, max_fragmentos: int = MAX_FRAGMENTOS, ia=None) -> Separacion:
+def separar_texto(texto: str, max_fragmentos: int = MAX_FRAGMENTOS, ia=None, avance=None) -> Separacion:
     """Texto pegado o archivo .txt: un salto de página (\\f) separa páginas; sin él, no hay páginas."""
     paginas = texto.split("\f")
     return separar_paginas(paginas, con_paginas=len(paginas) > 1, maquetado=False, max_fragmentos=max_fragmentos,
-                           ia=ia)
+                           ia=ia, avance=avance)

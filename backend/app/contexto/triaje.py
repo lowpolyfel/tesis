@@ -31,7 +31,7 @@ def _corto(indice: int, texto: str) -> dict:
             "terminos_ambiguos": [], "origen": "regla"}
 
 
-def triar(requisitos: list[str], ficha_md: str | None, revisor) -> dict:
+def triar(requisitos: list[str], ficha_md: str | None, revisor, avance=None) -> dict:
     """{resultados: [{indice, veredicto, motivo, faltantes, preguntas, terminos_ambiguos, origen}],
     modelo, aviso}. `indice` desde 1, en el orden recibido; veredicto None si el Revisor falló."""
     resultados: dict[int, dict] = {}
@@ -42,8 +42,13 @@ def triar(requisitos: list[str], ficha_md: str | None, revisor) -> dict:
         else:
             pendientes.append(i)
     modelo, aviso = None, None
-    for inicio in range(0, len(pendientes), TANDA):
+    avisar = avance or (lambda _e: None)
+    total = (len(pendientes) + TANDA - 1) // TANDA
+    for k, inicio in enumerate(range(0, len(pendientes), TANDA), 1):
         tanda = pendientes[inicio:inicio + TANDA]
+        evento = {"tipo": "tanda", "i": k, "total": total, "desde": tanda[0], "hasta": tanda[-1],
+                  "requisitos": len(requisitos)}
+        avisar({**evento, "estado": "curso"})
         try:
             r = revisor.triar(ficha_md or SIN_FICHA, [requisitos[i - 1] for i in tanda])
         except Exception as e:  # noqa: BLE001 — sin Revisor no se inventa un veredicto
@@ -52,9 +57,12 @@ def triar(requisitos: list[str], ficha_md: str | None, revisor) -> dict:
             for i in tanda:
                 resultados[i] = {"indice": i, "veredicto": None, "motivo": "Sin revisar: el Revisor no respondió.",
                                  "faltantes": [], "preguntas": [], "terminos_ambiguos": [], "origen": None}
+            avisar({**evento, "estado": "aviso"})
             continue
         modelo = r.modelo
         for x in r.valor.requisitos:
             global_i = tanda[x.indice - 1]
             resultados[global_i] = {**x.model_dump(mode="json"), "indice": global_i, "origen": "revisor"}
+        avisar({**evento, "estado": "ok", "modelo": modelo,
+                "cuenta": {v: sum(1 for x in resultados.values() if x["veredicto"] == v) for v in ("claro", "ambiguo", "incompleto")}})
     return {"resultados": [resultados[i] for i in range(1, len(requisitos) + 1)], "modelo": modelo, "aviso": aviso}
