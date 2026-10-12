@@ -55,16 +55,18 @@ def _trazas(srv, ev: Evaluacion) -> dict[str, Traza]:
 
 # ---------------------------------------------------------------- creación
 
-def crear(srv, corpus: str, nombre: str | None = None) -> Evaluacion:
-    """Crea el proyecto y el documento y encola los requisitos en el grafo (no la línea base).
-    `CorpusNoEncontrado`, `CorpusInvalido` o `SinAgenteUnico` antes de crear nada."""
+def crear(srv, corpus: str, nombre: str | None = None, propietario: str | None = None) -> Evaluacion:
+    """Crea el proyecto (de la cuenta `propietario`) y el documento y encola los requisitos en
+    el grafo (no la línea base). `CorpusNoEncontrado`, `CorpusInvalido` o `SinAgenteUnico`
+    antes de crear nada."""
     c = cargar_corpus(raiz_corpus(srv), corpus)
     cliente = srv.deps.llm_agente_unico
     if cliente is None:
         raise SinAgenteUnico("no hay cliente LLM para la línea base de un solo agente (AGENTE_UNICO_MODEL)")
     nombre = nombre or f"Evaluación del corpus {c.nombre}"
     p = srv.proyectos.crear(nombre, f"Corrida de evaluación contra el corpus «{c.nombre}» ({len(c.items)} requisitos). "
-                                    "Sin validación humana: se evalúa lo que propone el sistema.", tipo="evaluacion")
+                                    "Sin validación humana: se evalúa lo que propone el sistema.", tipo="evaluacion",
+                            propietario=propietario)
     _, req_ids = srv.solicitar_lote(
         [(it.texto, Origen(archivo=f"corpus:{c.nombre}", marca=it.id, indice=i)) for i, it in enumerate(c.items, 1)],
         p.proyecto_id)
@@ -86,9 +88,9 @@ def encolar(srv, ev: Evaluacion) -> None:
     srv.cola.encolar("analisis", ev.evaluacion_id, lambda: sincronizar(srv, ev.evaluacion_id))
 
 
-def solicitar(srv, corpus: str, nombre: str | None = None) -> Evaluacion:
+def solicitar(srv, corpus: str, nombre: str | None = None, propietario: str | None = None) -> Evaluacion:
     """Crear y encolar (API)."""
-    ev = crear(srv, corpus, nombre)
+    ev = crear(srv, corpus, nombre, propietario)
     encolar(srv, ev)
     return ev
 
@@ -186,11 +188,14 @@ def informe(srv, evaluacion_id: str) -> dict | None:
     return metricas.informe(ev, trazas, lematizador(analizador), huella_actual=actual, con_lemas=analizador is not None)
 
 
-def listar(srv) -> list[dict]:
-    """Resúmenes (forma `formas.ResumenEvaluacion`), la más reciente primero."""
+def listar(srv, proyectos: set[str] | None = None) -> list[dict]:
+    """Resúmenes (forma `formas.ResumenEvaluacion`), la más reciente primero. Con `proyectos`,
+    solo las evaluaciones de esos proyectos (los de una cuenta)."""
     salida = []
     for d in reversed(srv.repo.listar_docs(COLECCION)):
         ev = Evaluacion.model_validate(d)
+        if proyectos is not None and ev.proyecto_id not in proyectos:
+            continue
         estados = {t["req_id"]: t["estado"] for t in srv.repo.listar_trazas(ev.proyecto_id)}
         salida.append({"evaluacion_id": ev.evaluacion_id, "nombre": ev.nombre, "proyecto_id": ev.proyecto_id,
                        "corpus": ev.corpus, "ejemplo": ev.ejemplo, "creado": ev.creado, "terminado": ev.terminado,

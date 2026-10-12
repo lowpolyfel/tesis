@@ -11,6 +11,9 @@ import "./orb.css";
    - Mira al cursor; si lo dejas quieto, curiosea solo; flota siempre
    - Mitosis: una esfera se divide en otras que nacen dentro de ella; una
      membrana (capa "goo") las une mientras se separan y cuando se fusionan
+   Rendimiento: cada cuadro solo cambia transformaciones, opacidades y el trazo
+   de las ondas (sin filtros SVG encima, que obligaban a repintar áreas enormes).
+   El fondo y los colores del documento se escriben a 30 Hz: cambian despacio.
    ========================================================================= */
 
 const lerpK = (dt, rate) => 1 - Math.exp(-dt * rate);
@@ -71,7 +74,7 @@ export default function OrbField({ controller, rootRef }) {
     document.addEventListener("pointerleave", onLeave);
 
     const xs = new Float64Array(N), ys = new Float64Array(N);
-    let last = performance.now(), time = 0, raf;
+    let last = performance.now(), time = 0, raf, cuadro = 0;
 
     const tick = (now) => {
       const dt = Math.max(Math.min((now - last) / 1000, 0.05), 1e-4);
@@ -87,19 +90,24 @@ export default function OrbField({ controller, rootRef }) {
 
       /* ---- ambiente (fondo y niebla) ---- */
       const ambName = controller.state.ambient in MOODS ? controller.state.ambient : "idle";
-      const kA = lerpK(dt, 1.6);
+      const kA = lerpK(dt, 2.6);
       for (const c of COLOR_KEYS) {
         const a = amb.lab[c], b = MOODS_LAB[ambName][c];
         for (let i = 0; i < 3; i++) a[i] += (b[i] - a[i]) * kA;
       }
       amb.fog += (MOODS[ambName].fog - amb.fog) * kA;
-      const a1 = oklabToRgb(amb.lab.c1), a2 = oklabToRgb(amb.lab.c2);
-      setVar(root, amb.cache, "--bg", rgb(oklabToRgb(amb.lab.bg)));
-      setVar(root, amb.cache, "--c1", rgb(a1));
-      setVar(root, amb.cache, "--c2", rgb(a2));
-      setVar(root, amb.cache, "--glow", rgba(a1, 0.5));
-      setVar(root, amb.cache, "--glowSoft", rgba(a2, 0.22));
-      setVar(root, amb.cache, "--fog", amb.fog.toFixed(3));
+      // Cambiar una variable de la raíz recalcula los estilos de toda la página: a 30 Hz basta
+      if (++cuadro % 2 === 0) {
+        const a1 = oklabToRgb(amb.lab.c1), a2 = oklabToRgb(amb.lab.c2);
+        // Modo claro: el mismo tinte del estado de ánimo, sobre papel
+        const bg = root.dataset.tema === "claro" ? [0.965, amb.lab.bg[1] * 3, amb.lab.bg[2] * 3] : amb.lab.bg;
+        setVar(root, amb.cache, "--bg", rgb(oklabToRgb(bg)));
+        setVar(root, amb.cache, "--c1", rgb(a1));
+        setVar(root, amb.cache, "--c2", rgb(a2));
+        setVar(root, amb.cache, "--glow", rgba(a1, 0.5));
+        setVar(root, amb.cache, "--glowSoft", rgba(a2, 0.22));
+        setVar(root, amb.cache, "--fog", amb.fog.toFixed(2));
+      }
 
       const idleFor = (now - lastMove) / 1000;
       const wander = mouse.active ? Math.min(1, Math.max(0, (idleFor - 2.5) / 1.5)) : 1;
@@ -130,7 +138,7 @@ export default function OrbField({ controller, rootRef }) {
           }
         }
 
-        const kN = lerpK(dt, 2.4), kC = lerpK(dt, 1.8);
+        const kN = lerpK(dt, 3.4), kC = lerpK(dt, 2.8);
         for (const k of NUM_KEYS) f.cur[k] += (tgt[k] - f.cur[k]) * kN;
         for (const c of COLOR_KEYS) {
           const a = f.lab[c], b = MOODS_LAB[mood][c];
@@ -140,13 +148,13 @@ export default function OrbField({ controller, rootRef }) {
         // Resortes algo subamortiguados para que rebase y se asiente
         f.edad += dt;
         const joven = f.edad < 0.9;
-        const k = body.fuseInto ? 120 : joven ? 95 : 40;
-        const c = body.fuseInto ? 20 : joven ? 15 : 10.5;
+        const k = body.fuseInto ? 120 : joven ? 95 : 70;
+        const c = body.fuseInto ? 20 : joven ? 15 : 14;
         f.vx += (k * (tx - f.px) - c * f.vx) * dt;
         f.vy += (k * 0.8 * (ty - f.py) - c * 0.95 * f.vy) * dt;
         f.px += f.vx * dt;
         f.py += f.vy * dt;
-        f.vs += ((joven || body.fuseInto ? 110 : 55) * (ts - f.sc) - (joven || body.fuseInto ? 14 : 9) * f.vs) * dt;
+        f.vs += ((joven || body.fuseInto ? 110 : 90) * (ts - f.sc) - (joven || body.fuseInto ? 14 : 12) * f.vs) * dt;
         f.sc = Math.max(0, f.sc + f.vs * dt);
 
         if (!el) continue;
@@ -201,16 +209,17 @@ export default function OrbField({ controller, rootRef }) {
         el.wrap.style.opacity = f.op.toFixed(3);
         const chica = escala < 0.5;
         if (f.cache.chica !== chica) { el.wrap.classList.toggle("es-chica", chica); f.cache.chica = chica; }
-        el.scene.style.transform =
-          `scale(${escala.toFixed(4)}) rotateX(${(-f.gy * 3.5).toFixed(2)}deg) rotateY(${(f.gx * 4).toFixed(2)}deg) rotate(${(f.vx * 0.004).toFixed(2)}deg)`;
+        // Sin inclinación 3D: obligaba a recortar la esfera con una máscara en cada cuadro
+        el.scene.style.transform = `scale(${escala.toFixed(4)}) rotate(${(f.vx * 0.004).toFixed(2)}deg)`;
         if (el.label) el.label.style.transform = `translate(-50%, ${(escala * 128 + 14).toFixed(1)}px)`;
 
         const s = 1 + breath + f.pop;
         el.orb.style.transform =
           `translate(${(f.gx * 12).toFixed(2)}px, ${(f.gy * 10).toFixed(2)}px) rotate(${ang.toFixed(3)}rad) ` +
           `scale(${(s * (1 + f.stretch)).toFixed(4)}, ${(s * (1 - f.stretch * 0.7)).toFixed(4)}) rotate(${(-ang).toFixed(3)}rad)`;
-        el.orb.style.setProperty("--hx", `${(36 + f.gx * 34).toFixed(1)}%`);
-        el.orb.style.setProperty("--hy", `${(28 + f.gy * 34).toFixed(1)}%`);
+        // El brillo sigue la mirada en pasos de 1 %: casi no se nota y repinta mucho menos
+        setVar(el.orb, f.cache, "--hx", `${Math.round(36 + f.gx * 34)}%`);
+        setVar(el.orb, f.cache, "--hy", `${Math.round(28 + f.gy * 34)}%`);
 
         // Colores propios de esta esfera
         const c1 = oklabToRgb(f.lab.c1), c2 = oklabToRgb(f.lab.c2);
@@ -369,16 +378,9 @@ function Esfera({ body, registrar }) {
             <linearGradient id={g("F")} data-rot="">
               <stop offset="0" data-c="c1" /><stop offset="1" data-c="c2" />
             </linearGradient>
-            <filter id={g("Goo")} x="-30%" y="-30%" width="160%" height="160%">
-              <feGaussianBlur in="SourceGraphic" stdDeviation="7" result="blur" />
-              <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -8" result="goo" />
-              <feGaussianBlur in="goo" stdDeviation="1.2" />
-            </filter>
-            <filter id={g("Soft")} x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur stdDeviation="2" />
-            </filter>
           </defs>
-          <g filter={`url(#${g("Goo")})`} opacity=".42">
+          {/* Las manchas sin filtro de desenfoque: se ven igual de suaves y se dibujan sin repintar un área enorme */}
+          <g opacity=".3">
             {BLOBS.map((_, i) => (
               <path key={`b${i}`} ref={(el) => (paths.current[i] = el)} fill={`url(#${g("F")})`} />
             ))}
@@ -393,8 +395,7 @@ function Esfera({ body, registrar }) {
                 strokeWidth={ring.width}
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                opacity={ring.opacity}
-                filter={ring.soft ? `url(#${g("Soft")})` : undefined}
+                opacity={ring.soft ? ring.opacity * 0.7 : ring.opacity}
               />
             ))}
           </g>

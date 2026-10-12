@@ -26,6 +26,28 @@ guardan en `data/resultados/` (JSON). `GET /conexion` (y la pantalla
 JSON, y de dónde salió `MONGO_URI`. Las variables `MONGO_*` van solo en el
 `.env` de la raíz (ver `app/db/README.md`).
 
+## Cuentas
+
+Cada persona entra con su cuenta y solo ve sus proyectos (ADR 0019). Al crear la
+cuenta llega un código de 6 dígitos al correo; con él se confirma y se entra.
+También hay «¿Olvidaste tu contraseña?» con otro código.
+
+El correo sale por SMTP, configurado en el `.env` de la raíz:
+
+```
+SMTP_HOST=smtp.gmail.com
+SMTP_PUERTO=587
+SMTP_SEGURIDAD=starttls
+SMTP_USUARIO=tu-correo@gmail.com
+SMTP_CONTRASENA=<contraseña de aplicación de Google, no la normal>
+SMTP_REMITENTE=Dudamel <tu-correo@gmail.com>
+```
+
+Sin `SMTP_HOST` el correo no se envía: el código aparece en la consola de
+uvicorn (`Código de registro para …: 123456`) y la pantalla lo avisa. Sirve para
+desarrollar sin servidor de correo. `AUTH_CODIGO_AL_ENTRAR=true` pide además un
+código cada vez que se entra.
+
 ## Ejecutar
 
 ```powershell
@@ -64,6 +86,8 @@ trabajador, ADR 0008):
 | Exploratorio | `POST/GET /proyectos/{id}/comparaciones`, `GET /comparaciones/{id}` (ADR 0012) |
 | Experimentación | `GET /calibracion`, `GET /proyectos/{id}/calibracion`, `GET /corpus`, `GET /corpus/{nombre}`, `POST/GET /evaluaciones`, `GET /evaluaciones/{id}` |
 | Configuración | `GET /configuracion`, `GET /catalogos`, `GET /salud`, `GET /conexion` |
+| Cuenta | `POST /auth/registro`, `/auth/verificar`, `/auth/reenviar`, `/auth/entrar`, `/auth/salir`, `/auth/recuperar`, `/auth/restablecer`, `GET /auth/yo` |
+| Borrar | `DELETE /proyectos/{id}` (con todo lo suyo), `DELETE /requisitos/{id}` |
 
 ## Pruebas
 
@@ -73,7 +97,9 @@ pytest                                  # desde backend/, sin Ollama ni Mongo
 
 Usan LLMs y embeddings falsos (`tests/fakes.py`, `tests/escenarios.py`). Las del
 repositorio Mongo usan `mongomock` si está instalado (`pip install mongomock`);
-si no, se omiten.
+si no, se omiten. Las de la API responden como una cuenta de prueba
+(`como_usuario`); las de `tests/auth` prueban el registro, el código y la cookie
+de verdad, con un correo falso (`CorreoFalso`).
 
 ## Casos de aceptación con Ollama real
 

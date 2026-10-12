@@ -1,4 +1,5 @@
 import { useApp } from "./useApp";
+import { BotonTema } from "../tema";
 
 const STATUS = {
   welcome: "En espera",
@@ -18,9 +19,12 @@ export default function TopBar({ screen }) {
         <span className="dot" />
         Dudamel
       </button>
-      <div key={screen} className="status fade">
-        <span className="dot sm" />
-        {STATUS[screen]}
+      <div className="flex items-center gap-5">
+        <div key={screen} className="status fade">
+          <span className="dot sm" />
+          {STATUS[screen]}
+        </div>
+        <BotonTema className="pointer-events-auto" />
       </div>
     </header>
   );

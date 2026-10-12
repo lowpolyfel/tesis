@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from app.api.routes import calibracion, proyectos
 from app.calibracion import COLECCION_EVALUACIONES, NOTA, formas
 from tests.escenarios import EXTRACCION_SESION, I1, I2, P1_CERCANA, SESION, clasificacion, montar
-from tests.fakes import interp, r3_todas
+from tests.fakes import como_usuario, interp, r3_todas
 
 UNIVOCO = {"resultados": [{"termino": t, "univoco": True} for t in ("sistema", "registrar", "sesión")]}
 RETIRA_I2 = {"interpretaciones": [I1], "retiradas": [{"interpretacion_id": "I2", "motivo": "agrega red"}]}
@@ -50,7 +50,7 @@ def entorno(tmp_path_factory, analizador):
     repo.guardar_doc(COLECCION_EVALUACIONES, "E02", {"evaluacion_id": "E02", "proyecto_id": corpus.proyecto_id,
                                                      "etiquetas": etiquetas})
 
-    app = FastAPI()
+    app = como_usuario(FastAPI())
     app.include_router(calibracion.router)
     app.include_router(proyectos.router)
     app.state.servicio = srv

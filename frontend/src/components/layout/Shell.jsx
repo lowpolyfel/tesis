@@ -5,6 +5,8 @@ import { isMobile } from "../orb/poses";
 import { poseSeccion, seccion } from "../orb/secciones";
 import Orbita from "../orb/Orbita";
 import { proyectoRecordado } from "../proyectoRecordado";
+import { useSesion } from "../sesion";
+import { BotonTema } from "../tema";
 import { Volver } from "../ui";
 
 /*
@@ -79,10 +81,12 @@ export default function Shell({ modo }) {
   );
 }
 
-/* Barra mínima: la marca, los proyectos, «Más» y el menú de la esfera */
+/* Barra mínima: la marca, los proyectos, «Más», el menú de la esfera, el tema y la cuenta */
 function BarraSuperior({ pid, onMenu }) {
   const enlace = ({ isActive }) =>
     `mono text-[10.5px] transition-colors ${isActive ? "text-[var(--bone)]" : "text-[var(--bone-faint)] hover:text-[var(--bone)]"}`;
+  const { usuario, cerrar } = useSesion();
+  // sin sesión, la ruta protegida lleva a «Entrar»
   return (
     <header data-barra className="no-print fixed inset-x-0 top-0 z-30 flex items-center justify-between gap-4 bg-[linear-gradient(to_bottom,var(--bg)_55%,transparent)] px-5 pt-5 pb-8 md:px-10 md:pt-6">
       <Link to="/proyectos" className="mono flex items-center gap-2.5 text-[11px] text-[var(--bone)] opacity-90 hover:opacity-100">
@@ -90,12 +94,20 @@ function BarraSuperior({ pid, onMenu }) {
         Dudamel
       </Link>
       <nav className="flex items-center gap-5 md:gap-7">
-        <NavLink to="/proyectos" end className={enlace}>Proyectos</NavLink>
-        <NavLink to={pid ? `/mas?proyecto=${pid}` : "/mas"} className={enlace}>Más</NavLink>
+        {/* en el teléfono no caben: «Dudamel» lleva a los proyectos y el menú de la esfera tiene «Más» */}
+        <NavLink to="/proyectos" end className={(e) => `hidden sm:inline ${enlace(e)}`}>Proyectos</NavLink>
+        <NavLink to={pid ? `/mas?proyecto=${pid}` : "/mas"} className={(e) => `hidden sm:inline ${enlace(e)}`}>Más</NavLink>
         {onMenu && (
           <button onClick={onMenu} className="mono flex items-center gap-2 rounded-full border border-[var(--line)] px-3 py-1.5 text-[10.5px] text-[var(--bone-dim)] hover:border-[var(--c1)] hover:text-[var(--bone)]" aria-haspopup="dialog">
             <span className="punto" style={{ background: "var(--c1)", boxShadow: "0 0 10px var(--glow)" }} /> Menú
           </button>
+        )}
+        <BotonTema />
+        {usuario && (
+          <span className="flex items-center gap-3 sm:border-l sm:border-[var(--line)] sm:pl-4 md:pl-5">
+            <span className="mono hidden max-w-[14ch] truncate text-[10.5px] text-[var(--bone-dim)] md:inline" title={usuario.correo}>{usuario.nombre}</span>
+            <button onClick={cerrar} className="mono text-[10.5px] text-[var(--bone-faint)] transition-colors hover:text-[var(--bone)]">Salir</button>
+          </span>
         )}
       </nav>
     </header>

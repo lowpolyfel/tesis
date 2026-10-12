@@ -8,10 +8,11 @@ from app.api.routes import evaluaciones, proyectos
 from app.evaluacion import formas
 from tests.escenarios import montar
 from tests.evaluacion.ayudantes import GROUND_TRUTH, REQUISITOS, escribir_corpus, guiones
+from tests.fakes import como_usuario
 
 
 def cliente_de(srv) -> TestClient:
-    app = FastAPI()
+    app = como_usuario(FastAPI())
     app.include_router(evaluaciones.router)
     app.include_router(proyectos.router)
     app.state.servicio = srv
@@ -167,7 +168,7 @@ def test_al_arrancar_la_api_retoma_las_evaluaciones_pendientes(tmp_path, analiza
     ev = evaluacion.crear(srv, "escenario")  # el proceso se cae antes de encolar la línea base
 
     reiniciado, llm, _ = montar(tmp_path, analizador, guiones(), corpus_dir=str(tmp_path / "corpus"))
-    with TestClient(create_app(reiniciado)):
+    with TestClient(como_usuario(create_app(reiniciado))):
         assert reiniciado.cola.esperar(20)
         assert evaluacion.obtener(reiniciado, ev.evaluacion_id).estado == "terminada"
     assert len(llm.llamadas["agente_unico_v1"]) == 5  # una por requisito y el reintento de D: nada doble

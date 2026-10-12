@@ -10,7 +10,7 @@ import { BASE_URL } from "./http";
 export function seguirRequisito(reqId, { desde = 0, onMensaje, onEstado, onFin, onError } = {}) {
   const url = new URL(`${BASE_URL}/eventos/${encodeURIComponent(reqId)}`);
   if (desde) url.searchParams.set("desde", desde);
-  const fuente = new EventSource(url);
+  const fuente = new EventSource(url, { withCredentials: true }); // con la cookie de sesión
   let cerrado = false;
   const parse = (e) => { try { return JSON.parse(e.data); } catch { return null; } };
 

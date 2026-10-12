@@ -13,7 +13,8 @@ from pathlib import Path
 
 from langgraph.types import Command
 
-from app.db.proyectos import Proyectos
+from app.auth import Cuentas
+from app.db.proyectos import COLECCION as COLECCION_PROYECTOS, Proyectos
 from app.models import (
     PROYECTO_GENERAL,
     ESTADOS_TERMINALES,
@@ -59,15 +60,20 @@ def _pausa(snapshot) -> str | None:
     return (snapshot.config or {}).get("configurable", {}).get("checkpoint_id")
 
 
+# Lo que cuelga de un proyecto, además de sus trazas y su LEL (campo `proyecto_id`)
+COLECCIONES_DEL_PROYECTO = ("documentos", "comparaciones", "evaluaciones", COLECCION_FORMALIZADOS)
+
+
 class Servicio:
     def __init__(self, deps: Dependencias, checkpointer=None):
         self.deps = deps
         self.repo = deps.repo
         if checkpointer is None:
             checkpointer = checkpointer_sqlite(deps.settings.ruta(deps.settings.checkpoint_path))
+        self.checkpointer = checkpointer
         self.grafo = construir_grafo(deps, checkpointer)
         self.proyectos = Proyectos(self.repo)
-        self.proyectos.asegurar_general()
+        self.cuentas = Cuentas(self.repo, deps.settings)
         self.cola = Cola()
         self._ocupados: set[str] = set()
         self._candado = threading.Lock()
@@ -299,6 +305,57 @@ class Servicio:
             self.repo.guardar_doc(COLECCION_FORMALIZADOS, req_id, doc)
         self._registrar_correccion(req_id, "lel", antes, despues, termino=actual.termino)
         return nueva
+
+    # ------------------------------------------------------------ borrar
+
+    def _borrar_rastro(self, req_id: str) -> None:
+        """Todo lo de un requisito: traza, entradas del LEL que salieron de él, su documento
+        formalizado, una validación en espera y el checkpoint de su grafo. Sin el checkpoint,
+        si el id se vuelve a usar, el requisito nuevo no hereda el estado del anterior."""
+        self.repo.borrar_lel(req_id=req_id)
+        self.repo.borrar_doc(COLECCION_FORMALIZADOS, req_id)
+        self.repo.borrar_doc(COLECCION_VALIDACIONES, req_id)
+        self.checkpointer.delete_thread(req_id)
+        self.repo.borrar_traza(req_id)
+
+    def _apartar(self, req_ids: list[str]) -> None:
+        """Reserva los requisitos para borrarlos: ninguno puede estar en la cola ni corriendo."""
+        with self._candado:
+            ocupados = [r for r in req_ids if r in self._ocupados]
+            if ocupados:
+                raise ConflictoDeEstado(f"{', '.join(ocupados)} se está analizando o espera turno; "
+                                        "bórralo cuando termine")
+            self._ocupados.update(req_ids)
+
+    def borrar_requisito(self, req_id: str) -> None:
+        if self.repo.obtener_traza(req_id) is None:
+            raise KeyError(req_id)
+        self._apartar([req_id])
+        try:
+            self._borrar_rastro(req_id)
+        finally:
+            self._liberar(req_id)
+
+    def borrar_proyecto(self, proyecto_id: str) -> None:
+        """El proyecto con sus requisitos, su LEL, documentos, comparaciones y evaluaciones.
+        409 si algo del proyecto se está analizando o espera turno en la cola."""
+        if self.proyectos.obtener(proyecto_id) is None:
+            raise KeyError(proyecto_id)
+        req_ids = [t["req_id"] for t in self.repo.listar_trazas(proyecto_id)]
+        self._apartar(req_ids)
+        try:
+            for coleccion, terminado in (("comparaciones", ("terminada", "error")), ("evaluaciones", ("terminada",))):
+                if any(d.get("estado") not in terminado for d in self.repo.listar_docs(coleccion, proyecto_id=proyecto_id)):
+                    raise ConflictoDeEstado(f"el proyecto tiene {coleccion} en curso; bórralo cuando terminen")
+            for req_id in req_ids:
+                self._borrar_rastro(req_id)
+            self.repo.borrar_lel(proyecto_id=proyecto_id)
+            for coleccion in COLECCIONES_DEL_PROYECTO:
+                self.repo.borrar_docs(coleccion, proyecto_id=proyecto_id)
+            self.repo.borrar_doc(COLECCION_PROYECTOS, proyecto_id)
+        finally:
+            with self._candado:
+                self._ocupados.difference_update(req_ids)
 
     def traza(self, req_id: str) -> Traza | None:
         return self.repo.obtener_traza(req_id)

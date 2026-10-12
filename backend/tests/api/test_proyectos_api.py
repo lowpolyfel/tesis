@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from app.api.main import create_app
 from tests.escenarios import SESION, guiones_sesion_cercana, montar
+from tests.fakes import como_usuario
 
 
 @pytest.fixture
@@ -12,7 +13,7 @@ def cliente(tmp_path, analizador):
     for clave in guiones:
         guiones[clave] = guiones[clave] * 3
     srv, _, _ = montar(tmp_path, analizador, guiones)
-    with TestClient(create_app(srv)) as c:
+    with TestClient(como_usuario(create_app(srv))) as c:
         c.esperar = lambda: srv.cola.esperar(10)
         yield c
 
@@ -35,7 +36,7 @@ def test_crear_listar_y_cargar_requisitos(cliente):
     cliente.esperar()
     assert cliente.get("/traza/R01").json()["origen"]["pagina"] == 2
     assert cliente.get("/trazas", params={"proyecto_id": "P00"}).json() == []
-    assert cliente.get("/cola").json() == {"en_proceso": None, "pendientes": []}
+    assert cliente.get("/cola").json() == {"en_proceso": None, "pendientes": [], "de_otras_cuentas": 0}
 
 
 def test_errores_de_proyecto(cliente):

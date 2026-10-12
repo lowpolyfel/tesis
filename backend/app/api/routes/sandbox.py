@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from app.db.conexion import probar_conexion
 from app.orchestration import Servicio
 
-from ..dependencias import obtener_servicio
+from ..dependencias import UsuarioDep, obtener_servicio
 
 router = APIRouter(tags=["sandbox"])
 SANDBOX = Path(__file__).resolve().parents[1] / "static" / "sandbox.html"
@@ -33,7 +33,7 @@ def salud(srv: Annotated[Servicio, Depends(obtener_servicio)]) -> dict:
 
 
 @router.get("/conexion")
-def conexion(srv: Annotated[Servicio, Depends(obtener_servicio)]) -> dict:
+def conexion(srv: Annotated[Servicio, Depends(obtener_servicio)], _: UsuarioDep) -> dict:
     """A qué Mongo está conectado el servidor (Atlas, local u otro), de dónde salió
     `MONGO_URI`, y un ping, la versión, las colecciones y una escritura de prueba medidos
     ahora. Con el respaldo JSON responde 200 con `persistencia: "json"` y el motivo en

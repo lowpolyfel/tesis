@@ -4,6 +4,8 @@ import OrbField from "./components/orb/OrbField";
 import { createOrbController } from "./components/orb/controller";
 import { OrbContext } from "./components/orb/useOrb";
 import Shell from "./components/layout/Shell";
+import { ProveedorSesion, RequiereSesion } from "./components/sesion";
+import { Entrar, Recuperar, Registro, Verificar } from "./pages/cuenta/Cuenta";
 import { proyectoRecordado } from "./components/proyectoRecordado";
 import Intro from "./pages/intro/Intro";
 import Proyectos from "./pages/Proyectos";
@@ -33,6 +35,7 @@ import Conexion from "./pages/Conexion";
  *   /analisis?proyecto=&ids=        la escena en vivo de un lote
  *   /requisitos/:id[/validacion]    un requisito y su revisión
  *   /mas                            análisis y experimentación
+ *   /entrar /registro /verificar /recuperar   la cuenta (todo lo demás pide sesión)
  *   /conexion                       a qué base de datos está conectado el backend
  */
 const raiz = { current: document.documentElement };
@@ -55,38 +58,44 @@ export default function App() {
 
   return (
     <OrbContext.Provider value={orb}>
-      <OrbField controller={orb} rootRef={rootRef} />
-      <div className="grain" aria-hidden="true" />
-      <Routes>
-        <Route path="/" element={<Intro />} />
-        <Route element={<Shell modo="escena" />}>
-          <Route path="/proyectos/:id/analizar" element={<Analizar />} />
-          <Route path="/analisis" element={<Analisis />} />
-        </Route>
-        <Route element={<Shell modo="herramienta" />}>
-          <Route path="/proyectos" element={<Proyectos />} />
-          <Route path="/proyectos/:id" element={<Proyecto />} />
-          <Route path="/requisitos/:id" element={<DetalleRequisito />} />
-          <Route path="/requisitos/:id/validacion" element={<Validacion />} />
-          <Route path="/mas" element={<Mas />} />
-          <Route path="/ambiguedades" element={<Ambiguedades />} />
-          <Route path="/comparaciones" element={<Comparaciones />} />
-          <Route path="/flujo" element={<Flujo />} />
-          <Route path="/historial" element={<Cola />} />
-          <Route path="/lel" element={<Lel />} />
-          <Route path="/catalogos" element={<Navigate to="/catalogos/regionales" replace />} />
-          <Route path="/catalogos/:tipo" element={<Catalogos />} />
-          <Route path="/calibracion" element={<Calibracion />} />
-          <Route path="/evaluacion" element={<Evaluacion />} />
-          <Route path="/conexion" element={<Conexion />} />
-        </Route>
-        <Route path="/inicio" element={<AAnalizar />} />
-        <Route path="/cargar" element={<AAnalizar />} />
-        <Route path="/big-picture" element={<AlMapa />} />
-        <Route path="/cola" element={<Navigate to="/historial" replace />} />
-        <Route path="/lel/generar" element={<Navigate to="/lel" replace />} />
-        <Route path="*" element={<Navigate to="/proyectos" replace />} />
-      </Routes>
+      <ProveedorSesion>
+        <OrbField controller={orb} rootRef={rootRef} />
+        <div className="grain" aria-hidden="true" />
+        <Routes>
+          <Route path="/" element={<Intro />} />
+          <Route path="/entrar" element={<Entrar />} />
+          <Route path="/registro" element={<Registro />} />
+          <Route path="/verificar" element={<Verificar />} />
+          <Route path="/recuperar" element={<Recuperar />} />
+          <Route element={<RequiereSesion><Shell modo="escena" /></RequiereSesion>}>
+            <Route path="/proyectos/:id/analizar" element={<Analizar />} />
+            <Route path="/analisis" element={<Analisis />} />
+          </Route>
+          <Route element={<RequiereSesion><Shell modo="herramienta" /></RequiereSesion>}>
+            <Route path="/proyectos" element={<Proyectos />} />
+            <Route path="/proyectos/:id" element={<Proyecto />} />
+            <Route path="/requisitos/:id" element={<DetalleRequisito />} />
+            <Route path="/requisitos/:id/validacion" element={<Validacion />} />
+            <Route path="/mas" element={<Mas />} />
+            <Route path="/ambiguedades" element={<Ambiguedades />} />
+            <Route path="/comparaciones" element={<Comparaciones />} />
+            <Route path="/flujo" element={<Flujo />} />
+            <Route path="/historial" element={<Cola />} />
+            <Route path="/lel" element={<Lel />} />
+            <Route path="/catalogos" element={<Navigate to="/catalogos/regionales" replace />} />
+            <Route path="/catalogos/:tipo" element={<Catalogos />} />
+            <Route path="/calibracion" element={<Calibracion />} />
+            <Route path="/evaluacion" element={<Evaluacion />} />
+            <Route path="/conexion" element={<Conexion />} />
+          </Route>
+          <Route path="/inicio" element={<AAnalizar />} />
+          <Route path="/cargar" element={<AAnalizar />} />
+          <Route path="/big-picture" element={<AlMapa />} />
+          <Route path="/cola" element={<Navigate to="/historial" replace />} />
+          <Route path="/lel/generar" element={<Navigate to="/lel" replace />} />
+          <Route path="*" element={<Navigate to="/proyectos" replace />} />
+        </Routes>
+      </ProveedorSesion>
     </OrbContext.Provider>
   );
 }

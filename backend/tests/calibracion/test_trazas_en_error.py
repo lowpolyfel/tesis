@@ -16,7 +16,7 @@ from app.api.routes import calibracion, proyectos
 from app.calibracion import formas
 from app.models import Origen
 from tests.escenarios import EXTRACCION_SESION, I1, I2, SESION, clasificacion, montar
-from tests.fakes import r3_todas
+from tests.fakes import como_usuario, r3_todas
 
 RETIRA_I2 = {"interpretaciones": [I1], "retiradas": [{"interpretacion_id": "I2", "motivo": "agrega red"}]}
 
@@ -54,7 +54,7 @@ def test_trazas_en_error_y_reprocesos_en_cadena(tmp_path, analizador):
     assert [srv.traza(r).estado.value for r in (r1, r2, r3, r4)] == ["error", "pendiente_validacion", "error",
                                                                        "pendiente_validacion"]
 
-    app = FastAPI()
+    app = como_usuario(FastAPI())
     app.include_router(calibracion.router)
     app.include_router(proyectos.router)
     app.state.servicio = srv

@@ -8,3 +8,7 @@ export const proyectoRecordado = () => {
 export const recordarProyecto = (id) => {
   try { localStorage.setItem(CLAVE, id); } catch { /* sin almacenamiento */ }
 };
+
+export const olvidarProyecto = () => {
+  try { localStorage.removeItem(CLAVE); } catch { /* sin almacenamiento */ }
+};

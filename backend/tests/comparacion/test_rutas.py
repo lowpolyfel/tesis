@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from app.api.routes import comparaciones, proyectos
 from app.models import Estado
 from tests.comparacion.ayudantes import juicio, montar_comparacion, requisito
+from tests.fakes import como_usuario
 
 CIERRE_15 = "La sesión del usuario debe cerrarse a los 15 minutos de inactividad."
 SIN_CIERRE = "La sesión del usuario nunca debe cerrarse automáticamente."
@@ -16,7 +17,7 @@ def entorno(tmp_path, analizador):
     juicios = {("R01", "R02"): juicio("contradiccion", "debe cerrarse a los 15 minutos", "nunca debe cerrarse")}
     srv, llm, repo, pid = montar_comparacion(tmp_path, analizador, juicios=juicios,
                                              vectores={CIERRE_15: [1, 0, 0], SIN_CIERRE: [0.8, 0.6, 0]})
-    app = FastAPI()
+    app = como_usuario(FastAPI())
     app.include_router(comparaciones.router)
     app.include_router(proyectos.router)
     app.state.servicio = srv
@@ -97,7 +98,7 @@ def test_al_arrancar_la_api_retoma_las_comparaciones_pendientes(tmp_path, analiz
     repo.guardar_doc("comparaciones", a_medias.comparacion_id,
                      {**a_medias.model_dump(mode="json"), "estado": "en_proceso", "avance": {"hechos": 0, "total": 1}})
 
-    with TestClient(create_app(srv)) as cliente:
+    with TestClient(como_usuario(create_app(srv))) as cliente:
         assert srv.cola.esperar(10)
         for cid in (en_cola.comparacion_id, a_medias.comparacion_id):
             c = cliente.get(f"/comparaciones/{cid}").json()

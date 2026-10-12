@@ -1,4 +1,5 @@
-"""Proyectos: crear, listar y cargar varios requisitos a la cola."""
+"""Proyectos de la cuenta con sesión: crear, listar, editar, borrar y cargar varios
+requisitos a la cola. Un proyecto de otra cuenta responde 404."""
 from __future__ import annotations
 
 from typing import Annotated
@@ -8,9 +9,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.documentos.almacen import COLECCION as COLECCION_DOCUMENTOS
 from app.models import Origen, Proyecto
-from app.orchestration import Servicio
+from app.orchestration import ConflictoDeEstado, Servicio
 
-from ..dependencias import obtener_servicio
+from ..dependencias import UsuarioDep, obtener_servicio
 
 router = APIRouter(tags=["proyectos"])
 ServicioDep = Annotated[Servicio, Depends(obtener_servicio)]
@@ -45,9 +46,9 @@ class EntradaRequisitos(BaseModel):
     requisitos: list[RequisitoNuevo] = Field(min_length=1, max_length=200)
 
 
-def proyecto_existente(proyecto_id: str, srv: ServicioDep) -> Proyecto:
+def proyecto_existente(proyecto_id: str, srv: ServicioDep, usuario: UsuarioDep) -> Proyecto:
     p = srv.proyectos.obtener(proyecto_id)
-    if p is None:
+    if p is None or p.propietario != usuario.usuario_id:
         raise HTTPException(404, f"No existe el proyecto {proyecto_id}")
     return p
 
@@ -56,13 +57,14 @@ ProyectoDep = Annotated[Proyecto, Depends(proyecto_existente)]
 
 
 @router.get("/proyectos", response_model=list[Proyecto])
-def listar(srv: ServicioDep) -> list[Proyecto]:
-    return srv.proyectos.listar()
+def listar(srv: ServicioDep, usuario: UsuarioDep) -> list[Proyecto]:
+    return srv.proyectos.listar(usuario.usuario_id)
 
 
 @router.post("/proyectos", status_code=201, response_model=Proyecto)
-def crear(entrada: EntradaProyecto, srv: ServicioDep) -> Proyecto:
-    return srv.proyectos.crear(entrada.nombre, entrada.descripcion, contexto=entrada.contexto or None)
+def crear(entrada: EntradaProyecto, srv: ServicioDep, usuario: UsuarioDep) -> Proyecto:
+    return srv.proyectos.crear(entrada.nombre, entrada.descripcion, contexto=entrada.contexto or None,
+                               propietario=usuario.usuario_id)
 
 
 @router.get("/proyectos/{proyecto_id}", response_model=Proyecto)
@@ -73,6 +75,16 @@ def obtener(p: ProyectoDep) -> Proyecto:
 @router.patch("/proyectos/{proyecto_id}", response_model=Proyecto)
 def actualizar(p: ProyectoDep, cambios: CambiosProyecto, srv: ServicioDep) -> Proyecto:
     return srv.proyectos.actualizar(p.proyecto_id, **cambios.model_dump())
+
+
+@router.delete("/proyectos/{proyecto_id}", status_code=204)
+def borrar(p: ProyectoDep, srv: ServicioDep) -> None:
+    """Borra el proyecto con sus requisitos, su léxico, documentos, comparaciones y
+    evaluaciones. 409 si algo del proyecto se está analizando o espera turno."""
+    try:
+        srv.borrar_proyecto(p.proyecto_id)
+    except ConflictoDeEstado as e:
+        raise HTTPException(409, str(e)) from e
 
 
 @router.get("/proyectos/{proyecto_id}/requisitos")

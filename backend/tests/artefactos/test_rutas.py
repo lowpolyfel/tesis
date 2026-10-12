@@ -8,6 +8,7 @@ from app.api.routes import artefactos, proyectos
 from app.artefactos import artefactos_requisito, big_picture_proyecto, metas_proyecto
 from tests.artefactos.ayudantes import documentos, lel, sembrar
 from tests.escenarios import montar
+from tests.fakes import como_usuario
 
 
 @pytest.fixture(scope="module")
@@ -16,7 +17,7 @@ def entorno(tmp_path_factory, analizador):
     p = srv.proyectos.crear("Artefactos")
     sembrar(repo, p.proyecto_id)
     vacio = srv.proyectos.crear("Sin formalizados")
-    app = FastAPI()
+    app = como_usuario(FastAPI())
     app.include_router(artefactos.router)
     app.include_router(proyectos.router)
     app.state.servicio = srv
@@ -106,7 +107,7 @@ def test_artefactos_de_un_requisito_con_los_actores_del_proyecto(tmp_path, anali
         assert t.req_id == d["req_id"]
         repo.guardar_doc("formalizados", t.req_id, d)
         repo.cambiar_estado(t.req_id, Estado.FORMALIZADO)
-    app = FastAPI()
+    app = como_usuario(FastAPI())
     app.include_router(artefactos.router)
     app.state.servicio = srv
     cliente = TestClient(app)
@@ -155,7 +156,7 @@ def test_un_requisito_que_se_formaliza_durante_la_peticion(tmp_path, analizador)
         repo.cambiar_estado(t.req_id, Estado.FORMALIZADO)
 
     srv.repo = _ModeladorEntreLecturas(repo, formalizar)
-    app = FastAPI()
+    app = como_usuario(FastAPI())
     app.include_router(artefactos.router)
     app.state.servicio = srv
     m = TestClient(app).get(f"/proyectos/{p.proyecto_id}/metas").json()

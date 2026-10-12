@@ -96,6 +96,11 @@ def _coincide(doc: dict, filtro: dict) -> bool:
     return all(doc.get(k) == v for k, v in filtro.items())
 
 
+def _filtro_borrado(proyecto_id: str | None, req_id: str | None) -> None:
+    if proyecto_id is None and req_id is None:
+        raise ValueError("indica proyecto_id o req_id: no se borra el LEL completo")
+
+
 def _sin_repetir(actuales: list[EntradaLELFormalizada], nuevas: list[EntradaLELFormalizada]) -> list[EntradaLELFormalizada]:
     """Las actuales menos las que las nuevas reemplazan (mismo req_id y término)."""
     claves = {(e.req_id, e.termino) for e in nuevas}
@@ -141,11 +146,16 @@ class Repositorio(Protocol):
     # cae dentro de `formalizado`, el nodo se reejecuta y no debe duplicar el LEL.
     def guardar_lel(self, entradas: list[EntradaLELFormalizada]) -> None: ...
     def listar_lel(self, proyecto_id: str | None = None) -> list[EntradaLELFormalizada]: ...
+    # borrar: un requisito y las entradas del LEL de un proyecto o de un requisito
+    def borrar_traza(self, req_id: str) -> bool: ...
+    def borrar_lel(self, *, proyecto_id: str | None = None, req_id: str | None = None) -> int: ...
     # documentos genéricos por colección
     def crear_doc(self, coleccion: str, prefijo: str, fabricar: Callable[[str], dict]) -> dict: ...
     def guardar_doc(self, coleccion: str, doc_id: str, datos: dict) -> None: ...
     def obtener_doc(self, coleccion: str, doc_id: str) -> dict | None: ...
     def listar_docs(self, coleccion: str, **filtro: Any) -> list[dict]: ...
+    def borrar_doc(self, coleccion: str, doc_id: str) -> bool: ...
+    def borrar_docs(self, coleccion: str, **filtro: Any) -> int: ...
 
 
 # ---------------------------------------------------------------- JSON
@@ -266,6 +276,27 @@ class RepositorioJson:
             todas = [EntradaLELFormalizada.model_validate(d) for d in json.loads(self.archivo_lel.read_text(encoding="utf-8"))]
             return [e for e in todas if proyecto_id is None or e.proyecto_id == proyecto_id]
 
+    def borrar_traza(self, req_id: str) -> bool:
+        try:
+            ruta = self._ruta(req_id)
+        except ValueError:
+            return False
+        with self._escritura():
+            if not ruta.exists():
+                return False
+            ruta.unlink()
+            return True
+
+    def borrar_lel(self, *, proyecto_id: str | None = None, req_id: str | None = None) -> int:
+        _filtro_borrado(proyecto_id, req_id)
+        with self._escritura():
+            todas = self.listar_lel()
+            quedan = [e for e in todas if (proyecto_id is not None and e.proyecto_id != proyecto_id)
+                      or (req_id is not None and e.req_id != req_id)]
+            if len(quedan) != len(todas):
+                self._escribir(self.archivo_lel, [e.model_dump(mode="json") for e in quedan])
+            return len(todas) - len(quedan)
+
     # documentos genéricos: <dir>/<coleccion>/<id>.json
     def _dir_coleccion(self, coleccion: str) -> Path:
         if not _PATRON_COLECCION.match(coleccion) or coleccion == "trazas":
@@ -305,6 +336,27 @@ class RepositorioJson:
             rutas = sorted(self._dir_coleccion(coleccion).glob("*.json"), key=lambda r: (len(r.stem), r.stem))
             docs = [json.loads(r.read_text(encoding="utf-8")) for r in rutas]
             return [x for x in docs if _coincide(x, filtro)]
+
+    def borrar_doc(self, coleccion: str, doc_id: str) -> bool:
+        if not self._id_valido(doc_id):
+            return False
+        with self._escritura():
+            ruta = self._dir_coleccion(coleccion) / f"{doc_id}.json"
+            if not ruta.exists():
+                return False
+            ruta.unlink()
+            return True
+
+    def borrar_docs(self, coleccion: str, **filtro: Any) -> int:
+        if not filtro:
+            raise ValueError("borrar_docs necesita un filtro: no se vacía una colección completa")
+        with self._escritura():
+            borrados = 0
+            for ruta in self._dir_coleccion(coleccion).glob("*.json"):
+                if _coincide(json.loads(ruta.read_text(encoding="utf-8")), filtro):
+                    ruta.unlink()
+                    borrados += 1
+            return borrados
 
 
 # ---------------------------------------------------------------- Mongo
@@ -404,6 +456,16 @@ class RepositorioMongo:
         return [EntradaLELFormalizada.model_validate({k: v for k, v in d.items() if k != "_id"})
                 for d in self.lel.find(self._filtro_proyecto(proyecto_id)).sort("_id", 1)]
 
+    def borrar_traza(self, req_id: str) -> bool:
+        return self.trazas.delete_one({"_id": req_id}).deleted_count == 1
+
+    def borrar_lel(self, *, proyecto_id: str | None = None, req_id: str | None = None) -> int:
+        _filtro_borrado(proyecto_id, req_id)
+        filtro = self._filtro_proyecto(proyecto_id)
+        if req_id is not None:
+            filtro = {**filtro, "req_id": req_id}
+        return self.lel.delete_many(filtro).deleted_count
+
     # documentos genéricos: colección propia, _id = id del documento
     def _col(self, coleccion: str):
         if not _PATRON_COLECCION.match(coleccion) or coleccion in ("trazas", "lel"):
@@ -434,6 +496,14 @@ class RepositorioMongo:
     def listar_docs(self, coleccion: str, **filtro: Any) -> list[dict]:
         docs = sorted(self._col(coleccion).find(filtro), key=lambda d: (len(str(d["_id"])), str(d["_id"])))
         return [{k: v for k, v in d.items() if k != "_id"} for d in docs]
+
+    def borrar_doc(self, coleccion: str, doc_id: str) -> bool:
+        return self._col(coleccion).delete_one({"_id": doc_id}).deleted_count == 1
+
+    def borrar_docs(self, coleccion: str, **filtro: Any) -> int:
+        if not filtro:
+            raise ValueError("borrar_docs necesita un filtro: no se vacía una colección completa")
+        return self._col(coleccion).delete_many(filtro).deleted_count
 
 
 # ---------------------------------------------------------------- fábrica

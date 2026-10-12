@@ -103,5 +103,17 @@ nuevo. Las vistas de análisis guardan el proyecto en `?proyecto=`.
   estados en lenguaje claro (`estadoSimple`).
 - `src/constants/agentes.js`: nodos del grafo, fases KMoS-SSA, tipos de
   ambigüedad, requisitos funcionales y no funcionales y reglas del Crítico.
-- `src/fixtures/documentoEjemplo.js`: el único texto de ejemplo, para probar la
-  carga.
+- `src/components/sesion.jsx`: la cuenta con sesión (`GET /auth/yo`) y
+  `RequiereSesion`, que lleva a «Entrar» las pantallas de la app.
+- `src/pages/cuenta/`: entrar, crear cuenta, código del correo y restablecer.
+- `src/components/tema.jsx`: modo oscuro o claro (`<html data-tema>`), guardado
+  en el navegador; el botón ☀/☾ está en la barra.
+
+Sin datos de ejemplo: todo sale del backend y cada cuenta empieza sin proyectos.
+La sesión es una cookie HttpOnly del backend (`credentials: "include"`), así que
+el origen del frontend debe estar en `CORS_ORIGENES`.
+
+Rendimiento (ADR 0019): lo que se anima en cada cuadro solo cambia `transform`
+u `opacity`. No uses `backdrop-filter`, filtros SVG ni `mix-blend-mode` sobre
+algo que se mueva o que tenga la esfera detrás: obligan a repintar áreas
+grandes en cada cuadro.

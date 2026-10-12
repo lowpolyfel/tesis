@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router";
 import { estadoSimple } from "../constants/estados";
 import { useOrb } from "./orb/useOrb";
@@ -106,6 +107,33 @@ export function Vacio({ children, accion }) {
     <div className="tarjeta flex flex-wrap items-center justify-between gap-4 px-6 py-6">
       <p className="text-[15px] text-[var(--bone-dim)]">{children}</p>
       {accion}
+    </div>
+  );
+}
+
+/* Confirmación en el sitio para algo que no se puede deshacer (borrar) */
+export function Confirmar({ pregunta, detalle, accion = "Borrar", onConfirmar, onCancelar }) {
+  const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState(null);
+  const confirmar = async () => {
+    setEnviando(true);
+    setError(null);
+    try {
+      await onConfirmar();
+    } catch (e) {
+      setError(e);
+      setEnviando(false);
+    }
+  };
+  return (
+    <div role="alertdialog" aria-label={pregunta} className="tarjeta confirmar space-y-3 p-5">
+      <p className="text-[15px]">{pregunta}</p>
+      {detalle && <p className="text-[13.5px] leading-relaxed text-[var(--bone-dim)]">{detalle}</p>}
+      <Aviso error={error} />
+      <div className="flex flex-wrap gap-2">
+        <button className="pill sm peligro" onClick={confirmar} disabled={enviando} autoFocus>{enviando ? "Borrando…" : accion}</button>
+        <button className="pill ghost sm" onClick={onCancelar} disabled={enviando}>Cancelar</button>
+      </div>
     </div>
   );
 }

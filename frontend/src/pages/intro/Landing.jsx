@@ -1,9 +1,11 @@
 import { useApp } from "../../components/intro/useApp";
 import Button from "../../components/intro/Button";
+import { useSesion } from "../../components/sesion";
 
-/* Sin cuentas: el prototipo es de un solo usuario y la validación no registra autor */
+/* Con sesión, a los proyectos; sin sesión, entrar o crear la cuenta */
 export default function Landing() {
   const { enter } = useApp();
+  const { usuario } = useSesion();
 
   return (
     <section className="panel panel-left">
@@ -21,9 +23,16 @@ export default function Landing() {
         Solo te pregunta cuando no se ponen de acuerdo.
       </p>
       <div className="actions rise" style={{ "--i": 3 }}>
-        <Button onClick={enter}>Empezar</Button>
+        {usuario ? (
+          <Button onClick={() => enter("/proyectos")}>Continuar como {usuario.nombre}</Button>
+        ) : (
+          <>
+            <Button onClick={() => enter("/entrar")}>Entrar</Button>
+            <Button variant="ghost" onClick={() => enter("/registro")}>Crear cuenta</Button>
+          </>
+        )}
       </div>
-      <p className="fineprint rise" style={{ "--i": 4 }}>Prototipo de tesis · v0.1 · sin cuentas: un solo usuario, en esta máquina</p>
+      <p className="fineprint rise" style={{ "--i": 4 }}>Prototipo de tesis · v0.2 · tus proyectos se guardan en tu cuenta</p>
     </section>
   );
 }

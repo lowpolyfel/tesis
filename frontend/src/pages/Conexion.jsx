@@ -8,9 +8,10 @@ import { Aviso, Cargando, Chip, Cifra, Encabezado, Vacio } from "../components/u
  * las colecciones y una escritura de prueba. La URI no se cambia desde aquí: vive
  * en el .env de la raíz y el backend la lee al arrancar (hay que reiniciarlo).
  */
-const VERDE = "#57f7a7";
-const AMARILLO = "#ffc457";
-const ROJO = "#ff7b88"; // --danger
+// Con versión clara y oscura (styles/dudamel.css)
+const VERDE = "var(--ok)";
+const AMARILLO = "var(--aviso)";
+const ROJO = "var(--danger)";
 
 const FUENTE = {
   env_raiz: ".env de la raíz",
@@ -92,7 +93,7 @@ function Detalle({ c }) {
           ))}
         </dl>
         {c.fuente_uri !== "env_raiz" && (
-          <p className="text-[13px] text-[#ffc457]">MONGO_URI debería venir solo del .env de la raíz.</p>
+          <p className="text-[13px] text-[var(--aviso)]">MONGO_URI debería venir solo del .env de la raíz.</p>
         )}
       </section>
 

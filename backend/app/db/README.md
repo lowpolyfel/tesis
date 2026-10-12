@@ -19,6 +19,13 @@ Persistencia de trazas y del LEL (ADR 0006).
   u `mongo:otro:…`. Al arrancar se registra (INFO) o, si cae a JSON, se registra
   el motivo (WARNING) con la contraseña enmascarada.
 
+- Borrar: `borrar_traza`, `borrar_lel(proyecto_id=… | req_id=…)`, `borrar_doc`
+  y `borrar_docs(coleccion, **filtro)` (exige filtro). Los usa
+  `Servicio.borrar_proyecto` / `borrar_requisito` (ADR 0019).
+- `proyectos.py`: cada proyecto tiene `propietario` (la cuenta); nada se crea
+  solo (`asegurar_general()` queda para scripts y pruebas). Las cuentas viven en
+  la colección `usuarios` (`app/auth`).
+
 ## Conexión
 
 - `MONGO_URI`, `MONGO_DB` y `MONGO_TIMEOUT_MS` viven **solo en el `.env` de la

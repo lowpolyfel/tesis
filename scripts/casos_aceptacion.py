@@ -136,6 +136,7 @@ def main() -> None:
     verificar_ollama(settings)
     deps = crear_dependencias(settings)
     servicio = Servicio(deps)
+    servicio.proyectos.asegurar_general()  # el backend ya no lo crea solo (ADR 0019)
     print(f"persistencia: {deps.repo.descripcion} · umbral {settings.similarity_threshold} · "
           f"rondas {settings.max_debate_rounds}")
 

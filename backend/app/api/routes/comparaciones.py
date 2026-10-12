@@ -16,7 +16,7 @@ from app import comparacion
 from app.comparacion import Comparacion, RequisitosInsuficientes, ResumenComparacion, SinComparador
 from app.orchestration import Servicio
 
-from ..dependencias import obtener_servicio
+from ..dependencias import UsuarioDep, es_suyo, obtener_servicio
 from .proyectos import ProyectoDep
 
 log = logging.getLogger(__name__)
@@ -60,8 +60,8 @@ def listar(p: ProyectoDep, srv: ServicioDep) -> list[ResumenComparacion]:
 
 
 @router.get("/comparaciones/{comparacion_id}", response_model=Comparacion)
-def obtener(comparacion_id: str, srv: ServicioDep) -> Comparacion:
+def obtener(comparacion_id: str, srv: ServicioDep, usuario: UsuarioDep) -> Comparacion:
     c = comparacion.obtener(srv, comparacion_id)
-    if c is None:
+    if c is None or not es_suyo(srv, usuario, c.proyecto_id):
         raise HTTPException(404, f"No existe la comparación {comparacion_id}")
     return c

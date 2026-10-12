@@ -49,3 +49,40 @@ def r3_todas(cumple=True):
                                   "objecion": None if cumple else "sigue siendo ambiguo"} for i in ids]}
 
     return responder
+
+
+# ---------------------------------------------------------------- cuentas
+
+def _usuario_prueba():
+    from app.auth import Usuario
+
+    # U00: los ids que asigna el repositorio empiezan en U01, así no choca con una cuenta real
+    return Usuario(usuario_id="U00", nombre="Prueba", correo="prueba@ejemplo.mx", contrasena="-", verificado=True)
+
+
+USUARIO_PRUEBA = _usuario_prueba()
+
+
+def como_usuario(app, usuario=USUARIO_PRUEBA):
+    """La app responde como si `usuario` tuviera sesión (sin cookie). Los proyectos que las
+    pruebas crean con el servicio quedan a su nombre (`conftest.py`). Las pruebas de
+    cuentas (`tests/auth`) no lo usan: prueban la sesión de verdad."""
+    from app.api.dependencias import usuario_actual
+
+    app.dependency_overrides[usuario_actual] = lambda: usuario
+    return app
+
+
+class CorreoFalso:
+    """Guarda los códigos en vez de enviarlos: `ultimo(correo)` da el último de esa dirección."""
+
+    configurado = True
+
+    def __init__(self):
+        self.enviados: list[dict] = []
+
+    def enviar_codigo(self, destino, nombre, codigo, proposito, minutos):
+        self.enviados.append({"destino": destino, "codigo": codigo, "proposito": proposito})
+
+    def ultimo(self, destino: str) -> str:
+        return next(e["codigo"] for e in reversed(self.enviados) if e["destino"] == destino)

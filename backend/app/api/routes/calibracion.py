@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.calibracion import COLECCION_EVALUACIONES, formas, informe_calibracion
 from app.orchestration import Servicio
 
-from ..dependencias import obtener_servicio
+from ..dependencias import UsuarioDep, obtener_servicio
 from .proyectos import ProyectoDep
 
 router = APIRouter(tags=["calibracion"])
@@ -57,11 +57,9 @@ def calibracion_proyecto(p: ProyectoDep, srv: ServicioDep, parametros: Parametro
 
 
 @router.get("/calibracion", response_model=formas.Calibracion)
-def calibracion_general(srv: ServicioDep, parametros: ParametrosDep) -> dict:
-    """Lo mismo con todos los proyectos que no son de evaluación juntos (`proyecto_id: null`)."""
-    proyectos = srv.proyectos.listar()
-    de_evaluacion = {p.proyecto_id for p in proyectos if p.tipo == "evaluacion"}
-    trazas = [t for t in srv.repo.trazas_completas() if t.proyecto_id not in de_evaluacion]
-    incluidos = {p.proyecto_id for p in proyectos if p.tipo != "evaluacion"} | {t.proyecto_id for t in trazas}
+def calibracion_general(srv: ServicioDep, parametros: ParametrosDep, usuario: UsuarioDep) -> dict:
+    """Lo mismo con todos los proyectos de la cuenta que no son de evaluación juntos (`proyecto_id: null`)."""
+    incluidos = {p.proyecto_id for p in srv.proyectos.listar(usuario.usuario_id) if p.tipo != "evaluacion"}
+    trazas = [t for t in srv.repo.trazas_completas() if t.proyecto_id in incluidos]
     docs = [d for d in srv.repo.listar_docs(COLECCION_EVALUACIONES) if d.get("proyecto_id") in incluidos]
     return _informe(srv, trazas, docs, parametros, None)

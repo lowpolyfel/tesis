@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from app.api.main import create_app
 from tests.escenarios import guiones_sesion_cercana, montar
-from tests.fakes import interp
+from tests.fakes import como_usuario, interp
 
 SESION = "El sistema debe registrar la sesión del usuario."
 
@@ -18,7 +18,7 @@ SESION = "El sistema debe registrar la sesión del usuario."
 @pytest.fixture
 def cliente(tmp_path, analizador):
     srv, _, _ = montar(tmp_path, analizador, guiones_sesion_cercana())
-    with TestClient(create_app(srv)) as c:
+    with TestClient(como_usuario(create_app(srv))) as c:
         c.esperar = lambda: srv.cola.esperar(10)
         yield c
 
@@ -33,7 +33,7 @@ def eventos_sse(texto: str) -> list[tuple[str, dict]]:
 
 
 def test_procesar_validar_y_lel(cliente):
-    r = cliente.post("/procesar", json={"texto": f"  {SESION}  "})
+    r = cliente.post("/procesar", json={"texto": f"  {SESION}  ", "proyecto_id": "P00"})
     cliente.esperar()
     assert r.status_code == 202 and r.json() == {"req_id": "R01", "estado": "cargado"}
 
@@ -51,7 +51,7 @@ def test_procesar_validar_y_lel(cliente):
 
 
 def test_eventos_repite_la_traza_y_cierra_en_estado_terminal(cliente):
-    cliente.post("/procesar", json={"texto": SESION})
+    cliente.post("/procesar", json={"texto": SESION, "proyecto_id": "P00"})
     cliente.esperar()
     cliente.post("/validar/R01", json={"decision": "rechazar", "comentario": "no"})
     cliente.esperar()
@@ -70,7 +70,7 @@ def test_eventos_repite_la_traza_y_cierra_en_estado_terminal(cliente):
 
 
 def test_validar_con_edicion(cliente):
-    cliente.post("/procesar", json={"texto": SESION})
+    cliente.post("/procesar", json={"texto": SESION, "proyecto_id": "P00"})
     cliente.esperar()
     editada = interp("I1", "periodo autenticado", "El sistema debe registrar el periodo autenticado del usuario.")
     r = cliente.post("/validar/R01", json={"decision": "aprobar", "interpretaciones_editadas": {"sesión": editada}})
@@ -84,11 +84,11 @@ def test_errores_http(cliente):
     assert cliente.get("/traza/R09").status_code == 404
     assert cliente.get("/eventos/R09").status_code == 404
     assert cliente.post("/validar/R09", json={"decision": "aprobar"}).status_code == 404
-    assert cliente.post("/procesar", json={"texto": "   "}).status_code == 422
+    assert cliente.post("/procesar", json={"texto": "   ", "proyecto_id": "P00"}).status_code == 422
 
     assert cliente.post("/procesar", json={"texto": SESION, "proyecto_id": "P77"}).status_code == 404
 
-    cliente.post("/procesar", json={"texto": SESION})
+    cliente.post("/procesar", json={"texto": SESION, "proyecto_id": "P00"})
     cliente.esperar()
     assert cliente.post("/validar/R01", json={"decision": "quizá"}).status_code == 422
     r = cliente.post("/validar/R01", json={"decision": "aprobar",
