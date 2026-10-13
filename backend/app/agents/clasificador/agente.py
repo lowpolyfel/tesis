@@ -7,6 +7,7 @@ from app.models import (
     Interpretacion,
     Objecion,
     SalidaClasificador,
+    SalidaIntenciones,
     SalidaRefinamiento,
     TerminoCandidato,
 )
@@ -17,11 +18,13 @@ from ..base import a_json, texto_contexto
 
 class Clasificador:
     def __init__(self, cliente: ClienteLLM, significado_max_palabras: int,
-                 prompt: str = "clasificador_v3", prompt_refinamiento: str = "clasificador_refinamiento_v1"):
+                 prompt: str = "clasificador_v3", prompt_refinamiento: str = "clasificador_refinamiento_v1",
+                 prompt_intenciones: str = "clasificador_intencion_v1"):
         self.cliente = cliente
         self.max_palabras = significado_max_palabras
         self.prompt = cargar_prompt(prompt)
         self.prompt_refinamiento = cargar_prompt(prompt_refinamiento)
+        self.prompt_intenciones = cargar_prompt(prompt_intenciones)
 
     @property
     def _contexto(self) -> dict:
@@ -43,6 +46,23 @@ class Clasificador:
             variables["contexto"] = texto_contexto(contexto)
         prompt = self.prompt.renderizar(**variables)
         return generar(self.cliente, prompt, SalidaClasificador, contexto=self._contexto, verificar=verificar)
+
+    def intenciones(self, terminos: list[dict], lel: str, acuerdos: str,
+                    contexto: str | None = None) -> Respuesta[SalidaIntenciones]:
+        """Intenciones candidatas de términos de una entrevista (ADR 0024). `terminos`:
+        [{termino, categoria_tentativa, origen, citas: [«[T3] …»]}]; `lel` y `acuerdos` ya en texto."""
+        esperados = {normalizar(t["termino"]) for t in terminos}
+
+        def verificar(s: SalidaIntenciones) -> None:
+            recibidos = [normalizar(r.termino) for r in s.resultados]
+            faltan = esperados - set(recibidos)
+            sobran = set(recibidos) - esperados
+            if faltan or sobran or len(recibidos) != len(set(recibidos)):
+                raise ValueError(f"debe haber exactamente un resultado por término; faltan {sorted(faltan)}, sobran {sorted(sobran)}")
+
+        prompt = self.prompt_intenciones.renderizar(terminos=a_json(terminos), lel=lel, acuerdos=acuerdos,
+                                                    contexto=texto_contexto(contexto), max_palabras=self.max_palabras)
+        return generar(self.cliente, prompt, SalidaIntenciones, contexto=self._contexto, verificar=verificar)
 
     def refinar(self, texto: str, termino: str, interpretaciones: list[Interpretacion],
                 objeciones: list[Objecion]) -> Respuesta[SalidaRefinamiento]:

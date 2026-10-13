@@ -117,6 +117,16 @@ class Settings(BaseSettings):
     # Documentos (PDF con texto extraíble o texto plano)
     documento_max_mb: float = Field(10, gt=0)
 
+    # Versión 2 (ADR 0024): de la entrevista a los requisitos
+    entrevista_max_caracteres: int = Field(150_000, ge=1000)  # texto de una entrevista
+    entrevista_tanda_caracteres: int = Field(3500, ge=500)  # lo que lee el Extractor por llamada
+    revisor_tanda_caracteres: int = Field(6000, ge=500)  # lo que lee el Revisor por llamada
+    lel_max_terminos: int = Field(60, ge=1)  # términos nuevos por entrevista que pasan al Clasificador
+    lel_tanda_terminos: int = Field(8, ge=1)  # términos por llamada al Clasificador y al Modelador
+    lel_citas_por_termino: int = Field(3, ge=1)  # citas de la entrevista que reciben los agentes por término
+    mapa_max_conceptos: int = Field(18, ge=4)
+    mapa_max_relaciones: int = Field(26, ge=3)
+
     # Comparación entre requisitos (módulo exploratorio, ADR 0012)
     comparador_model: str = "qwen2.5:7b"
     comparacion_relacion_umbral: float = Field(0.60, ge=0.0, le=1.0)  # similitud mínima para comparar un par con el LLM

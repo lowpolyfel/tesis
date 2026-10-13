@@ -26,7 +26,9 @@ from .routes import (
     comparaciones,
     contexto,
     documentos,
+    entrevistas,
     evaluaciones,
+    fases,
     lel,
     modelos,
     preparacion,
@@ -114,7 +116,7 @@ def create_app(servicio: Servicio | None = None) -> FastAPI:
         restaurar()
         app.state.servicio.detener()
 
-    app = FastAPI(title="Tesis: núcleo de agentes", version="0.2.0", lifespan=lifespan)
+    app = FastAPI(title="Dudamel: de la entrevista a los requisitos", version="2.0.0", lifespan=lifespan)
     app.state.servicio = servicio
     app.state.apagando = threading.Event()
     settings = servicio.deps.settings if servicio else get_settings()
@@ -131,7 +133,7 @@ def create_app(servicio: Servicio | None = None) -> FastAPI:
     # Todo lo demás exige una sesión (cookie); cada ruta comprueba además que lo pedido sea de la cuenta
     for r in (requisitos.router, proyectos.router, documentos.router, analisis.router, comparaciones.router,
               calibracion.router, evaluaciones.router, artefactos.router, lel.router, preparacion.router,
-              modelos.router, contexto.router):
+              modelos.router, contexto.router, entrevistas.router, fases.router):
         app.include_router(r, dependencies=[Depends(usuario_actual)])
     return app
 

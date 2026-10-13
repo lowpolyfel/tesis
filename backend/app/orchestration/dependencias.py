@@ -32,6 +32,9 @@ class Dependencias:
     revisor: Revisor
     embeddings: ProveedorEmbeddings
     analizador: Analizador | None = None
+    # Versión 2 (ADR 0024): los mismos agentes con los prompts de la entrevista para el debate
+    clasificador_entrevista: Clasificador | None = None
+    critico_entrevista: Critico | None = None
     # Clientes de los módulos fuera del grafo (comparación entre requisitos, línea base de un agente)
     llm_comparador: ClienteLLM | None = None
     llm_agente_unico: ClienteLLM | None = None
@@ -65,6 +68,10 @@ def armar(settings: Settings, repo: Repositorio, analizador: Analizador, *, extr
         filtros=Filtros(catalogos, analizador),
         clasificador=Clasificador(clasificador, settings.significado_max_palabras),
         critico=Critico(critico, ReglasCritico(analizador)),
+        clasificador_entrevista=Clasificador(clasificador, settings.significado_max_palabras,
+                                             prompt_refinamiento="clasificador_refinamiento_entrevista_v1"),
+        critico_entrevista=Critico(critico, ReglasCritico(analizador), prompt="critico_entrevista_v1",
+                                   prompt_arbitraje="critico_arbitraje_entrevista_v1"),
         modelador=Modelador(modelador),
         revisor=Revisor(revisor),
         embeddings=embeddings,

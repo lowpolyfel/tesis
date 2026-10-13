@@ -66,7 +66,9 @@ def _pausa(snapshot) -> str | None:
 # Lo que cuelga de un proyecto, además de sus trazas y su LEL (campo `proyecto_id`)
 COLECCIONES_DEL_PROYECTO = ("documentos", "comparaciones", "evaluaciones", COLECCION_FORMALIZADOS,
                             "mapas_conceptuales",  # app/artefactos/mapa_conceptual.py
-                            COLECCION_FICHAS)  # app/contexto/ficha.py
+                            COLECCION_FICHAS,  # app/contexto/ficha.py
+                            "lexico", "memoria",  # versión 2: el LEL interactivo y lo aprendido (ADR 0024)
+                            "fase_mapa", "fase_metas", "fase_requisitos")
 
 
 class Servicio:
@@ -82,6 +84,10 @@ class Servicio:
         self.cuentas = Cuentas(self.repo, deps.settings)
         self.perfiles = PerfilesLLM(self.repo, deps.settings)  # proveedores por cuenta (ADR 0021)
         self.cola = Cola()
+        # versión 2 (ADR 0024): las entrevistas corren su propio grafo en la misma cola
+        from .servicio_entrevistas import ServicioEntrevistas
+
+        self.entrevistas = ServicioEntrevistas(self)
         self._ocupados: set[str] = set()
         self._candado = threading.Lock()
         self._candado_ciclos = threading.RLock()  # leer el último ciclo y abrir el siguiente, sin carreras
@@ -92,6 +98,7 @@ class Servicio:
         """Arranca el trabajador de la cola y retoma lo que quedó a medias."""
         self.cola.iniciar()
         self.recuperar()
+        self.entrevistas.recuperar()
 
     def detener(self) -> None:
         self.cola.detener()
@@ -434,6 +441,7 @@ class Servicio:
             for coleccion, terminado in (("comparaciones", ("terminada", "error")), ("evaluaciones", ("terminada",))):
                 if any(d.get("estado") not in terminado for d in self.repo.listar_docs(coleccion, proyecto_id=proyecto_id)):
                     raise ConflictoDeEstado(f"el proyecto tiene {coleccion} en curso; bórralo cuando terminen")
+            self.entrevistas.borrar_de_proyecto(proyecto_id)  # 409 si alguna se está procesando
             for req_id in req_ids:
                 self._borrar_rastro(req_id)
             self.repo.borrar_lel(proyecto_id=proyecto_id)

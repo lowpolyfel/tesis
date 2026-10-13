@@ -5,7 +5,8 @@ paralelo solo los haría competir por la GPU. Todo lo que llama a un LLM pasa po
 aquí, en orden de prioridad y, dentro de la misma prioridad, en orden de llegada.
 
 Prioridades: reanudar una validación (el humano está esperando) > continuar un
-grafo interrumpido > ejecutar un requisito nuevo > análisis de proyecto.
+grafo interrumpido o generar una fase del proyecto > ejecutar un requisito nuevo o
+procesar una entrevista > análisis de proyecto.
 """
 from __future__ import annotations
 
@@ -19,7 +20,9 @@ from typing import Callable
 
 log = logging.getLogger(__name__)
 
-PRIORIDADES = {"reanudar": 0, "continuar": 1, "ejecutar": 2, "analisis": 3}
+# Versión 2 (ADR 0024): generar una fase (la persona espera viendo el avance) va antes que procesar una
+# entrevista, que corre en segundo plano como un requisito nuevo.
+PRIORIDADES = {"reanudar": 0, "continuar": 1, "fase": 1, "ejecutar": 2, "entrevista": 2, "analisis": 3}
 
 
 @dataclass(order=True)
