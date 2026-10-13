@@ -1,8 +1,13 @@
 # backend
 
-Núcleo del sistema en Python 3.12: agentes (Extractor, Clasificador, Crítico,
+Núcleo del sistema en Python 3.12: agentes (Revisor, Extractor, Clasificador, Crítico,
 Modelador), mecanismo de divergencia, filtros deterministas y orquestación con
-LangGraph, expuestos por FastAPI. Incluye una sandbox desechable en `/sandbox`.
+LangGraph, expuestos por FastAPI (versión 2.0.0). Incluye una sandbox desechable en `/sandbox`.
+
+La versión 2 (ADR 0024) parte de una **entrevista**: los agentes proponen el LEL con la
+intención de cada término, una persona lo valida (y el sistema aprende de sus
+correcciones), y de ahí salen el mapa conceptual, las metas y los requisitos. La versión 1
+(requisitos ya escritos, uno por uno) sigue funcionando igual.
 
 ## Instalación (Windows, PowerShell, desde `backend/`)
 
@@ -89,7 +94,18 @@ quedó a medias: vuelve a encolar lo que no empezó, continúa los grafos desde 
 último checkpoint y reanuda las validaciones que ya había aceptado (ADR 0008).
 Los requisitos que esperan validación siguen esperando.
 
-Endpoints principales (todo lo que llama a un LLM pasa por la cola de un solo
+Endpoints de la versión 2 (ADR 0024; también pasan por la cola):
+
+| Grupo | Rutas |
+|---|---|
+| Fases | `GET /proyectos/{id}/fases` (en qué va cada fase, cuál sigue y por qué una está cerrada) |
+| Entrevistas | `POST /proyectos/{id}/entrevistas/vista-previa` (turnos y hablantes, sin guardar), `POST /proyectos/{id}/entrevistas/archivo` (PDF o .txt → texto, sin guardar), `POST /proyectos/{id}/entrevistas` (la guarda y la encola, 202), `GET /proyectos/{id}/entrevistas`, `GET/PATCH/DELETE /entrevistas/{id}`, `GET /entrevistas/{id}/bitacora`, `GET /entrevistas/{id}/eventos` (SSE), `POST /entrevistas/{id}/cancelar`, `POST /entrevistas/{id}/reprocesar` |
+| LEL interactivo | `GET/POST /proyectos/{id}/lexico`, `POST /lexico/{id}/validar`, `/corregir` (`{cambios, alternativa}`), `/descartar`, `/restaurar`, `POST /proyectos/{id}/lexico/validar-sin-ambiguedad` |
+| Memoria | `GET /proyectos/{id}/memoria` (los acuerdos aprendidos), `DELETE /memoria/{id}` (olvidar uno) |
+| Mapa, metas, requisitos | `GET/PUT /proyectos/{id}/fases/{fase}` (`mapa`, `metas`, `requisitos`), `POST …/{fase}/generar` (NDJSON con el avance), `POST …/{fase}/conservar` |
+| Exportar | `GET /proyectos/{id}/fases/mapa/mermaid`, `GET /proyectos/{id}/fases/requisitos/markdown` (la especificación completa con su trazabilidad) |
+
+Endpoints de la versión 1 (todo lo que llama a un LLM pasa por la cola de un solo
 trabajador, ADR 0008):
 
 | Grupo | Rutas |
@@ -115,7 +131,8 @@ trabajador, ADR 0008):
 pytest                                  # desde backend/, sin Ollama ni Mongo
 ```
 
-Usan LLMs y embeddings falsos (`tests/fakes.py`, `tests/escenarios.py`). Las del
+Usan LLMs y embeddings falsos (`tests/fakes.py`, `tests/escenarios.py`; la versión 2,
+`tests/fases/escenario.py`, con la entrevista del consultorio y el debate sobre «consultas»). Las del
 repositorio Mongo usan `mongomock` si está instalado (`pip install mongomock`);
 si no, se omiten. Las de la API responden como una cuenta de prueba
 (`como_usuario`); las de `tests/auth` prueban el registro, el código y la cookie
@@ -141,8 +158,13 @@ paralelo.
 - `app/nlp/`: spaCy, catálogos y filtros deterministas (ADR 0003).
 - `app/llm/`, `app/prompts/`: clientes por agente, salida estructurada con un
   reintento, prompts versionados.
-- `app/agents/`: los cuatro agentes; reglas R1/R2 del Crítico en código (ADR 0004).
-- `app/orchestration/`: grafo = máquina de estados, validación con `interrupt` (ADR 0005).
+- `app/agents/`: los cinco agentes; reglas R1/R2 del Crítico en código (ADR 0004).
+- `app/orchestration/`: grafo del requisito = máquina de estados, validación con `interrupt` (ADR 0005);
+  grafo de la entrevista (`grafo_entrevista.py`) y su servicio (ADR 0024).
+- `app/entrevistas/`: la entrevista en turnos (`turnos.py`) y su almacén con la bitácora (ADR 0024).
+- `app/fases/`: el LEL interactivo (`lexico.py`), la memoria del proyecto (`memoria.py`), el
+  mapa con propósito, las metas, los requisitos, las huellas que abren cada fase (`documento.py`)
+  y la generación en la cola con su avance (`progreso.py`) (ADR 0024).
 - `app/db/`: Mongo con respaldo JSON, proyectos (ADR 0006, 0008).
 - `app/documentos/`: carga de PDF/.txt y separación en requisitos (ADR 0009).
 - `app/analisis/`: vista por término y análisis del proyecto (ADR 0015).

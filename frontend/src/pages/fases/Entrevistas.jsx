@@ -15,6 +15,7 @@ import { Aviso, Cargando, Chip, Confirmar, Plegable, Vacio } from "../../compone
  * cancelar, volver a procesar lo que falló y borrar.
  */
 const SONDEO_MS = 2000;
+const cuenta = (n, uno, otros) => `${n} ${n === 1 ? uno : otros}`;
 
 export default function Entrevistas({ proyectoId, onCambio }) {
   const { datos: lista, error, recargar } = useApi(() => entrevistasDeProyecto(proyectoId), [proyectoId]);
@@ -118,7 +119,11 @@ function Detalles({ e }) {
       <summary className="flex items-center gap-3 py-1">
         <span className="flecha text-[var(--bone-faint)]" aria-hidden="true">▸</span>
         <span className="etiqueta text-[var(--bone-dim)]">Lo que se dijo</span>
-        {f && <span className="text-[12px] text-[var(--bone-faint)]">{f.necesidades?.length ?? 0} necesidades · {f.problemas?.length ?? 0} problemas · {f.reglas?.length ?? 0} reglas</span>}
+        {f && (
+          <span className="text-[12px] text-[var(--bone-faint)]">
+            {cuenta(f.necesidades?.length ?? 0, "necesidad", "necesidades")} · {cuenta(f.problemas?.length ?? 0, "problema", "problemas")} · {cuenta(f.reglas?.length ?? 0, "regla", "reglas")}
+          </span>
+        )}
       </summary>
       <div className="space-y-5 pt-4 text-[14px]">
         {f?.participantes?.length > 0 && (

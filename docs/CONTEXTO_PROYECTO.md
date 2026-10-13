@@ -1,7 +1,20 @@
 # Contexto del proyecto y alcance del desarrollo
 
 > Documento de contexto para pasarle a un agente de código o a un chat nuevo.
-> Última actualización: 5 de octubre de 2026.
+> Última actualización: 13 de octubre de 2026 (versión 2.0.0).
+
+> **Versión 2.0.0 (ADR 0024).** La entrada ya no son requisitos escritos sino una
+> **entrevista** (texto o PDF), y el producto final son **los requisitos**. Los agentes
+> procesan la entrevista completa y proponen un **LEL interactivo** con la **intención** de
+> cada término; cuando un término admite más de una interpretación y las intenciones
+> divergen, debaten como antes (divergencia + Crítico). Una persona experta valida cada
+> término y el sistema **aprende** de sus correcciones como acuerdos del proyecto (válidos
+> solo en ese proyecto). Con el LEL validado se genera el **mapa conceptual con propósito**
+> (editable sobre el propio mapa), luego las **metas** (de la organización, estratégicas y
+> específicas) y al final los **requisitos**, cada uno rastreable a sus metas, sus términos
+> y la entrevista. Cada fase se abre cuando la anterior quedó validada. El Revisor se suma a
+> los cuatro agentes (lee la entrevista). Lo que sigue describe el planteamiento original
+> (versión 1), que se conserva para la evaluación contra el corpus.
 
 ---
 

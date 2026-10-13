@@ -16,7 +16,7 @@ import { Aviso, Cargando, Chip } from "../../components/ui";
  */
 export default function Metas({ proyectoId, onCambio, onSeguir }) {
   const orb = useOrb();
-  const { vista, setVista, error, guardar, conservar } = useFase(proyectoId, "metas", onCambio);
+  const { vista, setVista, error, guardar, conservar, recargar } = useFase(proyectoId, "metas", onCambio);
   const turnos = useCitas(proyectoId);
   const [generando, setGenerando] = useState(false);
   const [errorGuardar, setErrorGuardar] = useState(null);
@@ -28,7 +28,7 @@ export default function Metas({ proyectoId, onCambio, onSeguir }) {
   const generacion = generando && (
     <GeneracionFase proyectoId={proyectoId} fase="metas" seccionId="metas" moodGenerando="metas_generando" moodSeccion={sec.mood}
       onListo={(d) => { setGenerando(false); setVista((v) => ({ ...v, documento: d, al_dia: true })); onCambio?.(); }}
-      onCancelar={() => setGenerando(false)} />
+      onCancelar={() => { setGenerando(false); recargar(); }} />
   );
   if (!doc) {
     return (

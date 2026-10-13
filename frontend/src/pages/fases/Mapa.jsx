@@ -15,7 +15,7 @@ import { Aviso, Cargando, Plegable } from "../../components/ui";
  * componente; con todo validado se abren las metas.
  */
 export default function Mapa({ proyectoId, onCambio, onSeguir }) {
-  const { vista, setVista, error, guardar, conservar } = useFase(proyectoId, "mapa", onCambio);
+  const { vista, setVista, error, guardar, conservar, recargar } = useFase(proyectoId, "mapa", onCambio);
   const { datos: lex } = useApi(() => lexicoDeProyecto(proyectoId), [proyectoId]);
   const [generando, setGenerando] = useState(false);
   const [completa, setCompleta] = useState(false);
@@ -41,7 +41,7 @@ export default function Mapa({ proyectoId, onCambio, onSeguir }) {
   const generacion = generando && (
     <GeneracionFase proyectoId={proyectoId} fase="mapa" seccionId="mapa" moodGenerando="mapa_generando" moodSeccion={sec.mood}
       onListo={(d) => { setGenerando(false); setVista((v) => ({ ...v, documento: d, al_dia: true })); setVersion((n) => n + 1); onCambio?.(); }}
-      onCancelar={() => setGenerando(false)} />
+      onCancelar={() => { setGenerando(false); recargar(); }} />
   );
 
   if (!doc) {

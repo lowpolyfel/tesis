@@ -26,7 +26,7 @@ const lineas = (t) => t.split("\n").map((x) => x.trim()).filter(Boolean);
 export default function Requisitos({ proyecto, onCambio }) {
   const orb = useOrb();
   const pid = proyecto.proyecto_id;
-  const { vista, setVista, error, guardar, conservar } = useFase(pid, "requisitos", onCambio);
+  const { vista, setVista, error, guardar, conservar, recargar } = useFase(pid, "requisitos", onCambio);
   const { datos: metasVista } = useApi(() => obtenerFase(pid, "metas"), [pid]);
   const turnos = useCitas(pid);
   const [generando, setGenerando] = useState(false);
@@ -40,7 +40,7 @@ export default function Requisitos({ proyecto, onCambio }) {
   const generacion = generando && (
     <GeneracionFase proyectoId={pid} fase="requisitos" seccionId="fase_requisitos" moodGenerando="requisitos_generando" moodSeccion={sec.mood}
       onListo={(d) => { setGenerando(false); setVista((v) => ({ ...v, documento: d, al_dia: true })); onCambio?.(); }}
-      onCancelar={() => setGenerando(false)} />
+      onCancelar={() => { setGenerando(false); recargar(); }} />
   );
   if (!doc) {
     return (
