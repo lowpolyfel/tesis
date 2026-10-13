@@ -143,3 +143,61 @@ details.plegable[open]>summary .flecha{transform:rotate(90deg)}
 .barra-indeterminada{animation:barra-va 1.4s ease-in-out infinite}
 @keyframes barra-va{0%{transform:translateX(-100%)}100%{transform:translateX(300%)}}
 @media (prefers-reduced-motion:reduce){.barra-indeterminada{animation:none}}
+
+/* ---------- Versión 2 (ADR 0024): el camino de fases, el léxico, el mapa y las metas ---------- */
+/* cinco columnas parejas: una línea une las esferas pequeñas por detrás */
+.camino{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;position:relative}
+.camino::before{content:"";position:absolute;left:10%;right:10%;top:22px;height:1px;background:var(--line)}
+.camino-paso{position:relative;width:100%;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px 6px 9px;
+  border:1px solid transparent;border-radius:16px;color:var(--bone-dim);text-align:center;transition:border-color .2s ease,color .2s ease}
+.camino-paso:hover{color:var(--bone);border-color:color-mix(in oklab,var(--tono) 40%,var(--line))}
+.camino-paso.elegido{color:var(--bone);border-color:color-mix(in oklab,var(--tono) 75%,var(--line));
+  background:color-mix(in oklab,var(--bg) 86%,transparent);box-shadow:0 0 0 3px color-mix(in oklab,var(--tono) 14%,transparent)}
+.camino-paso.cerrada{opacity:.5}
+/* la esfera pequeña de cada fase: su tono, y llena cuando la fase quedó validada */
+.esferita{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;flex:none;font-family:var(--mono);font-size:10px;
+  color:var(--bone);border:1px solid color-mix(in oklab,var(--tono) 55%,transparent);
+  background:radial-gradient(circle at 34% 30%,color-mix(in oklab,var(--tono) 45%,var(--bg)),color-mix(in oklab,var(--tono) 12%,var(--bg)) 62%,var(--bg) 74%)}
+.esferita.hecha{color:var(--tinta-sobre);border-color:transparent;
+  background:radial-gradient(circle at 34% 30%,color-mix(in oklab,var(--tono) 30%,white),var(--tono) 58%,color-mix(in oklab,var(--tono) 60%,black));
+  box-shadow:0 0 14px color-mix(in oklab,var(--tono) 45%,transparent)}
+.barra-avance{height:3px;border-radius:999px;background:var(--line);overflow:hidden}
+.barra-avance span{display:block;height:100%;background:linear-gradient(90deg,var(--ok),#41efff);border-radius:999px;transition:width .4s var(--ease)}
+.tarjeta.termino{border-left:3px solid color-mix(in oklab,var(--tono) 70%,transparent)}
+mark.resaltado{background:color-mix(in oklab,#41efff 22%,transparent);color:var(--bone);border-radius:4px;padding:0 .12em}
+:root[data-tema="claro"] mark.resaltado{background:color-mix(in oklab,#0891b2 18%,transparent)}
+.arbol-metas{margin-left:18px;padding-left:16px;border-left:1px dashed var(--line)}
+@media (min-width:768px){.arbol-metas{margin-left:28px;padding-left:22px}}
+.tarjeta.meta{border-left:3px solid color-mix(in oklab,var(--tono) 75%,transparent)}
+
+/* el mapa conceptual editable (React Flow); el lienzo usa las variables del tema */
+.lienzo-mapa{height:min(72vh,680px);border:1px solid var(--line);border-radius:18px;overflow:hidden;
+  background:color-mix(in oklab,var(--bg) 92%,transparent)}
+.mapa-completo{position:fixed;inset:0;z-index:45;background:var(--bg);padding:18px 18px 12px;overflow:auto}
+.mapa-completo .lienzo-mapa{height:calc(100vh - 170px)}
+.lienzo-mapa .react-flow{--xy-background-color:transparent;--xy-node-border-radius:14px;
+  --xy-controls-button-background-color:color-mix(in oklab,var(--bg) 85%,var(--bone) 6%);
+  --xy-controls-button-color:var(--bone);--xy-controls-button-border-color:var(--line);
+  --xy-controls-button-background-color-hover:color-mix(in oklab,var(--bg) 70%,var(--bone) 14%)}
+.concepto-mapa{position:relative;min-width:120px;max-width:200px;padding:10px 14px;border-radius:14px;text-align:center;color:var(--bone);
+  border:1.5px solid color-mix(in oklab,#34d3be 55%,var(--line));background:color-mix(in oklab,var(--bg) 82%,#34d3be 10%)}
+.concepto-mapa.central{border-color:#5b6cff;background:color-mix(in oklab,var(--bg) 74%,#5b6cff 22%);font-weight:500}
+.concepto-mapa.ok{border-color:color-mix(in oklab,#57f7a7 70%,var(--line))}
+.concepto-mapa.sel{box-shadow:0 0 0 3px color-mix(in oklab,var(--c1) 45%,transparent)}
+.concepto-mapa .marca-ok{position:absolute;top:-8px;right:-8px;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;
+  font-size:10px;background:#57f7a7;color:#06140d}
+.asa-mapa{width:9px!important;height:9px!important;background:var(--bg)!important;border:1.5px solid color-mix(in oklab,#34d3be 70%,var(--bone))!important;opacity:0;transition:opacity .15s}
+.concepto-mapa:hover .asa-mapa,.concepto-mapa.sel .asa-mapa{opacity:1}
+.enlace-mapa{position:absolute;pointer-events:all;font-size:11.5px;line-height:1.2;padding:3px 8px;border-radius:999px;cursor:pointer;
+  color:var(--bone-dim);background:var(--bg);border:1px solid var(--line);white-space:nowrap}
+.enlace-mapa.ok{color:var(--bone);border-color:color-mix(in oklab,#57f7a7 45%,var(--line))}
+.enlace-mapa.sel{color:var(--bone);border-color:var(--c1)}
+.boton-mapa{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;padding:6px 10px;border-radius:999px;
+  border:1px solid var(--line);background:color-mix(in oklab,var(--bg) 88%,transparent);color:var(--bone-dim)}
+.boton-mapa:hover:not(:disabled){color:var(--bone);border-color:var(--c1)}
+.boton-mapa:disabled{opacity:.4}
+.boton-mapa.ok{color:var(--ok);border-color:color-mix(in oklab,var(--ok) 50%,var(--line))}
+.boton-mapa.peligro:hover{color:var(--danger);border-color:var(--danger)}
+.inspector-mapa{padding:12px;border-radius:14px;border:1px solid var(--line);background:var(--bg);color:var(--bone);
+  box-shadow:0 14px 40px -18px rgba(0,0,0,.7)}
+.esferita.mini{width:14px;height:14px;font-size:0}

@@ -9,7 +9,7 @@
  *   - corpus y evaluación: app/evaluacion (ADR 0014)
  *   - metas y Big Picture: app/artefactos (ADR 0011)
  */
-import { borrar, get, patch, post, postArchivo, postFlujo, put } from "./http";
+import { BASE_URL, borrar, get, patch, post, postArchivo, postFlujo, put } from "./http";
 
 const id = (x) => encodeURIComponent(x);
 
@@ -174,3 +174,48 @@ export const separarRequisitosFlujo = (texto, proyectoId, onEvento, senal) =>
 export const triarRequisitosFlujo = (proyectoId, textos, onEvento, senal) =>
   postFlujo(`/proyectos/${id(proyectoId)}/triaje/flujo`, { requisitos: textos }, onEvento, senal);
 export const triarRequisitos = (proyectoId, textos) => post(`/proyectos/${id(proyectoId)}/triaje`, { requisitos: textos });
+
+/* ======================= Versión 2: de la entrevista a los requisitos (ADR 0024) ======================= */
+/** En qué va cada fase → { fases: [{id, disponible, hecho, motivo, …}], siguiente, entrevistas, lexico } */
+export const fasesDeProyecto = (proyectoId) => get(`/proyectos/${id(proyectoId)}/fases`);
+
+/* ---- Entrevistas ---- */
+/** Cómo se lee el texto (no guarda nada) → { turnos: [{n, hablante, texto, pagina}], modo, hablantes, advertencias, caracteres } */
+export const vistaPreviaEntrevista = (proyectoId, texto) => post(`/proyectos/${id(proyectoId)}/entrevistas/vista-previa`, { texto });
+/** PDF con texto o .txt → { titulo, texto, origen: {tipo, archivo, paginas}, vista } (no guarda nada) */
+export const leerArchivoEntrevista = (proyectoId, archivo) => postArchivo(`/proyectos/${id(proyectoId)}/entrevistas/archivo`, "archivo", archivo);
+/** La guarda y la encola: los agentes proponen su LEL → la entrevista (sin turnos), 202 */
+export const crearEntrevista = (proyectoId, { titulo, texto, origen }) => post(`/proyectos/${id(proyectoId)}/entrevistas`, { titulo, texto, origen: origen ?? null });
+export const entrevistasDeProyecto = (proyectoId) => get(`/proyectos/${id(proyectoId)}/entrevistas`);
+/** Completa: turnos, ficha (participantes, necesidades…), vaguedad, resumen, estado */
+export const obtenerEntrevista = (entrevistaId) => get(`/entrevistas/${id(entrevistaId)}`);
+export const renombrarEntrevista = (entrevistaId, titulo) => patch(`/entrevistas/${id(entrevistaId)}`, { titulo });
+export const bitacoraDeEntrevista = (entrevistaId) => get(`/entrevistas/${id(entrevistaId)}/bitacora`);
+export const cancelarEntrevista = (entrevistaId) => post(`/entrevistas/${id(entrevistaId)}/cancelar`);
+export const reprocesarEntrevista = (entrevistaId) => post(`/entrevistas/${id(entrevistaId)}/reprocesar`);
+export const borrarEntrevista = (entrevistaId) => borrar(`/entrevistas/${id(entrevistaId)}`);
+
+/* ---- LEL interactivo y memoria ---- */
+/** { entradas, resumen: {propuesto, validado, corregido, descartado, ambiguos, completo}, acuerdos, procesando } */
+export const lexicoDeProyecto = (proyectoId) => get(`/proyectos/${id(proyectoId)}/lexico`);
+export const validarTermino = (entradaId) => post(`/lexico/${id(entradaId)}/validar`);
+/** cambios: {simbolo?, tipo?, nocion?, impacto?, intencion?, sinonimos?}; alternativa: "I2" para partir de otra intención */
+export const corregirTermino = (entradaId, cambios, alternativa = null) => post(`/lexico/${id(entradaId)}/corregir`, { cambios, alternativa });
+export const descartarTermino = (entradaId, motivo = null) => post(`/lexico/${id(entradaId)}/descartar`, { motivo });
+export const restaurarTermino = (entradaId) => post(`/lexico/${id(entradaId)}/restaurar`);
+export const agregarTermino = (proyectoId, entrada) => post(`/proyectos/${id(proyectoId)}/lexico`, entrada);
+export const validarSinAmbiguedad = (proyectoId) => post(`/proyectos/${id(proyectoId)}/lexico/validar-sin-ambiguedad`);
+export const memoriaDeProyecto = (proyectoId) => get(`/proyectos/${id(proyectoId)}/memoria`);
+export const olvidarAcuerdo = (aprendizajeId) => borrar(`/memoria/${id(aprendizajeId)}`);
+
+/* ---- Mapa, metas y requisitos (fase = "mapa" | "metas" | "requisitos") ---- */
+/** { documento | null, al_dia, disponible, motivo, hecho, generando } */
+export const obtenerFase = (proyectoId, fase) => get(`/proyectos/${id(proyectoId)}/fases/${fase}`);
+/** NDJSON: onEvento({tipo: "paso", id, texto, estado, detalle} | {tipo: "resultado", documento} | {tipo: "error", mensaje}) */
+export const generarFase = (proyectoId, fase, { onEvento, senal } = {}) => postFlujo(`/proyectos/${id(proyectoId)}/fases/${fase}/generar`, {}, onEvento, senal);
+/** Lo que la persona editó y validó (el contenido completo) → la vista de la fase con el documento nuevo */
+export const guardarFase = (proyectoId, fase, contenido) => put(`/proyectos/${id(proyectoId)}/fases/${fase}`, { contenido });
+export const conservarFase = (proyectoId, fase) => post(`/proyectos/${id(proyectoId)}/fases/${fase}/conservar`);
+export const urlMermaidMapa = (proyectoId) => `${BASE_URL}/proyectos/${id(proyectoId)}/fases/mapa/mermaid`;
+export const urlEspecificacion = (proyectoId) => `${BASE_URL}/proyectos/${id(proyectoId)}/fases/requisitos/markdown`;
+export const especificacionMarkdown = (proyectoId) => get(`/proyectos/${id(proyectoId)}/fases/requisitos/markdown`);

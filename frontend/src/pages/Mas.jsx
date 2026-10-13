@@ -9,7 +9,15 @@ import { Encabezado, Volver } from "../components/ui";
  */
 const GRUPOS = [
   {
-    titulo: "Análisis del proyecto",
+    titulo: "Requisitos sueltos (versión 1)",
+    soloConProyecto: true,
+    items: [
+      { a: "/v1", texto: "Requisitos del proyecto", que: "La vista de la versión 1: requisitos analizados uno por uno, su especificación, léxico y mapa.", mood: "clasificador" },
+      { a: "/analizar", texto: "Analizar requisitos", que: "Pegar o subir requisitos ya escritos para que los agentes busquen su ambigüedad (versión 1).", mood: "listening" },
+    ],
+  },
+  {
+    titulo: "Análisis del proyecto (versión 1)",
     items: [
       { a: "/ambiguedades", texto: "Ambigüedades", que: "Qué términos fueron ambiguos, de qué tipo y cómo se resolvieron.", mood: "clasificador" },
       { a: "/comparaciones", texto: "Comparaciones", que: "Requisitos que se contradicen, se repiten o usan palabras distintas (exploratorio).", mood: "critico" },
@@ -43,12 +51,15 @@ export default function Mas() {
   const [params] = useSearchParams();
   const orb = useOrb();
   const pid = params.get("proyecto");
-  const con = (a) => (pid && !a.startsWith("/catalogos") && a !== "/evaluacion" ? `${a}?proyecto=${pid}` : a);
+  const con = (a) => {
+    if (a === "/v1" || a === "/analizar") return `/proyectos/${pid}${a}`;
+    return pid && !a.startsWith("/catalogos") && a !== "/evaluacion" ? `${a}?proyecto=${pid}` : a;
+  };
 
   return (
     <div className="space-y-10">
       <Encabezado volver={<Volver a={pid ? `/proyectos/${pid}` : "/proyectos"}>{pid ? "Proyecto" : "Proyectos"}</Volver>} titulo="Más" />
-      {GRUPOS.map((g) => (
+      {GRUPOS.filter((g) => pid || !g.soloConProyecto).map((g) => (
         <section key={g.titulo} className="space-y-3">
           <h2>{g.titulo}</h2>
           <ul className="grid gap-3 sm:grid-cols-2">

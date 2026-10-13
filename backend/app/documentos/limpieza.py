@@ -277,10 +277,10 @@ def reconstruir(renglones: list[tuple[str, int | None]], maquetado: bool) -> lis
     return [a.cerrar() for a in armados]
 
 
-def limpiar(paginas: list[str], con_paginas: bool, maquetado: bool) -> Limpieza:
-    """`con_paginas`: las páginas son reales (PDF, o texto con saltos de página) y se
-    numeran; solo entonces se buscan números de página, encabezados y pies.
-    `maquetado`: el texto viene de un PDF, con renglones cortados por ancho."""
+def renglones_limpios(paginas: list[str], con_paginas: bool) -> tuple[list[tuple[str, int | None]], list[str]]:
+    """Renglones con su página, sin números de página sueltos ni encabezados o pies repetidos
+    (solo si las páginas son reales). Lo usa también la lectura de entrevistas (ADR 0024), que
+    arma sus turnos por renglón. Devuelve (renglones, advertencias)."""
     por_pagina = [_renglones(p) for p in paginas]
     advertencias = []
     if con_paginas:
@@ -289,6 +289,14 @@ def limpiar(paginas: list[str], con_paginas: bool, maquetado: bool) -> Limpieza:
             advertencias.append(f"Números de página sueltos quitados en {len(afectadas)} páginas.")
         advertencias += _quitar_repetidos(por_pagina)
     renglones = [(r, n if con_paginas else None) for n, rs in enumerate(por_pagina, 1) for r in _sin_bordes_vacios(rs)]
+    return renglones, advertencias
+
+
+def limpiar(paginas: list[str], con_paginas: bool, maquetado: bool) -> Limpieza:
+    """`con_paginas`: las páginas son reales (PDF, o texto con saltos de página) y se
+    numeran; solo entonces se buscan números de página, encabezados y pies.
+    `maquetado`: el texto viene de un PDF, con renglones cortados por ancho."""
+    renglones, advertencias = renglones_limpios(paginas, con_paginas)
     return Limpieza(reconstruir(renglones, maquetado), advertencias)
 
 

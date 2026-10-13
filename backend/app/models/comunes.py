@@ -42,6 +42,8 @@ class TipoMensaje(StrEnum):
     FORMALIZACION = "formalizacion"
     EDICION = "edicion"  # una persona corrige un resultado ya formalizado (ADR 0017)
     ERROR = "error"
+    # Versión 2 (ADR 0024): el Revisor anota la ficha de la entrevista antes de que el Extractor busque términos
+    FICHA = "ficha"
 
 
 class Nodo(StrEnum):
@@ -55,6 +57,7 @@ class Nodo(StrEnum):
     MODELADOR = "modelador"
     HUMANO = "humano"
     SISTEMA = "sistema"
+    REVISOR = "revisor"  # lee la entrevista (ADR 0024); en la versión 1 no emitía mensajes
 
 
 class Categoria(StrEnum):

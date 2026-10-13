@@ -46,6 +46,23 @@ y nunca se desmonta: cada pantalla solo le dice dónde estar y qué hacer
 Fuera de las esferas no hay animaciones: el grano es fijo y las pantallas entran
 con un fundido corto.
 
+## Las esferas en la versión 2 (ADR 0024)
+
+- Cada fase del proyecto es una sección con su tono: entrevista (rosa durazno), léxico
+  (cian), mapa (turquesa a índigo), metas (oro a coral) y requisitos (verde). El camino
+  del proyecto (`components/fases/Camino.jsx`) dibuja una esfera pequeña por fase que se
+  llena al validarse.
+- **Recibe la entrevista**: se suelta el PDF sobre la esfera (`pages/fases/NuevaEntrevista.jsx`).
+- **La procesa en escena** (`pages/fases/EscenaEntrevista.jsx`): la misma coreografía de
+  la versión 1 con otro orden de nodos (Revisor, Extractor, Filtros, Clasificador,
+  Divergencia, Crítico, Modelador) y la bitácora de la entrevista por SSE.
+- **Aprende**: lo que la persona valida o corrige en el léxico, las metas o los requisitos
+  viaja como una esfera pequeña de la tarjeta a la esfera grande
+  (`components/fases/vuelo.js`); si el sistema aprendió un acuerdo, la esfera toma el tono
+  «aprende» y lo dice.
+- **Genera** el mapa, las metas y los requisitos al centro, con los pasos debajo
+  (`components/fases/GeneracionFase.jsx`).
+
 ## La escena en vivo
 
 Antes de empezar, la esfera grande al centro prepara todo y lo va diciendo
@@ -87,8 +104,11 @@ que una persona revise, y el navegador solo abre seis conexiones por servidor.
 | Ruta | Qué hay |
 |---|---|
 | `/` | Presentación y entrada (sin cuentas: el prototipo es de un solo usuario) |
-| `/proyectos` | Todos los proyectos; crear uno con su nombre y su contexto general |
-| `/proyectos/:id` | Un proyecto: su contexto (editable) y cuatro vistas (`?vista=`): **Requisitos** (estado de cada uno; elegir varios para su mapa o su especificación), **Especificación** (RF/RNF reescritos con sus supuestos, corregibles, en Markdown), **Léxico** (el LEL, corregible) y **Mapa** (el mapa conceptual que organiza el Modelador, con su pantalla de carga; debajo sus frases, el modelo de metas y el grafo completo; de todos o de los elegidos con `?req=`) |
+| `/proyectos` | Todos los proyectos, con su avance por fases; crear uno con su nombre y su contexto general |
+| `/proyectos/:id?fase=` | Versión 2: el proyecto y su camino de fases — **Entrevista** (las entrevistas, su ficha y sus turnos), **Léxico** (el LEL interactivo y lo que aprendió el sistema), **Mapa** (el mapa con propósito, editable con React Flow), **Metas** (árbol de tres niveles) y **Requisitos** (con trazabilidad; descarga la especificación en Markdown) |
+| `/proyectos/:id/entrevista` | Subir (PDF o .txt) o pegar una entrevista; vista previa de turnos y hablantes |
+| `/proyectos/:id/entrevistas/:e` | La escena: los agentes procesan la entrevista (`?escena=1` la repite) |
+| `/proyectos/:id/v1` | Versión 1: su contexto (editable) y cuatro vistas (`?vista=`): **Requisitos** (estado de cada uno; elegir varios para su mapa o su especificación), **Especificación** (RF/RNF reescritos con sus supuestos, corregibles, en Markdown), **Léxico** (el LEL, corregible) y **Mapa** (el mapa conceptual que organiza el Modelador, con su pantalla de carga; debajo sus frases, el modelo de metas y el grafo completo; de todos o de los elegidos con `?req=`) |
 | `/configuracion` | Proveedor y modelo de cada agente (Ollama, Gemini, OpenAI, Claude…) y sus claves, que se guardan cifradas (ADR 0021) |
 | `/proyectos/:id/analizar` | Sube un PDF o .txt o pega el texto; se confirma la separación y el Revisor separa los que se entienden con el contexto de los ambiguos y los poco detallados, que se precisan antes de analizar (ADR 0022). Hasta 200 requisitos por carga y 2000 caracteres por requisito |
 | `/analisis?proyecto=&ids=` | La escena en vivo del lote y, al terminar, los resultados |
@@ -112,7 +132,12 @@ nuevo. Las vistas de análisis guardan el proyecto en `?proyecto=`.
 - `src/components/orb/`: la esfera, sus poses por sección y el menú.
 - `src/escena/`: coreografía de la escena, cola de animación (`useEnVivo`) y los
   pasos en lenguaje claro.
-- `src/pages/proyecto/`: el proyecto y sus cuatro vistas.
+- `src/pages/fases/`: la versión 2 — el proyecto por fases, la entrevista, su escena, el
+  léxico, el mapa, las metas y los requisitos.
+- `src/components/fases/`: el camino, el editor del mapa (React Flow), la pantalla de
+  generación, las citas y el vuelo de las esferas.
+- `src/constants/fases.js`: las fases, sus tonos y los estados en lenguaje claro.
+- `src/pages/proyecto/`: el proyecto de la versión 1 y sus cuatro vistas.
 - `src/constants/estados.js`: máquina de estados, la misma del backend, y los
   estados en lenguaje claro (`estadoSimple`).
 - `src/constants/agentes.js`: nodos del grafo, fases KMoS-SSA, tipos de

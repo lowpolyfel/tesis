@@ -7,8 +7,13 @@
  */
 import { BASE_URL } from "./http";
 
-export function seguirRequisito(reqId, { desde = 0, onMensaje, onEstado, onFin, onError } = {}) {
-  const url = new URL(`${BASE_URL}/eventos/${encodeURIComponent(reqId)}`);
+export const seguirRequisito = (reqId, opciones) => seguir(`${BASE_URL}/eventos/${encodeURIComponent(reqId)}`, opciones);
+/* Una entrevista (ADR 0024): los mismos eventos; «fin» trae además { resumen, error } */
+export const seguirEntrevista = (entrevistaId, opciones) =>
+  seguir(`${BASE_URL}/entrevistas/${encodeURIComponent(entrevistaId)}/eventos`, opciones);
+
+function seguir(ruta, { desde = 0, onMensaje, onEstado, onFin, onError } = {}) {
+  const url = new URL(ruta);
   if (desde) url.searchParams.set("desde", desde);
   const fuente = new EventSource(url, { withCredentials: true }); // con la cookie de sesión
   let cerrado = false;

@@ -348,7 +348,7 @@ export default function Analizar() {
 
       {(fase === "inicio" || fase === "pegar" || fase === "contexto") && (
         <div className="fixed top-20 left-5 z-20 md:top-24 md:left-10">
-          <Volver a={`/proyectos/${proyectoId}`}>{proyecto?.nombre ?? "Proyecto"}</Volver>
+          <Volver a={`/proyectos/${proyectoId}/v1`}>{proyecto?.nombre ?? "Proyecto"}</Volver>
         </div>
       )}
 
@@ -513,7 +513,7 @@ export default function Analizar() {
               Revisar {validas.length} con el contexto
             </button>
             <button className="pill ghost" onClick={() => { setPiezas([]); setError(null); setFase("inicio"); }}>Empezar de nuevo</button>
-            <Link className="mono px-2 text-[10px] text-[var(--bone-faint)] hover:text-[var(--bone)]" to={`/proyectos/${proyectoId}`}>cancelar</Link>
+            <Link className="mono px-2 text-[10px] text-[var(--bone-faint)] hover:text-[var(--bone)]" to={`/proyectos/${proyectoId}/v1`}>cancelar</Link>
           </div>
         </section>
       )}

@@ -7,6 +7,9 @@
  * pendiente_validacion el SSE se cierra: nada cambia hasta que una persona
  * valide, y una conexión retenida por pestaña agota las del navegador.
  *
+ * `seguir` cambia la fuente (una entrevista en la versión 2: seguirEntrevista) y `pausa` el estado
+ * en que se deja de escuchar.
+ *
  * Devuelve { mensajes, animados, estado, terminado, error, acelerar, ritmo, setRitmo }.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -15,7 +18,7 @@ import { ESTADOS } from "../constants/estados";
 
 const espera = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export function useEnVivo(reqId, { coreografia = null, ritmoInicial = 1 } = {}) {
+export function useEnVivo(reqId, { coreografia = null, ritmoInicial = 1, seguir = seguirRequisito, pausa = ESTADOS.PENDIENTE_VALIDACION } = {}) {
   const [mensajes, setMensajes] = useState([]);
   const [animados, setAnimados] = useState(0);
   const [estado, setEstado] = useState(null);
@@ -60,7 +63,7 @@ export function useEnVivo(reqId, { coreografia = null, ritmoInicial = 1 } = {}) 
       }
     })();
 
-    const detener = seguirRequisito(reqId, {
+    const detener = seguir(reqId, {
       onMensaje: (m) => {
         if (recibidos.has(m.secuencia)) return; // reconexión: el mismo mensaje no se anima dos veces
         recibidos.add(m.secuencia);
@@ -71,12 +74,13 @@ export function useEnVivo(reqId, { coreografia = null, ritmoInicial = 1 } = {}) 
       onEstado: (d) => {
         cola.push({ estado: d.estado });
         avisar();
-        if (d.estado === ESTADOS.PENDIENTE_VALIDACION) detener(); // ya llegaron todos sus mensajes
+        if (d.estado === pausa) detener(); // ya llegaron todos sus mensajes
       },
       onFin: (d) => { cola.push({ estado: d.estado, fin: true }); avisar(); },
       onError: (e) => setError(e),
     });
     return () => { vivo = false; avisar(); detener(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reqId, coreografia]);
 
   const acelerar = useCallback(() => { saltarRef.current = true; }, []);

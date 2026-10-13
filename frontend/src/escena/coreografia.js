@@ -35,18 +35,18 @@ const anchoColumna = () => (isMobile() ? 0 : Math.min(460, Math.max(340, innerWi
 /* Centro horizontal de la escena (fracción del ancho desde el centro de la pantalla) */
 export const centroEscena = () => -anchoColumna() / innerWidth / 2;
 
-function geometria() {
+function geometria(nodos = ORDEN_NODOS) {
   const m = isMobile();
-  const n = ORDEN_NODOS.length;
+  const n = nodos.length;
   const libre = 1 - anchoColumna() / innerWidth; // fracción del ancho que queda para la escena
   const cx = centroEscena();
   // los nodos alternan en dos filas: los de una misma fila quedan lejos y sus rótulos
   // (más estrechos en móvil, ver orb.css) no se enciman
   const ancho = m ? 0.74 : libre * 0.84;
-  const xs = ORDEN_NODOS.map((_, i) => cx - ancho / 2 + (ancho * i) / (n - 1));
-  const ys = ORDEN_NODOS.map((_, i) => (m ? -0.135 + (i % 2) * 0.11 : -0.08 + (i % 2) * 0.15));
+  const xs = nodos.map((_, i) => cx - ancho / 2 + (ancho * i) / (n - 1));
+  const ys = nodos.map((_, i) => (m ? -0.135 + (i % 2) * 0.11 : -0.08 + (i % 2) * 0.15));
   return {
-    pos: Object.fromEntries(ORDEN_NODOS.map((id, i) => [id, { x: xs[i], y: ys[i] }])),
+    pos: Object.fromEntries(nodos.map((id, i) => [id, { x: xs[i], y: ys[i] }])),
     s: m ? 0.14 : 0.3,
     sActivo: m ? 0.2 : 0.4,
     sistema: { x: cx, y: m ? -0.235 : -0.3, s: m ? 0.09 : 0.36 },
@@ -59,8 +59,12 @@ function geometria() {
   };
 }
 
-export function crearCoreografia(orb) {
-  let g = geometria();
+/*
+ * `nodos`: el orden de las esferas en la escena. La versión 2 (ADR 0024) sigue una
+ * entrevista: empieza con el Revisor y no tiene esfera humana (la persona valida después).
+ */
+export function crearCoreografia(orb, { nodos = ORDEN_NODOS } = {}) {
+  let g = geometria(nodos);
   let montada = false;
   let particula = 0;
   // estado visual por término normalizado: { nombre, ids: Map(interpId -> esferaId), similitud }
@@ -94,7 +98,7 @@ export function crearCoreografia(orb) {
   }
 
   function activar(n) {
-    for (const otro of ORDEN_NODOS) {
+    for (const otro of nodos) {
       const id = idNodo(otro);
       if (!orb.has(id)) continue;
       const activo = otro === n;
@@ -187,6 +191,12 @@ export function crearCoreografia(orb) {
   /* ------------------------------------------------------------ mensajes */
 
   const MANEJADORES = {
+    ficha(m) {
+      const p = m.payload;
+      const n = p.necesidades ?? 0;
+      etiquetar("revisor", `${n} necesidad${n === 1 ? "" : "es"}`);
+      return 1100;
+    },
     extraccion(m) {
       const n = m.payload.terminos?.length ?? 0;
       etiquetar("extractor", `${n} término${n === 1 ? "" : "s"} del dominio`);
@@ -197,6 +207,7 @@ export function crearCoreografia(orb) {
       const cuenta = (d) => ts.filter((t) => t.decision_filtro === d).length;
       const partes = [];
       if (cuenta("resuelto_por_lel")) partes.push(`${cuenta("resuelto_por_lel")} del LEL`);
+      if (cuenta("descartado_por_persona")) partes.push(`${cuenta("descartado_por_persona")} descartado${cuenta("descartado_por_persona") > 1 ? "s" : ""} por ti`);
       if (cuenta("vaguedad")) partes.push(`${cuenta("vaguedad")} vago${cuenta("vaguedad") > 1 ? "s" : ""}`);
       if (cuenta("regional")) partes.push(`${cuenta("regional")} regional${cuenta("regional") > 1 ? "es" : ""}`);
       if (cuenta("alcance") + cuenta("anafora")) partes.push(`${cuenta("alcance") + cuenta("anafora")} con referencia dudosa`);
@@ -307,6 +318,18 @@ export function crearCoreografia(orb) {
     },
     formalizacion(m) {
       const p = m.payload;
+      if (p.alcance === "lexico") {
+        const n = p.entradas?.length ?? 0;
+        // lo acordado de estos términos llega al Modelador
+        for (const e of p.entradas ?? []) {
+          const t = terminos.get(clave(e.termino));
+          if (t) { terminos.delete(clave(e.termino)); fundir([...t.ids.values()], idNodo("modelador")); }
+        }
+        distribuirTodos();
+        etiquetar("modelador", n ? `${n} término${n === 1 ? "" : "s"} al léxico` : "nada nuevo para el léxico", { mood: "success" });
+        setTimeout(() => orb.has(idNodo("modelador")) && orb.update(idNodo("modelador"), { mood: "modelador" }), 900);
+        return 1100;
+      }
       if (p.alcance === "termino") etiquetar("modelador", `«${p.entrada_lel?.simbolo ?? p.termino}» al léxico`);
       else etiquetar("modelador", "requisito reescrito", { mood: "success" });
       return 1100;
@@ -325,7 +348,7 @@ export function crearCoreografia(orb) {
   return {
     /* La esfera principal sube y se vuelve el sistema; los nodos nacen al usarse */
     montar() {
-      g = geometria();
+      g = geometria(nodos);
       if (montada) return;
       montada = true;
       orb.setPose({ ...g.sistema });
@@ -338,7 +361,7 @@ export function crearCoreografia(orb) {
       montada = false;
       const interps = [...terminos.values()].flatMap((t) => [...t.ids.values()]);
       terminos.clear();
-      fundir([...ORDEN_NODOS.map(idNodo), ...interps], "core");
+      fundir([...nodos.map(idNodo), ...interps], "core");
       orb.update("core", { label: null, sub: null });
     },
 
@@ -346,7 +369,7 @@ export function crearCoreografia(orb) {
     reiniciar() {
       const interps = [...terminos.values()].flatMap((t) => [...t.ids.values()]);
       terminos.clear();
-      fundir([...ORDEN_NODOS.map(idNodo), ...interps], "core");
+      fundir([...nodos.map(idNodo), ...interps], "core");
     },
 
     /*
@@ -365,17 +388,17 @@ export function crearCoreografia(orb) {
     },
 
     /* Estado del requisito: al terminar, todos descansan */
-    estado(estado) {
-      orb.update("core", { sub: estado ? estadoSimple(estado).texto.toLowerCase() : "" });
-      if (["formalizado", "rechazado", "error", "pendiente_validacion"].includes(estado)) activar(estado === "pendiente_validacion" ? "humano" : null);
-      if (estado === "formalizado") orb.setMood("success", { revertAfter: 2500 });
+    estado(estado, texto) {
+      orb.update("core", { sub: texto ?? (estado ? estadoSimple(estado).texto.toLowerCase() : "") });
+      if (["formalizado", "rechazado", "error", "pendiente_validacion", "lista", "cancelada"].includes(estado)) activar(estado === "pendiente_validacion" ? "humano" : null);
+      if (estado === "formalizado" || estado === "lista") orb.setMood("success", { revertAfter: 2500 });
       if (estado === "error") orb.setMood("error", { revertAfter: 2500 });
     },
 
     reacomodar() {
-      g = geometria();
+      g = geometria(nodos);
       if (montada) orb.setPose({ ...g.sistema });
-      for (const n of ORDEN_NODOS) {
+      for (const n of nodos) {
         const id = idNodo(n);
         if (orb.has(id)) orb.update(id, { ...g.pos[n] });
       }

@@ -1,37 +1,53 @@
-# Detección de ambigüedad en requisitos con agentes LLM
+# Dudamel 2.0: de la entrevista a los requisitos, con agentes LLM
 
-Prototipo de tesis de licenciatura: un sistema de cuatro agentes basados en LLM que
-detecta ambigüedad en requisitos de software escritos en español de México. Cuando dos
-interpretaciones de un mismo requisito divergen, se activa un debate acotado y un agente
-árbitro decide. El resultado se formaliza como entrada de un Léxico Extendido del
-Lenguaje (LEL) y como un requisito reescrito completo, funcional o no funcional.
+Prototipo de tesis de licenciatura: un sistema multiagente basado en LLM y en el marco
+KMoS-SSA que lleva una **entrevista de elicitación** en español de México hasta los
+**requisitos de software**, pasando por un Léxico Extendido del Lenguaje (LEL) interactivo
+que captura la **intención** de cada término del dominio. Cuando un término admite más de
+una interpretación (por ejemplo «consultas»: la cita médica o una búsqueda en la base de
+datos) y las interpretaciones divergen, los agentes debaten y un agente árbitro decide; una
+persona experta valida cada término y el sistema aprende de sus correcciones.
 
-El flujo: se pegan o suben los requisitos de un proyecto (con su contexto general), los
-agentes los analizan y, si no hay conflicto, pasan solos al LEL, a la especificación y al
-Big Picture. Una persona solo interviene cuando los agentes no llegan a un acuerdo, y
-puede corregir cualquier resultado después (ADR 0017).
+El flujo de un proyecto (versión 2, ADR 0024). Cada fase se abre cuando la anterior quedó
+validada por la persona experta:
+
+1. **Entrevista**: se pega su texto o se sube el PDF/.txt; se lee por turnos y hablantes.
+2. **LEL interactivo**: los agentes proponen cada término del dominio con su intención,
+   sus citas y, si fue ambiguo, las intenciones que se consideraron. La persona valida,
+   corrige, elige otra intención o descarta; lo que corrige se guarda como **acuerdo del
+   proyecto** («en este proyecto, «consulta» es la cita médica, no una búsqueda») y los
+   agentes lo usan desde entonces.
+3. **Mapa conceptual con propósito**: la pregunta de enfoque y los conceptos del LEL unidos
+   por proposiciones, editable sobre el propio mapa.
+4. **Metas**: de la organización, estratégicas y específicas.
+5. **Requisitos**: funcionales y no funcionales, cada uno rastreable a sus metas, sus
+   términos del LEL y los turnos de la entrevista; la especificación se descarga en Markdown.
+
+La versión 1 (requisitos ya escritos analizados uno por uno, ADR 0001–0023) se conserva en
+`/proyectos/:id/v1` y en «Más»: es la base de la evaluación contra el corpus.
 
 ## Agentes
 
-| Agente | Rol | LLM |
+| Agente | En la versión 2 (entrevista → requisitos) | LLM |
 |---|---|---|
-| Extractor | Separa el vocabulario del dominio del requisito crudo | Ollama local |
-| Clasificador | Genera interpretaciones candidatas de los términos que admiten más de una interpretación | Ollama local |
-| Crítico | Conduce el debate acotado y arbitra si se agotan las rondas | API externa |
-| Modelador | Genera los artefactos desde la interpretación validada: entrada del LEL, requisito reescrito completo (funcional o no funcional, con los supuestos que tomó del contexto) y metas | Ollama local |
+| Revisor | Lee la entrevista: participantes, objetivo, problemas, necesidades y reglas, con sus turnos | Por cuenta (ADR 0021) |
+| Extractor | Separa los términos del dominio de la entrevista | Por cuenta |
+| Clasificador | Propone la intención de cada término; si ve más de una interpretación, las da como intenciones candidatas | Por cuenta |
+| Crítico | Conduce el debate acotado cuando las intenciones divergen y arbitra si se agotan las rondas | Por cuenta |
+| Modelador | Formaliza lo validado: las entradas del LEL, el mapa conceptual, las metas y los requisitos | Por cuenta |
 
 La detección de divergencia (embeddings + similitud coseno + umbral) es un mecanismo
-aparte en `backend/app/divergence/`, no un agente.
+aparte en `backend/app/divergence/`, no un agente; es la misma en las dos versiones.
 
 ## Stack
 
 - **Backend:** Python + FastAPI
 - **Orquestación:** LangGraph
-- **LLMs:** Ollama local (Extractor, Clasificador, Modelador); modelo por API (Crítico)
+- **LLMs:** cada cuenta elige proveedor y modelo por agente (Ollama local, Gemini, OpenAI, Claude…; ADR 0021)
 - **Embeddings:** `nomic-embed-text` vía Ollama, similitud coseno
 - **NLP:** spaCy `es_core_news_sm` + `PhraseMatcher`
 - **Base de datos:** MongoDB
-- **Frontend:** React (mínimo, para observar y validar)
+- **Frontend:** React + Vite (Dudamel); el mapa conceptual se edita con React Flow
 - **Despliegue futuro:** Hostinger
 
 ## Estructura
@@ -49,8 +65,11 @@ tesis/
 │   │   │   ├── extractor/
 │   │   │   ├── clasificador/
 │   │   │   ├── critico/
-│   │   │   └── modelador/
-│   │   ├── orchestration/      # grafo LangGraph, estado compartido, nodos
+│   │   │   ├── modelador/
+│   │   │   └── revisor/
+│   │   ├── entrevistas/        # versión 2: la entrevista en turnos y su bitácora
+│   │   ├── fases/              # versión 2: LEL interactivo, memoria, mapa, metas y requisitos
+│   │   ├── orchestration/      # grafos LangGraph (requisito y entrevista), cola, servicio
 │   │   ├── divergence/         # embeddings, similitud coseno, umbral
 │   │   ├── documentos/         # carga de PDF/.txt y separación en requisitos
 │   │   ├── analisis/           # vista por término y análisis del proyecto
@@ -69,7 +88,7 @@ tesis/
 │   └── src/
 │       ├── components/
 │       ├── escena/             # la escena en vivo dirigida por los mensajes
-│       ├── pages/              # proyectos, un proyecto (requisitos, especificación, léxico, mapa), analizar…
+│       ├── pages/              # proyectos; fases/ (versión 2: entrevista, léxico, mapa, metas, requisitos); versión 1
 │       ├── services/           # http.js, backend.js, eventos.js (SSE)
 │       └── hooks/
 ├── data/

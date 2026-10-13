@@ -8,6 +8,7 @@ import { proyectoRecordado } from "../proyectoRecordado";
 import { useSesion } from "../sesion";
 import { BotonTema } from "../tema";
 import { Volver } from "../ui";
+import { FASES, seccionDeFase } from "../../constants/fases";
 
 /*
  * Marco de la aplicación.
@@ -21,9 +22,13 @@ import { Volver } from "../ui";
 /* La sección de la ruta: define el lado, la altura y el tono de la esfera */
 export function seccionDe(pathname, params) {
   if (/^\/proyectos\/[^/]+\/analizar/.test(pathname)) return "analizar";
-  if (/^\/proyectos\/[^/]+/.test(pathname)) {
+  if (/^\/proyectos\/[^/]+\/v1/.test(pathname)) {
     const vista = params.get("vista");
     return ["especificacion", "lexico", "mapa"].includes(vista) ? vista : "requisitos";
+  }
+  if (/^\/proyectos\/[^/]+/.test(pathname)) {  // versión 2: cada fase es una sección
+    const f = params.get("fase");
+    return FASES.some((x) => x.id === f) ? seccionDeFase(f) : "entrevista";
   }
   if (pathname === "/proyectos") return "proyectos";
   if (pathname === "/mas") return "mas";
@@ -41,14 +46,9 @@ function proyectoActual(pathname, params) {
 
 function destinosDelMenu(pid) {
   const base = [{ id: "proyectos", etiqueta: "Proyectos", a: "/proyectos", mood: "idle" }];
-  if (pid) {
-    base.push(
-      { id: "analizar", etiqueta: "Analizar", a: `/proyectos/${pid}/analizar`, mood: "listening" },
-      { id: "requisitos", etiqueta: "Requisitos", a: `/proyectos/${pid}`, mood: seccion("requisitos").mood },
-      { id: "especificacion", etiqueta: "Especificación", a: `/proyectos/${pid}?vista=especificacion`, mood: seccion("especificacion").mood },
-      { id: "lexico", etiqueta: "Léxico", a: `/proyectos/${pid}?vista=lexico`, mood: seccion("lexico").mood },
-      { id: "mapa", etiqueta: "Mapa", a: `/proyectos/${pid}?vista=mapa`, mood: seccion("mapa").mood },
-    );
+  if (pid) {  // las fases de la versión 2 (ADR 0024), en orden
+    base.push(...FASES.map((f) => ({ id: f.id, etiqueta: f.id === "mapa" ? "Mapa" : f.nombre,
+      a: `/proyectos/${pid}?fase=${f.id}`, mood: seccion(seccionDeFase(f.id)).mood })));
   }
   base.push({ id: "mas", etiqueta: "Más", a: pid ? `/mas?proyecto=${pid}` : "/mas", mood: "sistema" });
   return base;
