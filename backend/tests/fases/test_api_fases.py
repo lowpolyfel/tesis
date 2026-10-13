@@ -171,3 +171,31 @@ def test_archivo_y_errores(cliente):
         "hecho": False, "generando": False}
     assert c.put(f"/proyectos/{pid}/fases/mapa", json={"contenido": {}}).status_code == 404
     assert c.post(f"/proyectos/{pid}/entrevistas/E01/x").status_code == 404
+
+
+def test_pedir_dos_veces_la_misma_fase_se_suma_a_la_que_corre():
+    """React monta dos veces la pantalla en desarrollo, y la persona puede volver a ella mientras se
+    genera: la segunda petición no encola otra generación, recibe el avance de la que corre."""
+    import threading
+
+    from app.fases.progreso import en_cola, ocupado
+    from app.orchestration.cola import Cola
+
+    cola = Cola()
+    cola.iniciar()
+    puerta, llamadas = threading.Event(), []
+    try:
+        def trabajo(avisar):
+            llamadas.append(1)
+            avisar({"tipo": "paso", "id": "a"})
+            puerta.wait(5)
+            avisar({"tipo": "resultado", "documento": {"ok": True}})
+
+        primera = en_cola(cola, "mapa:P99", trabajo)
+        segunda = en_cola(cola, "mapa:P99", trabajo)
+        assert ocupado("mapa:P99")
+        puerta.set()
+        assert list(primera) == list(segunda) == [{"tipo": "paso", "id": "a"}, {"tipo": "resultado", "documento": {"ok": True}}]
+        assert llamadas == [1] and not ocupado("mapa:P99")
+    finally:
+        cola.detener()

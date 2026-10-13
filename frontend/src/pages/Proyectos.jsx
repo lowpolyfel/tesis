@@ -1,15 +1,18 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useApi } from "../hooks/useApi";
-import { CONTEXTO_MAX, crearProyecto, listarProyectos, resumenProyecto } from "../services/backend";
+import { CONTEXTO_MAX, crearProyecto, fasesDeProyecto, listarProyectos, resumenProyecto } from "../services/backend";
+import { FASES, fase as datosFase } from "../constants/fases";
+import { estadoCorto } from "../components/fases/Camino";
 import { PROYECTO_GENERAL_ID } from "../constants/proyectos";
 import { useOrb } from "../components/orb/useOrb";
 import { Aviso, Cargando, Encabezado, Plegable } from "../components/ui";
 
 /*
- * Todos los proyectos. Un proyecto agrupa los requisitos de un dominio con su
- * contexto general y su propio léxico (la memoria no se mezcla entre dominios).
- * Los que crea una evaluación contra el corpus van aparte, plegados.
+ * Todos los proyectos. Un proyecto va de las entrevistas de un dominio a sus requisitos
+ * (ADR 0024), con su contexto general, su propio léxico y lo que el sistema aprendió en él
+ * (la memoria no se mezcla entre dominios). Cada tarjeta dice en qué fase va. Los que crea
+ * una evaluación contra el corpus (versión 1) van aparte, plegados.
  */
 export default function Proyectos() {
   const { datos: proyectos, error } = useApi(listarProyectos);
@@ -19,7 +22,9 @@ export default function Proyectos() {
   useEffect(() => {
     if (!proyectos) return undefined;
     let activo = true;
-    Promise.all(proyectos.map((p) => resumenProyecto(p.proyecto_id).then((r) => [p.proyecto_id, r.contadores]).catch(() => [p.proyecto_id, null])))
+    Promise.all(proyectos.map((p) => (p.tipo === "evaluacion"
+      ? resumenProyecto(p.proyecto_id).then((r) => [p.proyecto_id, { v1: r.contadores }])
+      : fasesDeProyecto(p.proyecto_id).then((f) => [p.proyecto_id, { fases: f }])).catch(() => [p.proyecto_id, null])))
       .then((pares) => { if (activo) setContadores(Object.fromEntries(pares)); });
     return () => { activo = false; };
   }, [proyectos]);
@@ -34,7 +39,7 @@ export default function Proyectos() {
         titulo="Proyectos"
         acciones={!creando && <button className="pill" onClick={() => setCreando(true)}>+ Nuevo proyecto</button>}
       >
-        <p className="max-w-xl text-[15px] text-[var(--bone-dim)]">Cada proyecto tiene su contexto y su léxico. Elige uno o crea otro.</p>
+        <p className="max-w-xl text-[15px] text-[var(--bone-dim)]">Cada proyecto va de la entrevista con el cliente a sus requisitos: léxico, mapa conceptual y metas, validados por ti. Elige uno o crea otro.</p>
       </Encabezado>
 
       {creando && <NuevoProyecto onCancelar={() => setCreando(false)} />}
@@ -73,22 +78,40 @@ function Tarjeta({ p, c }) {
         <p className={`mt-2 line-clamp-2 text-[14px] leading-relaxed ${texto ? "text-[var(--bone-dim)]" : "text-[var(--bone-faint)] italic"}`}>
           {texto || (p.proyecto_id === PROYECTO_GENERAL_ID ? "Requisitos sin proyecto." : "Sin contexto todavía.")}
         </p>
-        <p className="mono mt-auto flex flex-wrap gap-x-4 gap-y-1 pt-5 text-[10px] text-[var(--bone-faint)]">
-          {c ? (
-            <>
-              <span><b className="font-normal text-[var(--bone)]">{c.requisitos}</b> requisitos</span>
-              <span><b className="font-normal text-[#57f7a7]">{c.formalizados}</b> listos</span>
-              {c.por_validar > 0 && <span><b className="font-normal text-[#f9a8d4]">{c.por_validar}</b> por revisar</span>}
-              {c.en_proceso > 0 && <span><b className="font-normal text-amber-300">{c.en_proceso}</b> analizando</span>}
-            </>
-          ) : <span>contando…</span>}
-        </p>
+        {c?.fases ? <Avance f={c.fases} /> : (
+          <p className="mono mt-auto flex flex-wrap gap-x-4 gap-y-1 pt-5 text-[10px] text-[var(--bone-faint)]">
+            {c?.v1 ? (
+              <>
+                <span><b className="font-normal text-[var(--bone)]">{c.v1.requisitos}</b> requisitos</span>
+                <span><b className="font-normal text-[#57f7a7]">{c.v1.formalizados}</b> listos</span>
+              </>
+            ) : <span>contando…</span>}
+          </p>
+        )}
       </Link>
     </li>
   );
 }
 
-/* Nombre y contexto general: el contexto es lo que los agentes leen con cada requisito */
+/* Las cinco fases en esferas pequeñas (llenas las validadas) y lo que sigue */
+function Avance({ f }) {
+  const siguiente = f.fases.find((x) => x.id === f.siguiente);
+  return (
+    <div className="mt-auto space-y-2 pt-5">
+      <span className="flex items-center gap-1.5" aria-label="Avance por fases">
+        {FASES.map((x) => {
+          const info = f.fases.find((y) => y.id === x.id);
+          return <span key={x.id} title={`${x.nombre}: ${estadoCorto(info)}`} className={`esferita mini ${info?.hecho ? "hecha" : ""}`} style={{ "--tono": x.tono, opacity: info?.disponible ? 1 : 0.4 }} />;
+        })}
+      </span>
+      <p className="mono text-[10px] text-[var(--bone-faint)]">
+        {siguiente ? <>Sigue: <span className="text-[var(--bone-dim)]">{datosFase(siguiente.id).nombre}</span> · {estadoCorto(siguiente)}</> : "Requisitos validados"}
+      </p>
+    </div>
+  );
+}
+
+/* Nombre y contexto general: el contexto es lo que los agentes leen con la entrevista */
 export function NuevoProyecto({ onCancelar }) {
   const navigate = useNavigate();
   const orb = useOrb();
@@ -124,9 +147,9 @@ export function NuevoProyecto({ onCancelar }) {
           value={contexto} maxLength={CONTEXTO_MAX} rows={4} onChange={(e) => setContexto(e.target.value)}
           onFocus={() => orb.setMood("listening")} onBlur={() => orb.setMood("idle")}
           className="campo text-[14.5px]"
-          placeholder="¿De qué trata el sistema? ¿Quién lo usa? ¿Cómo hablan en ese trabajo? Ej.: Sistema de caja para una ferretería de Ciudad Juárez; lo usan cajeros y el encargado; «checar» es revisar existencias."
+          placeholder="¿De qué trata el sistema? ¿Quién lo usa? ¿Cómo hablan en ese trabajo? Ej.: Consultorio médico de una doctora con su asistente en Ciudad Juárez; agendan citas y registran consultas."
         />
-        <span className="block text-[12px] text-[var(--bone-faint)]">Con el contexto, los agentes entienden «ahorita» o «checar» como en tu dominio y escriben requisitos más completos.</span>
+        <span className="block text-[12px] text-[var(--bone-faint)]">Con el contexto, los agentes entienden la entrevista dentro de tu dominio: qué quiere decir «consulta» o «checar» en ese trabajo.</span>
       </label>
       <Aviso error={error} />
       <div className="flex flex-wrap gap-2">

@@ -21,6 +21,10 @@ export const SECCIONES = {
   mas: { lado: 1, y: 0.28, mood: "sistema", nombre: "Más" },
   configuracion: { lado: -1, y: 0.24, mood: "clasificador", nombre: "Configuración" },
   avanzado: { lado: -1, y: 0.3, mood: "sistema", nombre: "Análisis" },
+  // versión 2 (ADR 0024): las fases del proyecto alternan de lado, como las vistas de la versión 1
+  entrevista: { lado: 1, y: 0.22, mood: "entrevista", nombre: "Entrevista" },
+  metas: { lado: -1, y: 0.2, mood: "metas", nombre: "Metas" },
+  fase_requisitos: { lado: 1, y: 0.16, mood: "modelador", nombre: "Requisitos" },
 };
 
 export const seccion = (id) => SECCIONES[id] ?? SECCIONES.proyectos;

@@ -96,7 +96,7 @@ export default function Lel() {
           <EntradaLel
             key={`${e.proyecto_id}-${e.req_id}-${e.simbolo}`}
             e={e}
-            conProyecto={!proyecto && <Link to={`/proyectos/${e.proyecto_id}?vista=lel`} className="hover:text-[var(--bone)]">{nombreDe(e.proyecto_id)}</Link>}
+            conProyecto={!proyecto && <Link to={`/proyectos/${e.proyecto_id}/v1?vista=lexico`} className="hover:text-[var(--bone)]">{nombreDe(e.proyecto_id)}</Link>}
           />
         ))}
       </ol>

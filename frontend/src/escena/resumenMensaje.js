@@ -8,6 +8,8 @@ const plural = (n, uno, otros) => `${n} ${n === 1 ? uno : otros}`;
 export function resumenMensaje(m) {
   const p = m.payload ?? {};
   switch (m.tipo) {
+    case "ficha":
+      return `${plural(p.partes ?? 1, "parte", "partes")} · ${p.participantes?.length ?? 0} participante(s) · ${p.necesidades ?? 0} necesidades · ${p.problemas ?? 0} problemas · ${p.reglas ?? 0} reglas`;
     case "extraccion":
       return `${plural(p.terminos?.length ?? 0, "término", "términos")} del dominio${p.descartados?.length ? ` · ${p.descartados.length} descartado(s) por no estar en el texto` : ""}`;
     case "filtrado": {
@@ -58,6 +60,7 @@ export function resumenMensaje(m) {
     case "edicion":
       return `corrigió ${p.objeto === "lel" ? `la entrada del LEL de «${p.termino}»` : "el requisito formalizado"}: ${Object.keys(p.despues ?? {}).join(", ")}`;
     case "formalizacion":
+      if (p.alcance === "lexico") return `LEL: ${(p.entradas ?? []).map((e) => `${e.simbolo} (${e.tipo})`).join(", ") || p.nota || "sin entradas"}`;
       if (p.alcance === "termino") return `LEL: ${p.entrada_lel?.simbolo ?? p.termino} (${p.entrada_lel?.tipo ?? "—"})`;
       return `requisito reescrito${p.tipo_requisito ? ` (${p.tipo_requisito.replace("_", " ")})` : ""} · ${plural(p.entradas_lel?.length ?? 0, "entrada", "entradas")} del LEL · ${plural(p.metas?.length ?? 0, "meta", "metas")}${p.supuestos?.length ? ` · ${plural(p.supuestos.length, "supuesto", "supuestos")}` : ""}`;
     case "error":

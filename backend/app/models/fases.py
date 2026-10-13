@@ -322,7 +322,7 @@ class CambiosEntradaLexico(Editable):
     simbolo: str | None = Field(None, min_length=1, max_length=80)
     tipo: Categoria | None = None
     nocion: list[str] | None = Field(None, min_length=1, max_length=6)
-    impacto: list[str] | None = Field(None, min_length=1, max_length=6)
+    impacto: list[str] | None = Field(None, max_length=6)
     intencion: str | None = Field(None, min_length=1, max_length=400)
     sinonimos: list[str] | None = Field(None, max_length=10)
 

@@ -56,7 +56,7 @@ export default function Validacion() {
   if (!v) return <Cargando>Cargando {id}…</Cargando>;
 
   const pendiente = v.estado === E.PENDIENTE_VALIDACION;
-  const atras = volver ?? `/proyectos/${v.proyecto_id}`;
+  const atras = volver ?? `/proyectos/${v.proyecto_id}/v1`;
 
   const enviar = async (decision) => {
     setEnviando(true);

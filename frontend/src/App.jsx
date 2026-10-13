@@ -9,7 +9,10 @@ import { Entrar, Recuperar, Registro, Verificar } from "./pages/cuenta/Cuenta";
 import { proyectoRecordado } from "./components/proyectoRecordado";
 import Intro from "./pages/intro/Intro";
 import Proyectos from "./pages/Proyectos";
-import Proyecto from "./pages/proyecto/Proyecto";
+import ProyectoV1 from "./pages/proyecto/Proyecto";
+import Proyecto from "./pages/fases/Proyecto";
+import NuevaEntrevista from "./pages/fases/NuevaEntrevista";
+import EscenaEntrevista from "./pages/fases/EscenaEntrevista";
 import Analizar from "./pages/Analizar";
 import Analisis from "./pages/Analisis";
 import DetalleRequisito from "./pages/DetalleRequisito";
@@ -31,8 +34,11 @@ import Configuracion from "./pages/Configuracion";
  * Cada pantalla solo le dice dónde estar y qué hacer.
  *
  *   /proyectos                      todos los proyectos
- *   /proyectos/:id?vista=           un proyecto: requisitos, especificación, léxico o mapa
- *   /proyectos/:id/analizar         cargar requisitos (escena)
+ *   /proyectos/:id?fase=            un proyecto (versión 2, ADR 0024): entrevista, léxico, mapa, metas o requisitos
+ *   /proyectos/:id/entrevista       subir o pegar una entrevista (escena)
+ *   /proyectos/:id/entrevistas/:e   los agentes procesan la entrevista (escena)
+ *   /proyectos/:id/v1?vista=        versión 1: requisitos, especificación, léxico o mapa
+ *   /proyectos/:id/analizar         cargar requisitos (versión 1, escena)
  *   /analisis?proyecto=&ids=        la escena en vivo de un lote
  *   /requisitos/:id[/validacion]    un requisito y su revisión
  *   /mas                            análisis y experimentación
@@ -50,7 +56,7 @@ function AAnalizar() {
 function AlMapa() {
   const [params] = useSearchParams();
   const p = params.get("proyecto") ?? proyectoRecordado();
-  return <Navigate to={p ? `/proyectos/${p}?vista=mapa` : "/proyectos"} replace />;
+  return <Navigate to={p ? `/proyectos/${p}?fase=mapa` : "/proyectos"} replace />;
 }
 
 export default function App() {
@@ -69,12 +75,15 @@ export default function App() {
           <Route path="/verificar" element={<Verificar />} />
           <Route path="/recuperar" element={<Recuperar />} />
           <Route element={<RequiereSesion><Shell modo="escena" /></RequiereSesion>}>
+            <Route path="/proyectos/:id/entrevista" element={<NuevaEntrevista />} />
+            <Route path="/proyectos/:id/entrevistas/:eid" element={<EscenaEntrevista />} />
             <Route path="/proyectos/:id/analizar" element={<Analizar />} />
             <Route path="/analisis" element={<Analisis />} />
           </Route>
           <Route element={<RequiereSesion><Shell modo="herramienta" /></RequiereSesion>}>
             <Route path="/proyectos" element={<Proyectos />} />
             <Route path="/proyectos/:id" element={<Proyecto />} />
+            <Route path="/proyectos/:id/v1" element={<ProyectoV1 />} />
             <Route path="/requisitos/:id" element={<DetalleRequisito />} />
             <Route path="/requisitos/:id/validacion" element={<Validacion />} />
             <Route path="/mas" element={<Mas />} />

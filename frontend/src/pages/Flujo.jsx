@@ -195,7 +195,7 @@ export default function Flujo() {
             <div className="flex flex-wrap gap-2">
               {/* un proyecto de evaluación solo lo llena la evaluación del corpus */}
               {proyecto?.tipo !== "evaluacion" && <Link to={`/proyectos/${proyectoId}/analizar`} className="pill sm">Nuevo ciclo</Link>}
-              <Link to={`/proyectos/${proyectoId}`} className="pill ghost sm">Proyecto</Link>
+              <Link to={`/proyectos/${proyectoId}/v1`} className="pill ghost sm">Proyecto</Link>
             </div>
             <p className="text-[11px] leading-snug text-[var(--bone-faint)]">
               Adaptado del modelo en espiral de KMoS-SSA / SysM2. Jiménez-Galina, A. M., Maldonado-Macías, A. A. y Olmos-Sánchez, K. M. (2025).

@@ -22,11 +22,14 @@ export const NODOS = Object.freeze({
   critico: { id: "critico", nombre: "Crítico", rol: "Evalúa R1–R3, objeta y arbitra si se agotan las rondas", tipo: "agente", fase: 3, tono: "#ffc457" },
   humano: { id: "humano", nombre: "Humano", rol: "Valida, elige o edita las interpretaciones", tipo: "persona", fase: 4, tono: "#f9a8d4" },
   modelador: { id: "modelador", nombre: "Modelador", rol: "Formaliza: LEL, requisito reescrito y metas", tipo: "agente", fase: 5, tono: "#57f7a7" },
+  revisor: { id: "revisor", nombre: "Revisor", rol: "Lee la entrevista: participantes, problemas, necesidades y reglas", tipo: "agente", fase: 1, tono: "#f0abfc" },
   sistema: { id: "sistema", nombre: "Sistema", rol: "Orquestación (LangGraph): reglas de consenso, solicitud de validación, errores", tipo: "mecanismo", fase: null, tono: "#94a3b8" },
 });
 
 /* Orden en la escena (izquierda a derecha, el flujo del requisito) */
 export const ORDEN_NODOS = ["extractor", "filtros", "clasificador", "divergencia", "critico", "humano", "modelador"];
+/* Versión 2 (ADR 0024): la entrevista completa; la persona valida después, en el léxico */
+export const ORDEN_NODOS_ENTREVISTA = ["revisor", "extractor", "filtros", "clasificador", "divergencia", "critico", "modelador"];
 
 export const nodo = (id) => NODOS[id] ?? { id, nombre: id, rol: "", tipo: "mecanismo", fase: null, tono: "#94a3b8" };
 /** Color para escribir en el tono de un nodo: tal cual en oscuro; en claro, mezclado con la tinta

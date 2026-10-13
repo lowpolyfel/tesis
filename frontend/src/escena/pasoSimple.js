@@ -9,6 +9,10 @@ const lista = (xs) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(",
 export function pasoSimple(m) {
   const p = m.payload ?? {};
   switch (m.tipo) {
+    case "ficha": {
+      const n = p.necesidades ?? 0;
+      return `El Revisor leyó la entrevista: ${p.participantes?.length ?? 0} participante(s), ${n} necesidad${n === 1 ? "" : "es"} y ${p.problemas ?? 0} problema(s).`;
+    }
     case "extraccion": {
       const n = p.terminos?.length ?? 0;
       return n ? `El Extractor separó ${n} término${n === 1 ? "" : "s"} del dominio.` : "El Extractor no encontró términos del dominio.";
@@ -20,6 +24,7 @@ export function pasoSimple(m) {
         de("vaguedad").length && `${lista(de("vaguedad"))} es vago`,
         de("regional").length && `${lista(de("regional"))} es regional`,
         de("resuelto_por_lel").length && `${lista(de("resuelto_por_lel"))} ya está en el léxico`,
+        de("descartado_por_persona").length && `${lista(de("descartado_por_persona"))} ya lo habías descartado`,
         (de("alcance").length || de("anafora").length) && `${lista([...de("alcance"), ...de("anafora")])} puede referirse a más de una cosa`,
       ].filter(Boolean);
       return partes.length ? `Los filtros notaron que ${lista(partes)}.` : "Los filtros no notaron nada fuera de lo común.";
@@ -52,6 +57,10 @@ export function pasoSimple(m) {
       if (p.automatica) return "Sin conflictos que revisar: sigue solo.";
       return p.decision === "aprobar" ? "Lo revisaste y lo aprobaste." : "Lo descartaste.";
     case "formalizacion":
+      if (p.alcance === "lexico") {
+        const n = p.entradas?.length ?? 0;
+        return n ? `El Modelador escribió ${n} término${n === 1 ? "" : "s"} del léxico, con su intención.` : "No hubo términos nuevos para el léxico.";
+      }
       return p.alcance === "termino"
         ? `${comillas(p.entrada_lel?.simbolo ?? p.termino)} entró al léxico del proyecto.`
         : "El Modelador reescribió el requisito completo.";

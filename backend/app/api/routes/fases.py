@@ -24,7 +24,7 @@ from app.fases import requisitos as fase_requisitos
 from app.fases.documento import DocumentosDeFase, ahora, estado_del_proyecto
 from app.fases.lexico import ErrorLexico, Lexico
 from app.fases.lexico import resumen as resumen_lexico
-from app.fases.progreso import EnCurso, en_cola, ocupado
+from app.fases.progreso import en_cola, ocupado
 from app.llm.perfiles import con_perfil
 from app.models import (
     CambiosEntradaLexico,
@@ -184,7 +184,7 @@ def ver_fase(fase: Fase, p: ProyectoDep, srv: ServicioDep) -> dict:
 def generar(fase: Fase, p: ProyectoDep, srv: ServicioDep) -> StreamingResponse:
     """Genera la fase con el Modelador y va diciendo qué hace (NDJSON): {"tipo": "paso", …} ·
     {"tipo": "resultado", documento} · {"tipo": "error", mensaje}. 409 si la fase todavía no se
-    abre (falta validar la anterior) o si ya se está generando."""
+    abre (falta validar la anterior). Si ya se está generando, responde el avance de esa generación."""
     info = _fase(_estado(srv, p.proyecto_id), fase)
     if not info["disponible"]:
         raise HTTPException(409, info["motivo"])
@@ -209,10 +209,7 @@ def generar(fase: Fase, p: ProyectoDep, srv: ServicioDep) -> StreamingResponse:
                 doc = docs.guardar(fase, doc)
         avisar({"tipo": "resultado", "documento": doc})
 
-    try:
-        eventos = en_cola(srv.cola, f"{fase}:{p.proyecto_id}", trabajo)
-    except EnCurso as e:
-        raise HTTPException(409, "Ya se está generando; espera a que termine.") from e
+    eventos = en_cola(srv.cola, f"{fase}:{p.proyecto_id}", trabajo)  # si ya se genera, sus eventos
     lineas = (json.dumps(e, ensure_ascii=False) + "\n" for e in eventos)
     return StreamingResponse(lineas, media_type="application/x-ndjson", headers={"Cache-Control": "no-store"})
 

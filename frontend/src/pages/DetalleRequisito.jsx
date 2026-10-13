@@ -114,7 +114,7 @@ function Resultado({ v, id, ambiguos, reprocesar, aviso, onCorregido }) {
   return (
     <div className="space-y-7">
       <header className="space-y-4">
-        <Volver a={`/proyectos/${v.proyecto_id}`}>Proyecto {v.proyecto_id}</Volver>
+        <Volver a={`/proyectos/${v.proyecto_id}/v1`}>Proyecto {v.proyecto_id}</Volver>
         <div className="flex flex-wrap items-center gap-3">
           <span className="mono text-[11px] text-[var(--bone-faint)]">{v.req_id}{v.origen?.marca ? ` · ${v.origen.marca}` : ""}</span>
           <EstadoChip estado={v.estado} />
@@ -135,7 +135,7 @@ function Resultado({ v, id, ambiguos, reprocesar, aviso, onCorregido }) {
             onCancelar={() => setBorrando(false)}
             onConfirmar={async () => {
               await borrarRequisito(id);
-              navigate(`/proyectos/${v.proyecto_id}`, { replace: true });
+              navigate(`/proyectos/${v.proyecto_id}/v1`, { replace: true });
             }}
           />
         )}
@@ -209,7 +209,7 @@ function Resultado({ v, id, ambiguos, reprocesar, aviso, onCorregido }) {
       {ambiguos.some((t) => t.entrada_lel) && (
         <p className="text-[14px] text-[var(--bone-dim)]">
           Entró al léxico: {ambiguos.filter((t) => t.entrada_lel).map((t) => t.entrada_lel.simbolo).join(", ")} ·{" "}
-          <Link className="enlace" to={`/proyectos/${v.proyecto_id}?vista=lexico`}>ver el léxico</Link>
+          <Link className="enlace" to={`/proyectos/${v.proyecto_id}/v1?vista=lexico`}>ver el léxico</Link>
         </p>
       )}
     </div>

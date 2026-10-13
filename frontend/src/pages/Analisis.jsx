@@ -59,7 +59,7 @@ export default function Analisis() {
   }, [proyecto]);
 
   useEffect(() => {
-    if (!ids.length || !proyecto) navigate(proyecto ? `/proyectos/${proyecto}` : "/proyectos", { replace: true });
+    if (!ids.length || !proyecto) navigate(proyecto ? `/proyectos/${proyecto}/v1` : "/proyectos", { replace: true });
   }, [ids, proyecto, navigate]);
 
   /* ---- estado del lote: sondeo ligero de la lista y de la cola ---- */
@@ -184,7 +184,7 @@ export default function Analisis() {
       <main className="relative z-10 mx-auto max-w-xl px-6 pt-[30vh] text-center">
         <p className="serif text-3xl">No pude seguir el análisis.</p>
         <p className="mt-3 text-sm text-[var(--bone-dim)]">{errorCarga.message}</p>
-        <Link to={proyecto ? `/proyectos/${proyecto}` : "/proyectos"} className="pill ghost mt-6">Volver</Link>
+        <Link to={proyecto ? `/proyectos/${proyecto}/v1` : "/proyectos"} className="pill ghost mt-6">Volver</Link>
       </main>
     );
   }
@@ -196,7 +196,7 @@ export default function Analisis() {
   return (
     <main className="relative z-10 min-h-screen">
       <div className="fixed top-20 left-5 z-20 md:top-24 md:left-10">
-        <Volver a={`/proyectos/${proyecto}`}>{nombreProyecto ?? "Proyecto"}</Volver>
+        <Volver a={`/proyectos/${proyecto}/v1`}>{nombreProyecto ?? "Proyecto"}</Volver>
       </div>
       {fase === "preparacion" && !todosEnReposo && <Preparacion proyecto={proyecto} onListo={() => setFase("division")} />}
       {fase === "preparacion" && !todosEnReposo && lista && (
@@ -455,8 +455,8 @@ function Resultados({ lista, proyecto, onRepetir }) {
 
       <div className="flex flex-wrap items-center gap-2">
         {pendientes[0] && <Link className="pill" to={`/requisitos/${pendientes[0].req_id}/validacion`}>Revisar {pendientes.length > 1 ? `(${pendientes.length})` : ""}</Link>}
-        {listos.length > 0 && <Link className={pendientes.length ? "pill ghost" : "pill"} to={`/proyectos/${proyecto}?vista=especificacion&req=${listos.join(",")}`}>Ver especificación</Link>}
-        {listos.length > 0 && <Link className="pill ghost" to={`/proyectos/${proyecto}?vista=mapa&req=${listos.join(",")}`}>Crear mapa</Link>}
+        {listos.length > 0 && <Link className={pendientes.length ? "pill ghost" : "pill"} to={`/proyectos/${proyecto}/v1?vista=especificacion&req=${listos.join(",")}`}>Ver especificación</Link>}
+        {listos.length > 0 && <Link className="pill ghost" to={`/proyectos/${proyecto}/v1?vista=mapa&req=${listos.join(",")}`}>Crear mapa</Link>}
         <button className="mono px-2 text-[10px] text-[var(--bone-faint)] hover:text-[var(--bone)]" onClick={onRepetir}>ver la escena otra vez</button>
       </div>
 
@@ -479,7 +479,7 @@ function Resultados({ lista, proyecto, onRepetir }) {
           );
         })}
       </ol>
-      <Link to={`/proyectos/${proyecto}`} className="mono self-start text-[10px] text-[var(--bone-faint)] hover:text-[var(--bone)]">Volver al proyecto</Link>
+      <Link to={`/proyectos/${proyecto}/v1`} className="mono self-start text-[10px] text-[var(--bone-faint)] hover:text-[var(--bone)]">Volver al proyecto</Link>
     </section>
   );
 }
@@ -511,7 +511,7 @@ function CancelarAnalisis({ lista, proyecto, className = "" }) {
               onCancelar={() => setAbierto(false)}
               onConfirmar={async () => {
                 await cancelarRequisitos(proyecto, sinTerminar.map((r) => r.req_id));
-                navigate(`/proyectos/${proyecto}`);
+                navigate(`/proyectos/${proyecto}/v1`);
               }} />
           </div>
         </div>

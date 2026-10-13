@@ -59,6 +59,38 @@ export const MOODS = {
     scale: 0.95, fog: 1.05, glow: 0.64,
     amp: 1.4, speed: 1.8, turbulence: 0.3, pulse: 0.5, breathe: 0.045, wobble: 0,
   },
+  /* ---- versión 2 (ADR 0024): un tono por fase y el Revisor ---- */
+  entrevista: {
+    c1: "#ffb4a2", c2: "#e879a6", bg: "#0e0507",
+    scale: 1, fog: 1.05, glow: 0.56,
+    amp: 1, speed: 1, turbulence: 0.04, pulse: 0.3, breathe: 0.035, wobble: 0,
+  },
+  revisor: {
+    c1: "#f0abfc", c2: "#c084fc", bg: "#0c0410",
+    scale: 1, fog: 1.08, glow: 0.56,
+    amp: 1, speed: 1.1, turbulence: 0.06, pulse: 0.3, breathe: 0.03, wobble: 0,
+  },
+  metas: {
+    c1: "#ffd166", c2: "#ff7a59", bg: "#0e0703",
+    scale: 1, fog: 1, glow: 0.56,
+    amp: 1, speed: 1, turbulence: 0.04, pulse: 0, breathe: 0.03, wobble: 0,
+  },
+  metas_generando: {
+    c1: "#ffd166", c2: "#ff5f7e", bg: "#100604",
+    scale: 0.95, fog: 1.05, glow: 0.64,
+    amp: 1.4, speed: 1.8, turbulence: 0.3, pulse: 0.5, breathe: 0.045, wobble: 0,
+  },
+  requisitos_generando: {
+    c1: "#57f7a7", c2: "#34d3be", bg: "#020b08",
+    scale: 0.95, fog: 1.05, glow: 0.64,
+    amp: 1.4, speed: 1.8, turbulence: 0.3, pulse: 0.5, breathe: 0.045, wobble: 0,
+  },
+  /* lo que la persona corrige viaja a la esfera: el sistema lo aprende */
+  aprende: {
+    c1: "#f9a8d4", c2: "#a78bfa", bg: "#0c040e",
+    scale: 1.06, fog: 1.12, glow: 0.66,
+    amp: 1.3, speed: 1.5, turbulence: 0.15, pulse: 0.8, breathe: 0.05, wobble: 0,
+  },
   /* ---- nodos que no son agentes LLM: filtros, divergencia, humano, sistema ---- */
   filtros: {
     c1: "#7dd3fc", c2: "#38bdf8", bg: "#02080d",
