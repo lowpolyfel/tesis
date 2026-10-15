@@ -29,7 +29,9 @@ export function createOrbController() {
   const state = { bodies, ambient: "idle", shy: false, membranaHasta: 0, elevada: false };
   const membrana = (ms = 1500) => { state.membranaHasta = performance.now() + ms; };
   const emit = () => listeners.forEach((fn) => fn());
-  let moodTimer;
+  // el regreso de la esfera y el del ambiente van aparte: una vista previa (ambiente: false)
+  // no cancela el regreso pendiente del fondo
+  let moodTimer, ambienteTimer;
 
   // rev: sube cada vez que cambia algo que React dibuja (rótulos, cronómetro, si se puede tocar)
   bodies.set("core", { id: "core", mood: "idle", target: { x: 0, y: 0, s: 0 }, kick: 0, rev: 0 });
@@ -49,6 +51,7 @@ export function createOrbController() {
     },
     setMood(mood, { revertAfter, ambiente = true } = {}) {
       clearTimeout(moodTimer);
+      if (ambiente) clearTimeout(ambienteTimer);
       const c = core();
       if (mood !== c.mood) {
         if (mood === "success") c.kick += 1.6;
@@ -56,9 +59,13 @@ export function createOrbController() {
       }
       c.mood = mood;
       if (ambiente) state.ambient = mood;
-      if (revertAfter) moodTimer = setTimeout(() => { c.mood = "idle"; if (ambiente) state.ambient = "idle"; }, revertAfter);
+      if (revertAfter) {
+        moodTimer = setTimeout(() => { c.mood = "idle"; }, revertAfter);
+        if (ambiente) ambienteTimer = setTimeout(() => { state.ambient = "idle"; }, revertAfter);
+      }
     },
     setAmbient(mood) {
+      clearTimeout(ambienteTimer);
       state.ambient = mood;
     },
     setShy(shy) {

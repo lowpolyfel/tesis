@@ -22,19 +22,31 @@ import "./orb.css";
 
 const lerpK = (dt, rate) => 1 - Math.exp(-dt * rate);
 
-const LADO_MAX = 2048; // tope del búfer de las ondas: la esfera de sección en pantallas densas
+const LADO_MAX = 3072; // tope del búfer de las ondas: con dpr 2 la esfera de sección (≈2700 px) cabe entera
 
 /* Quien dibuja las ondas: un solo worker para toda la app (null si el navegador no puede
    pasarle un lienzo; entonces se dibujan aquí). Vive fuera de los efectos: un lienzo se le
    pasa una sola vez y no se puede recuperar */
 let pintor;
 let ultimaClave = 0;
+const alFallar = new Set(); // quienes vuelven a montar sus lienzos si el worker no carga
 function elPintor() {
   if (pintor === undefined) {
     pintor = null;
     if (typeof OffscreenCanvas !== "undefined" && "transferControlToOffscreen" in HTMLCanvasElement.prototype) {
       try {
-        pintor = new Worker(new URL("./geometry.js", import.meta.url), { type: "module" });
+        const w = new Worker(new URL("./geometry.js", import.meta.url), { type: "module" });
+        // Si no llega a cargar (un 404, una CSP, un navegador sin workers de módulo), los lienzos
+        // que ya se le pasaron no se recuperan: se vuelven a montar y se dibujan aquí
+        const fallo = () => {
+          if (pintor !== w) return;
+          pintor = null;
+          w.terminate();
+          alFallar.forEach((fn) => fn());
+        };
+        w.addEventListener("error", fallo);
+        w.addEventListener("messageerror", fallo);
+        pintor = w;
       } catch {
         pintor = null;
       }
@@ -77,7 +89,8 @@ function nuevaFisica(body, desde, el) {
     vy: desde ? (body.target.y * innerHeight - desde.py) * 2.6 : 0,
     // Nace a un tamaño cercano al suyo: las hijas del menú nacían a 0.7× de la esfera de la
     // sección (capas de ~730 px con el brillo desenfocado) para encogerse en pleno vuelo
-    sc: desde ? Math.max(0.15, Math.min(desde.sc * 0.7, body.target.s * 1.3)) : body.target.s,
+    // Las que van a ser chicas nacen ya por debajo del umbral de es-chica (con la histéresis del tick)
+    sc: desde ? Math.max(0.15, Math.min(desde.sc * 0.7, body.target.s * (body.target.s < 0.5 ? 1.15 : 1.3))) : body.target.s,
     edad: 0,
     cuadro: 0,
     vs: 0,
@@ -97,6 +110,13 @@ function nuevaFisica(body, desde, el) {
 
 export default function OrbField({ controller, rootRef }) {
   const [ids, setIds] = useState(() => [...controller.state.bodies.keys()]);
+  // sube si el worker de las ondas no cargó: las esferas se vuelven a montar con lienzos nuevos
+  const [generacion, setGeneracion] = useState(0);
+  useEffect(() => {
+    const otra = () => setGeneracion((g) => g + 1);
+    alFallar.add(otra);
+    return () => alFallar.delete(otra);
+  }, []);
   // Rótulos, cronómetros y la capa elevada: OrbField se vuelve a dibujar, pero cada Esfera
   // solo si cambió su `rev`
   const [, refrescar] = useReducer((n) => n + 1, 0);
@@ -203,6 +223,12 @@ export default function OrbField({ controller, rootRef }) {
           f = nuevaFisica(body, body.spawnFrom ? fis.get(body.spawnFrom) : null, el);
           fis.set(id, f);
         }
+        // Elementos nuevos para la misma esfera (se montó después, o se volvió a montar): lo
+        // escrito en los anteriores no cuenta
+        if (el && f.el !== el) {
+          f.el = el;
+          f.cache = { chica: el.wrap.classList.contains("es-chica") };
+        }
         const mood = body.mood in MOODS ? body.mood : "idle";
         const tgt = MOODS[mood];
 
@@ -291,7 +317,8 @@ export default function OrbField({ controller, rootRef }) {
 
         el.wrap.style.transform = `translate3d(${sx.toFixed(2)}px, ${sy.toFixed(2)}px, 0)`;
         el.wrap.style.opacity = f.op.toFixed(3);
-        const chica = escala < 0.5;
+        // con histéresis: cerca del umbral (al nacer, al rebotar) no alterna la clase cuadro a cuadro
+        const chica = escala < (f.cache.chica ? 0.56 : 0.5);
         if (f.cache.chica !== chica) { el.wrap.classList.toggle("es-chica", chica); f.cache.chica = chica; }
         // Sin inclinación 3D: obligaba a recortar la esfera con una máscara en cada cuadro
         el.scene.style.transform = `scale(${escala.toFixed(4)}) rotate(${(f.vx * 0.004).toFixed(2)}deg)`;
@@ -349,9 +376,11 @@ export default function OrbField({ controller, rootRef }) {
         // Ondas: concéntricas a la esfera; se agitan mientras viaja o trabaja
         f.cuadro++;
         f.dtOndas = (f.dtOndas ?? 0) + dt;
-        // Las ondas de las esferas atenuadas o chicas se redibujan a 30 Hz: no se nota y cuesta
-        // la mitad. En los cuadros que se saltan no se escribe nada
-        if ((body.dim || chica) && f.cuadro % 2) continue;
+        // Las ondas de las esferas atenuadas, chicas o en reposo (sin viajar, sin trabajar, sin
+        // rebotar) se redibujan a 30 Hz: no se nota y cuesta la mitad. En los cuadros que se
+        // saltan no se escribe nada
+        const reposo = !body.active && travelN < 0.02 && Math.abs(f.popVel) < 0.3;
+        if ((body.dim || chica || reposo) && f.cuadro % 2) continue;
         const pulseMul = 1 + cur.pulse * 0.35 * (0.5 + 0.5 * Math.sin(f.pulsePh));
         const activo = body.active ? 0.5 : 0;
         f.fase += f.dtOndas * cur.speed * (1 + travelN * 1.6 + activo * 1.6);
@@ -424,7 +453,7 @@ export default function OrbField({ controller, rootRef }) {
           </g>
         </svg>
         {ids.map((id) => (
-          <Esfera key={id} id={id} rev={bodies.get(id)?.rev ?? 0} bodies={bodies} registrar={registrar(id)} />
+          <Esfera key={`${id}:${generacion}`} id={id} rev={bodies.get(id)?.rev ?? 0} bodies={bodies} registrar={registrar(id)} />
         ))}
       </div>
     </>

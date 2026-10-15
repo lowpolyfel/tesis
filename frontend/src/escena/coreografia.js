@@ -50,17 +50,24 @@ function geometria(estaciones, bajarMovil) {
   const n = estaciones.length;
   const xs = estaciones.map((_, i) => cx - ancho / 2 + (ancho * i) / (n - 1));
   const b = m ? bajarMovil : 0;
+  const H = innerHeight;
   const sistema = { x: cx, y: (m ? -0.34 : -0.29) + b, s: m ? 0.2 : 0.36 };
-  const yAgente = (m ? -0.17 : -0.01) + b, sAgente = m ? 0.2 : 0.42;
-  // el riel va entre el rótulo del sistema (nombre y hasta dos líneas) y la cima del agente
-  const bajoSistema = sistema.y * innerHeight + sistema.s * RADIO + 14 + (m ? 36 : 50);
-  const sobreAgente = yAgente * innerHeight - sAgente * RADIO;
+  const sAgente = m ? 0.2 : 0.42, sPar = m ? 0.13 : 0.22;
+  // De arriba abajo, en píxeles: el rótulo del sistema (nombre y hasta dos líneas), el riel, el
+  // agente con su rótulo y el par. Las esferas flotan unos ±13 px (OrbField)
+  const rotulo = m ? 36 : 50, flota = 13; // nombre y hasta dos líneas (el del sistema, una)
+  const bajoSistema = sistema.y * H + sistema.s * RADIO + 14 + (m ? 30 : 34);
+  const yAgente = (m ? -0.17 : -0.01) + b;
+  const sobreAgente = yAgente * H - sAgente * RADIO;
+  const bajoAgente = yAgente * H + sAgente * RADIO + 14 + rotulo;
+  // el riel solo si cabe entre el rótulo del sistema y la cima del agente (en teléfonos bajos no)
+  const cabeRiel = sobreAgente - bajoSistema >= 18 + flota;
   return {
     sistema, xs, yAgente, sAgente,
     estacion: Object.fromEntries(estaciones.flatMap((e, i) => e.nodos.map((nd) => [nd, i]))), // nodo → estación
-    riel: (bajoSistema + sobreAgente) / 2 / innerHeight,
-    par: { x: cx, y: (m ? -0.035 : 0.25) + b },
-    sPar: m ? 0.13 : 0.22,
+    riel: cabeRiel ? (bajoSistema + sobreAgente) / 2 / H : null,
+    par: { x: cx, y: Math.max((m ? -0.035 : 0.25) + b, (bajoAgente + 8 + sPar * RADIO) / H) },
+    sPar,
     largo: m ? 12 : 18, // del significado bajo cada intención (en el teléfono, una línea)
     // separación del par: más juntas cuanto más similares
     sepMin: m ? 0.22 : 0.085,
@@ -82,7 +89,9 @@ export function crearCoreografia(orb, { estaciones = ESTACIONES_REQUISITO, bajar
   let actual = primero(); // el nodo que tiene el turno: donde está el agente
   const intenciones = new Map(); // clave → Map(id → significado), de interpretaciones y refinamiento
   const pares = new Map(); // clave → { ids, similitud }: el último par mínimo de cada término
-  let foco = null; // el par a la vista: { k, termino, ids }
+  // el par a la vista: { k, termino, ranuras }. ranuras[j] es la intención que muestra PAR[j] (o null):
+  // cada intención conserva su esfera aunque la otra se retire
+  let foco = null;
   let rapido = false;
   let ritmo = 1;
   let vuelta = 0; // sube al reiniciar o desmontar: los pasos pendientes de antes ya no se aplican
@@ -126,23 +135,40 @@ export function crearCoreografia(orb, { estaciones = ESTACIONES_REQUISITO, bajar
   const significado = (k, id) => intenciones.get(k)?.get(id);
   const idsDe = (k) => (pares.get(k)?.ids?.length ? pares.get(k).ids : [...(intenciones.get(k)?.keys() ?? [])].slice(0, 2));
 
+  /* Dónde va cada ranura: una sola intención al centro; dos, separadas según su similitud */
+  function lugares(ranuras, similitud) {
+    const d = sep(similitud);
+    const dos = ranuras.filter(Boolean).length === 2;
+    return ranuras.map((_, j) => ({ x: g.par.x + (dos ? (j ? d / 2 : -d / 2) : 0), y: g.par.y }));
+  }
+
+  /* Una intención a la vista en la ranura j: se queda en su sitio o nace del agente */
+  function ponerIntencion(j, k, id, lugar) {
+    const datos = { mood: colorInterpretacion(id).mood, label: id, sub: corto(significado(k, id), g.largo), ...lugar, s: g.sPar, active: false, dim: false };
+    if (orb.has(PAR[j])) orb.update(PAR[j], datos);
+    else orb.divide("agente", [{ id: PAR[j], ...datos }], { membrana: false });
+  }
+
   function mostrarPar(termino, ids, similitud) {
     const k = clave(termino);
+    ids = ids.slice(0, 2);
     if (!ids.length) { retirarPar("agente"); return; }
-    const nuevo = foco?.k !== k;
-    foco = { k, termino, ids: ids.slice(0, 2) };
-    const d = sep(similitud);
-    foco.ids.forEach((id, j) => {
-      const datos = {
-        mood: colorInterpretacion(id).mood, label: id, sub: corto(significado(k, id), g.largo),
-        x: g.par.x + (foco.ids.length === 1 ? 0 : j ? d / 2 : -d / 2), y: g.par.y, s: g.sPar, active: false, dim: false,
-      };
-      // el mismo término: solo se acercan o alejan; otro término: sus intenciones salen del agente
-      // (si la esfera sigue a la vista, cambia de rótulo en su sitio)
-      if (orb.has(PAR[j]) && !nuevo) orb.update(PAR[j], datos);
-      else orb.divide("agente", [{ id: PAR[j], ...datos }], { membrana: false });
-    });
-    if (foco.ids.length < 2) fundir([PAR[1]], "agente");
+    // del mismo término, cada intención que ya estaba a la vista conserva su esfera; las demás
+    // toman un lugar libre (otro término: las esferas a la vista cambian de rótulo en su sitio)
+    const antes = foco?.k === k ? foco.ranuras : [null, null];
+    const ranuras = [null, null];
+    ids.forEach((id) => { const j = antes.indexOf(id); if (j >= 0 && orb.has(PAR[j])) ranuras[j] = id; });
+    ids.filter((id) => !ranuras.includes(id)).forEach((id) => { ranuras[ranuras.indexOf(null)] = id; });
+    foco = { k, termino, ranuras };
+    const ls = lugares(ranuras, similitud);
+    ranuras.forEach((id, j) => (id ? ponerIntencion(j, k, id, ls[j]) : fundir([PAR[j]], "agente")));
+  }
+
+  /* Solo mueve las esferas del par que siguen a la vista (al cambiar el tamaño de la ventana) */
+  function colocarPar() {
+    if (!foco) return;
+    const ls = lugares(foco.ranuras, pares.get(foco.k)?.similitud);
+    foco.ranuras.forEach((id, j) => { if (id && orb.has(PAR[j])) orb.update(PAR[j], { ...ls[j], s: g.sPar }); });
   }
 
   function retirarPar(hacia) {
@@ -154,14 +180,13 @@ export function crearCoreografia(orb, { estaciones = ESTACIONES_REQUISITO, bajar
   function resolver(termino, ganadora, { absorbe = null, nota }) {
     const k = clave(termino);
     if (foco?.k !== k) mostrarPar(termino, [ganadora], 1);
-    let j = foco.ids.indexOf(ganadora);
-    if (j < 0) { // la elegida no estaba a la vista: toma el primer lugar
-      j = 0;
-      foco.ids[0] = ganadora;
-      orb.update(PAR[0], { mood: colorInterpretacion(ganadora).mood, label: ganadora, sub: corto(significado(k, ganadora), g.largo) });
-    }
-    fundir([PAR[1 - j]], absorbe ?? PAR[j]);
-    orb.update(PAR[j], { mood: "success", sub: `${corto(termino, 12)} · ${nota}`, x: g.par.x });
+    let j = foco.ranuras.indexOf(ganadora);
+    if (j < 0) j = foco.ranuras.indexOf(null) >= 0 ? foco.ranuras.indexOf(null) : 0; // no estaba a la vista
+    // la ganadora en su esfera (si se había retirado o no estaba, vuelve a nacer del agente)
+    ponerIntencion(j, k, ganadora, { x: g.par.x, y: g.par.y });
+    if (foco.ranuras[1 - j] && orb.has(PAR[1 - j])) fundir([PAR[1 - j]], absorbe ?? PAR[j]);
+    foco.ranuras = j ? [null, ganadora] : [ganadora, null];
+    orb.update(PAR[j], { mood: "success", sub: `${corto(termino, 12)} · ${nota}` });
     orb.poke(0.8, PAR[j]);
     const visto = foco;
     despues(1200, () => { if (foco === visto) retirarPar("core"); }); // lo acordado queda en el sistema
@@ -226,11 +251,11 @@ export function crearCoreografia(orb, { estaciones = ESTACIONES_REQUISITO, bajar
       if (foco?.k !== k) mostrarPar(p.termino, idsDe(k), pares.get(k)?.similitud);
       hablar(m, ob.length ? `ronda ${m.ronda} · objeta ${ob.map((o) => `${o.interpretacion_id} (${o.regla})`).join(", ")}` : `ronda ${m.ronda} · sin objeciones`);
       for (const o of ob) {
-        const j = foco?.ids.indexOf(o.interpretacion_id) ?? -1;
+        const j = foco?.ranuras.indexOf(o.interpretacion_id) ?? -1;
         if (j < 0 || !orb.has(PAR[j])) continue;
         orb.update(PAR[j], { mood: "error" });
         orb.poke(-0.4, PAR[j]);
-        despues(1100, () => foco?.ids[j] === o.interpretacion_id && orb.update(PAR[j], { mood: colorInterpretacion(o.interpretacion_id).mood }));
+        despues(1100, () => foco?.ranuras[j] === o.interpretacion_id && orb.update(PAR[j], { mood: colorInterpretacion(o.interpretacion_id).mood }));
       }
       return ob.length ? 1500 : 1000;
     },
@@ -242,12 +267,13 @@ export function crearCoreografia(orb, { estaciones = ESTACIONES_REQUISITO, bajar
       hablar(m, m.emisor === "sistema" ? "sin objeciones: no hace falta refinar"
         : retiradas.length ? `retira ${retiradas.join(", ")}` : `ronda ${m.ronda} · ajusta los significados`);
       if (foco?.k === k) {
-        // la retirada vuelve al agente; las demás dicen su significado nuevo
-        foco.ids.forEach((id, j) => {
-          if (retiradas.includes(id)) fundir([PAR[j]], "agente");
-          else if (orb.has(PAR[j])) orb.update(PAR[j], { sub: corto(significado(k, id), g.largo) });
+        // la retirada vuelve al agente y deja libre su ranura; las demás dicen su significado nuevo
+        foco.ranuras = foco.ranuras.map((id, j) => {
+          if (!id) return null;
+          if (retiradas.includes(id)) { fundir([PAR[j]], "agente"); return null; }
+          if (orb.has(PAR[j])) orb.update(PAR[j], { sub: corto(significado(k, id), g.largo) });
+          return id;
         });
-        foco.ids = foco.ids.filter((id) => !retiradas.includes(id));
       }
       return 1200;
     },
@@ -278,6 +304,7 @@ export function crearCoreografia(orb, { estaciones = ESTACIONES_REQUISITO, bajar
       const p = m.payload;
       retirarPar("agente");
       if (p.automatica) { hablar(m, "sin conflictos: sigue solo"); return 900; }
+      orb.update("core", { sub: "recibió tu revisión" });
       const cambios = (p.terminos ?? []).filter((t) => t.cambio !== "ninguno").length;
       hablar(m, p.decision === "aprobar" ? `aprobó${cambios ? ` (${plural(cambios, "cambio", "cambios")})` : ""}` : "rechazó",
         { mood: p.decision === "aprobar" ? "success" : "error" });
@@ -374,13 +401,14 @@ export function crearCoreografia(orb, { estaciones = ESTACIONES_REQUISITO, bajar
       if (!montada) return;
       orb.setPose({ ...g.sistema });
       if (orb.has("agente")) orb.update("agente", { x: xDe(actual), y: g.yAgente, s: g.sAgente });
-      if (foco) mostrarPar(foco.termino, foco.ids, pares.get(foco.k)?.similitud);
+      colocarPar(); // sin rehacer el par: una resolución en curso sigue su curso
     },
 
     /* Para el riel de texto (Riel.jsx): la y del riel, la x de cada estación y cuál tiene el turno */
     riel() {
       if (!montada) return null;
       const r = geometria(estaciones, bajarMovil); // al día aunque la ventana acabe de cambiar
+      if (r.riel == null) return null;
       return {
         y: r.riel, actual: r.estacion[actual] ?? 0, nodo: actual,
         estaciones: estaciones.map((e, i) => ({ id: e.id, nombre: e.nombre, x: r.xs[i] })),
