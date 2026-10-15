@@ -1,26 +1,25 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { entrevistasDeProyecto, obtenerEntrevista } from "../../services/backend";
+import { useCache } from "../../hooks/useCache";
 
 /*
  * Las citas de la entrevista («E01:T3») que respaldan una meta o un requisito. Al tocarlas se
- * ve lo que se dijo en ese turno. `useCitas` reúne los turnos de las entrevistas listas.
+ * ve lo que se dijo en ese turno. `useCitas` reúne los turnos de las entrevistas listas; queda en
+ * la caché del proyecto (al pasar de metas a requisitos no se vuelve a descargar): la lista se
+ * revalida al montar y los turnos solo se piden otra vez si una entrevista cambió.
  */
+const SIN_TURNOS = {};
+
 export function useCitas(proyectoId) {
-  const [turnos, setTurnos] = useState({});
-  useEffect(() => {
-    let vivo = true;
-    entrevistasDeProyecto(proyectoId)
-      .then((ls) => Promise.all(ls.filter((e) => e.estado === "lista").map((e) => obtenerEntrevista(e.entrevista_id))))
-      .then((docs) => {
-        if (!vivo) return;
-        const m = {};
-        for (const d of docs) for (const t of d.turnos) m[`${d.entrevista_id}:T${t.n}`] = { hablante: t.hablante, texto: t.texto };
-        setTurnos(m);
-      })
-      .catch(() => {});
-    return () => { vivo = false; };
-  }, [proyectoId]);
-  return turnos;
+  const { datos: lista } = useCache(`${proyectoId}:entrevistas`, () => entrevistasDeProyecto(proyectoId));
+  const listas = (lista ?? []).filter((e) => e.estado === "lista");
+  const clave = lista && `${proyectoId}:turnos:${listas.map((e) => `${e.entrevista_id}@${e.actualizada}`).join(",")}`;
+  const { datos: turnos } = useCache(clave, () => Promise.all(listas.map((e) => obtenerEntrevista(e.entrevista_id))).then((docs) => {
+    const m = {};
+    for (const d of docs) for (const t of d.turnos) m[`${d.entrevista_id}:T${t.n}`] = { hablante: t.hablante, texto: t.texto };
+    return m;
+  }), { revalidar: false });
+  return turnos ?? SIN_TURNOS;
 }
 
 export default function Citas({ refs, turnos }) {

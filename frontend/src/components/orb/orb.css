@@ -5,7 +5,9 @@
  */
 
 /* ---- ambiente: la niebla sigue al orbe por la pantalla ---- */
-.orb-ambient{position:fixed;inset:-10%;z-index:0;pointer-events:none;overflow:hidden}
+/* El motor escribe aquí los colores mientras cambian (y en la raíz solo el final): su fondo
+   cubre el de la página y cambia suave sin recalcular los estilos de todo el documento */
+.orb-ambient{position:fixed;inset:-10%;z-index:0;pointer-events:none;overflow:hidden;background:var(--bg)}
 /* Un degradado radial ya es el halo: se pinta una vez y solo se mueve */
 .orb-fog{position:absolute;border-radius:50%;contain:strict;
   background:radial-gradient(closest-side,var(--fog-color) 0%,color-mix(in oklab,var(--fog-color) 55%,transparent) 45%,transparent 100%)}
@@ -38,13 +40,16 @@
 .orb-label-sub{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:12px;color:var(--bone-dim);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
   max-width:220px;white-space:normal;line-height:1.35}
 .orb-scene>*{grid-area:1/1}
-/* En móvil los nodos de la escena quedan a ~100 px: rótulos más estrechos para no encimarse */
+/* En móvil, rótulos más chicos; en la escena (cuatro esferas como máximo, :root[data-escena]),
+   de un renglón de detalle, para que el del agente no quede bajo el par en teléfonos bajos */
 @media (max-width:759px){
   .orb-label-name{font-size:9.5px;letter-spacing:.12em}
-  .orb-label-sub{font-size:10.5px;max-width:80px}
+  .orb-label-sub{font-size:10.5px;max-width:150px}
+  :root[data-escena] .orb-label-sub{-webkit-line-clamp:1}
 }
 
-.orb-waves{width:400px;height:400px;z-index:1;overflow:visible}
+/* Lienzo de 520 centrado en la caja de 400: las ondas se salen de la esfera al agitarse */
+.orb-waves{width:520px;height:520px;margin:-60px;z-index:1}
 .orb-backglow{width:380px;height:380px;border-radius:50%;z-index:2;
   background:radial-gradient(closest-side,var(--glow) 0%,var(--glowSoft) 45%,transparent 100%);
   opacity:var(--glowOp)}

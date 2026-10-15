@@ -122,10 +122,11 @@ export default function Analizar() {
     });
   }, [orb, fase, trabajando, arrastrando, origen, piezas.length, progreso.sub]);
   // mientras el Revisor trabaja, la esfera respira cambiando de color: se nota que sigue vivo
+  // (solo la esfera: el fondo no se repinta en cada respiro)
   useEffect(() => {
     if (!trabajando) return undefined;
     let i = 0;
-    const paso = () => { orb.setMood(RESPIRO[i++ % RESPIRO.length]); orb.poke(0.35); };
+    const paso = () => { orb.setMood(RESPIRO[i++ % RESPIRO.length], { ambiente: false }); orb.poke(0.35); };
     paso();
     const t = setInterval(paso, RESPIRO_MS);
     return () => clearInterval(t);
@@ -392,8 +393,8 @@ export default function Analizar() {
             autoFocus
             value={texto}
             onChange={(e) => setTexto(e.target.value)}
-            onFocus={() => orb.setMood("listening")}
-            onBlur={() => orb.setMood("idle")}
+            onFocus={() => orb.setMood("listening", { ambiente: false })}
+            onBlur={() => orb.setMood("idle", { ambiente: false })}
             onInput={() => orb.poke(0.05)}
             rows={10}
             placeholder={"1. El sistema debe…\n2. El usuario podrá…"}
@@ -452,8 +453,8 @@ export default function Analizar() {
                   value={p.texto}
                   rows={Math.max(1, Math.ceil(p.texto.length / 70))}
                   onChange={(e) => editar(i, e.target.value)}
-                  onFocus={() => orb.setMood("listening")}
-                  onBlur={() => orb.setMood("idle")}
+                  onFocus={() => orb.setMood("listening", { ambiente: false })}
+                  onBlur={() => orb.setMood("idle", { ambiente: false })}
                   className="min-w-0 flex-1 resize-none bg-transparent py-1.5 [field-sizing:content] text-[15px] leading-relaxed text-[var(--bone)] outline-none"
                 />
                 {p.advertencias?.length > 0 && (

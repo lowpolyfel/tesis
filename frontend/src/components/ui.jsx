@@ -36,13 +36,14 @@ export function Encabezado({ volver, antetitulo, titulo, children, acciones }) {
 
 /*
  * Pestañas. Al pasar el cursor, la esfera toma el tono de la pestaña: la sección
- * se anuncia antes de entrar.
+ * se anuncia antes de entrar. Es una vista previa: solo cambia la esfera, no el fondo
+ * (`ambiente: false`), que sigue siendo el de la sección.
  */
 export function Pestanas({ opciones, valor, onCambio, etiqueta }) {
   const orb = useOrb();
   const actual = opciones.find((o) => o.id === valor);
   return (
-    <div role="tablist" aria-label={etiqueta} className="pestanas" onPointerLeave={() => actual?.mood && orb.setMood(actual.mood)}>
+    <div role="tablist" aria-label={etiqueta} className="pestanas" onPointerLeave={() => actual?.mood && orb.setMood(actual.mood, { ambiente: false })}>
       {opciones.map((o) => (
         <button
           key={o.id}
@@ -50,7 +51,7 @@ export function Pestanas({ opciones, valor, onCambio, etiqueta }) {
           aria-selected={o.id === valor}
           className="pestana"
           onClick={() => onCambio(o.id)}
-          onPointerEnter={() => { if (o.mood) orb.setMood(o.mood); orb.poke(0.25); }}
+          onPointerEnter={() => { if (o.mood) orb.setMood(o.mood, { ambiente: false }); orb.poke(0.25); }}
         >
           {o.texto}{o.cuenta != null && <span className="ml-1.5 opacity-60">{o.cuenta}</span>}
         </button>
@@ -78,16 +79,22 @@ export function EstadoChip({ estado, className = "" }) {
   );
 }
 
-/* Sección plegada por omisión: lo técnico no está a la vista de primeras */
-export function Plegable({ titulo, nota, children, abierto = false, className = "" }) {
+/*
+ * Sección plegada por omisión: lo técnico no está a la vista de primeras. Con `alAbrir`, lo de
+ * adentro se monta la primera vez que se abre (para lo que cuesta dibujar, como un diagrama) y
+ * luego se queda montado.
+ */
+export function Plegable({ titulo, nota, children, abierto = false, alAbrir = false, className = "" }) {
+  const [visto, setVisto] = useState(abierto);
   return (
-    <details className={`plegable ${className}`} open={abierto}>
+    <details className={`plegable ${className}`} open={abierto}
+      onToggle={alAbrir && !visto ? (e) => e.currentTarget.open && setVisto(true) : undefined}>
       <summary className="flex items-center gap-3 py-2">
         <span className="flecha text-[var(--bone-faint)]" aria-hidden="true">▸</span>
         <span className="etiqueta text-[var(--bone-dim)]">{titulo}</span>
         {nota && <span className="text-[12px] text-[var(--bone-faint)]">{nota}</span>}
       </summary>
-      <div className="pt-3">{children}</div>
+      <div className="pt-3">{!alAbrir || visto ? children : null}</div>
     </details>
   );
 }

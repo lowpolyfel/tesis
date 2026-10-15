@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router";
 import { useApi } from "../../hooks/useApi";
+import { invalidarCache } from "../../hooks/useCache";
 import { borrarProyecto, fasesDeProyecto, obtenerProyecto, resumenProyecto } from "../../services/backend";
 import { FASES } from "../../constants/fases";
 import { olvidarProyecto, recordarProyecto } from "../../components/proyectoRecordado";
@@ -25,7 +26,9 @@ import Requisitos from "./Requisitos";
  *
  * Cada fase se abre cuando la anterior quedó validada (el camino lo dice). La fase va en
  * ?fase=; si no viene, se abre la que sigue. Mientras una entrevista se procesa, el estado
- * se refresca solo.
+ * se refresca solo: este es el único sondeo de /fases (las fases solo avisan con onCambio
+ * cuando algo cambió). Al terminar, lo que comparten las fases en la caché (léxico, turnos) se
+ * vuelve a pedir.
  */
 const SONDEO_MS = 2500;
 const IDS = FASES.map((f) => f.id);
@@ -53,6 +56,11 @@ export default function Proyecto() {
     const t = setInterval(recargar, SONDEO_MS);
     return () => clearInterval(t);
   }, [procesando, recargar]);
+  const procesaba = useRef(procesando);
+  useEffect(() => {
+    if (procesaba.current > procesando) invalidarCache(`${id}:`);
+    procesaba.current = procesando;
+  }, [procesando, id]);
 
   if (error) return <div className="space-y-4"><Volver a="/proyectos">Proyectos</Volver><Aviso error={error} /></div>;
   if (!p || !estado) return <Cargando>Cargando el proyecto…</Cargando>;

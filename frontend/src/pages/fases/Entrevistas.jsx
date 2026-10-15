@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { useApi } from "../../hooks/useApi";
+import { invalidarCache } from "../../hooks/useCache";
 import {
   borrarEntrevista, cancelarEntrevista, entrevistasDeProyecto, obtenerEntrevista, reprocesarEntrevista,
 } from "../../services/backend";
@@ -13,6 +14,9 @@ import { Aviso, Cargando, Chip, Confirmar, Plegable, Vacio } from "../../compone
  * proponen su LEL; aquí se ve en qué va, lo que anotó el Revisor (participantes,
  * problemas, necesidades, reglas) y sus turnos. Se puede ver a los agentes trabajar,
  * cancelar, volver a procesar lo que falló y borrar.
+ *
+ * Mientras alguna se procesa, la lista se sondea sola; el estado del camino (/fases) lo sondea
+ * el proyecto, y aquí solo se le avisa cuando cambia algo: una acción o el fin del trabajo.
  */
 const SONDEO_MS = 2000;
 const cuenta = (n, uno, otros) => `${n} ${n === 1 ? uno : otros}`;
@@ -23,9 +27,14 @@ export default function Entrevistas({ proyectoId, onCambio }) {
 
   useEffect(() => {
     if (!trabajando) return undefined;
-    const t = setInterval(() => { recargar(); onCambio?.(); }, SONDEO_MS);
+    const t = setInterval(recargar, SONDEO_MS);
     return () => clearInterval(t);
-  }, [trabajando, recargar, onCambio]);
+  }, [trabajando, recargar]);
+  const trabajaba = useRef(trabajando);
+  useEffect(() => {
+    if (trabajaba.current && !trabajando) { invalidarCache(`${proyectoId}:`); onCambio?.(); }
+    trabajaba.current = trabajando;
+  }, [trabajando, proyectoId, onCambio]);
 
   if (error) return <Aviso error={error} />;
   if (!lista) return <Cargando>Cargando las entrevistas…</Cargando>;
@@ -36,7 +45,7 @@ export default function Entrevistas({ proyectoId, onCambio }) {
       </Vacio>
     );
   }
-  const cambio = () => { recargar(); onCambio?.(); };
+  const cambio = () => { invalidarCache(`${proyectoId}:`); recargar(); onCambio?.(); };
   return (
     <ol className="space-y-4">
       {[...lista].reverse().map((e) => <Entrevista key={e.entrevista_id} e={e} proyectoId={proyectoId} onCambio={cambio} />)}

@@ -77,7 +77,7 @@ export default function Mapa({ proyectoId, requisitos, seleccion, onSeleccion })
           <Plegable titulo="Panorama" nota="acciones, restricciones y dependencias">
             <Panorama bp={bp} />
           </Plegable>
-          <Plegable titulo="Grafo completo" nota={`los ${bp.nodos.length} nodos y ${bp.aristas.length} relaciones de lo validado, para rastrear`}>
+          <Plegable titulo="Grafo completo" nota={`los ${bp.nodos.length} nodos y ${bp.aristas.length} relaciones de lo validado, para rastrear`} alAbrir>
             <GrafoCompleto bp={bp} metas={metas} nombre={`grafo-${proyectoId}${seleccion.length ? `-${seleccion.join("-")}` : ""}`} />
           </Plegable>
         </div>

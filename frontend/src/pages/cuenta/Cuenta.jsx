@@ -62,7 +62,7 @@ function Campo({ etiqueta, error, nota, ...props }) {
   return (
     <label className={`field${error ? " has-error" : ""}`}>
       <span className="field-label">{etiqueta}</span>
-      <input {...props} onFocus={() => orb.setMood("listening")} onBlur={() => orb.setMood("idle")} />
+      <input {...props} onFocus={() => orb.setMood("listening", { ambiente: false })} onBlur={() => orb.setMood("idle", { ambiente: false })} />
       <span className="field-msg">{error || nota || ""}</span>
     </label>
   );

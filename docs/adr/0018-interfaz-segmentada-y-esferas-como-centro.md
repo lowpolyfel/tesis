@@ -48,7 +48,8 @@ que es la identidad de Dudamel, quedaba como un emblema pequeño en una esquina.
      mitosis, en una esfera por destino (`components/orb/Orbita.jsx`).
    - En la escena en vivo cada agente nace por mitosis cuando interviene (ADR
      0016), y si la validación fue automática lo acordado pasa directo al
-     Modelador sin que aparezca la esfera humana.
+     Modelador sin que aparezca la esfera humana. *(Reemplazado por el ADR 0025:
+     un solo agente viaja por las estaciones del flujo; cuatro esferas como máximo.)*
 6. **Se mueve solo lo que significa algo.** Fuera de las esferas no hay
    animaciones: el grano es fijo y las pantallas entran con un fundido corto.
 

@@ -32,7 +32,7 @@ function estado(c) {
 const ms = (x) => (x == null ? null : `${x} ms`);
 
 export default function Conexion() {
-  const { datos: c, error, cargando, recargar } = useApi(probarConexion);
+  const { datos: c, error, cargando, recargar } = useApi(probarConexion, [], { silencioso: false });
 
   return (
     <div className="space-y-8">
@@ -41,7 +41,7 @@ export default function Conexion() {
         titulo="Conexión."
         acciones={(
           <button className="pill ghost sm" onClick={recargar} disabled={cargando}>
-            {cargando && c ? <><span className="gira" /> Probando…</> : "Probar otra vez"}
+            {cargando && (c || error) ? <><span className="gira" /> Probando…</> : "Probar otra vez"}
           </button>
         )}
       />

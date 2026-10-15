@@ -3,8 +3,25 @@
  * El resaltado no distingue mayúsculas ni acentos, y acepta el plural (consulta → consultas).
  */
 const sinAcentos = (s) => s.normalize("NFD").replace(/\p{Mn}/gu, "").toLowerCase();
+const LETRA = /\p{L}/u;
+
+/* El resaltado se calcula una vez por texto y términos: las tarjetas se vuelven a montar al
+   filtrar o buscar en el léxico, y normalizar y recorrer cada cita letra por letra cuesta */
+const resaltados = new Map();
+const MAX_RESALTADOS = 800;
 
 export function resaltar(texto, terminos) {
+  const clave = `${texto}\u0000${terminos.join("\u0001")}`;
+  let partes = resaltados.get(clave);
+  if (!partes) {
+    if (resaltados.size >= MAX_RESALTADOS) resaltados.clear();
+    partes = marcar(texto, terminos);
+    resaltados.set(clave, partes);
+  }
+  return partes;
+}
+
+function marcar(texto, terminos) {
   const base = sinAcentos(texto);
   const marcas = [];
   for (const t of terminos.filter(Boolean)) {
@@ -13,8 +30,8 @@ export function resaltar(texto, terminos) {
     let i = base.indexOf(raiz);
     while (i !== -1) {
       let fin = i + raiz.length;
-      while (fin < base.length && /[\p{L}]/u.test(base[fin])) fin++; // la palabra completa (plurales, flexiones)
-      if (i === 0 || !/[\p{L}]/u.test(base[i - 1])) marcas.push([i, fin]);
+      while (fin < base.length && LETRA.test(base[fin])) fin++; // la palabra completa (plurales, flexiones)
+      if (i === 0 || !LETRA.test(base[i - 1])) marcas.push([i, fin]);
       i = base.indexOf(raiz, fin);
     }
   }

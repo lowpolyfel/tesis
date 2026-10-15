@@ -65,7 +65,7 @@ export default function Mas() {
           <ul className="grid gap-3 sm:grid-cols-2">
             {g.items.map((x) => (
               <li key={x.a}>
-                <Link to={con(x.a)} onPointerEnter={() => orb.setMood(x.mood)} onPointerLeave={() => orb.setMood("sistema")}
+                <Link to={con(x.a)} onPointerEnter={() => orb.setMood(x.mood, { ambiente: false })} onPointerLeave={() => orb.setMood("sistema", { ambiente: false })}
                   className="tarjeta tarjeta-viva block h-full p-5">
                   <p className="serif text-[24px] leading-tight">{x.texto}</p>
                   <p className="mt-1.5 text-[14px] leading-relaxed text-[var(--bone-dim)]">{x.que}</p>

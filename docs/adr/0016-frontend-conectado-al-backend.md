@@ -28,7 +28,9 @@ y que se **viera qué hace cada agente**.
    esfera por nodo real del grafo (Extractor, Filtros, Clasificador,
    Divergencia, Crítico, Humano, Modelador), una por interpretación de cada
    término, y una partícula por mensaje. **Lo que no está en la traza no se
-   anima**: la escena no decide ni completa nada del método.
+   anima**: la escena no decide ni completa nada del método. *(Desde el ADR
+   0025 la escena tiene cuatro esferas como máximo —el sistema, el agente que
+   tiene el turno y el par de intenciones en debate—; el principio se mantiene.)*
 3. **Las vistas no recalculan.** Lo que la interfaz muestra por término, por
    proyecto (ambigüedades, flujo KMoS-SSA) y para la calibración viene ya armado
    del backend (`app/analisis`, ADR 0015; `app/calibracion`, ADR 0013). La

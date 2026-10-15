@@ -4,10 +4,11 @@ import { useOrb } from "../../components/orb/useOrb";
 import { isMobile } from "../../components/orb/poses";
 import { cancelarEntrevista, obtenerEntrevista, obtenerProyecto } from "../../services/backend";
 import { seguirEntrevista } from "../../services/eventos";
-import { ORDEN_NODOS_ENTREVISTA, nodo, tintaNodo } from "../../constants/agentes";
+import { ESTACIONES_ENTREVISTA, nodo, tintaNodo } from "../../constants/agentes";
 import { TERMINALES_ENTREVISTA, estadoEntrevista } from "../../constants/fases";
 import { COLUMNA_ESCENA, centroEscena, clave, crearCoreografia } from "../../escena/coreografia";
 import Preparacion from "../../escena/Preparacion";
+import Riel from "../../escena/Riel";
 import { useEnVivo } from "../../escena/useEnVivo";
 import { pasoSimple } from "../../escena/pasoSimple";
 import { resumenMensaje } from "../../escena/resumenMensaje";
@@ -17,11 +18,12 @@ import { Chip, Volver } from "../../components/ui";
  * La escena de la versión 2 (ADR 0024): los agentes procesan la entrevista completa.
  *
  * Primero la preparación (la esfera revisa el servidor, la base y los modelos). Luego la
- * esfera se divide en el Revisor, el Extractor, los Filtros, el Clasificador, la
- * Divergencia, el Crítico y el Modelador, y cada mensaje real de la bitácora viaja de su
- * emisor a su receptor (la misma coreografía de la versión 1). Las intenciones de un
- * término ambiguo nacen del Clasificador y se acercan o alejan según su similitud; si
- * debaten, el Crítico objeta; al final todo llega al Modelador, que escribe el léxico.
+ * misma coreografía de la versión 1 (escena/coreografia.js), con cuatro esferas como
+ * máximo: el Sistema arriba, con el cronómetro; el agente que tiene el turno, que viaja
+ * por las estaciones Entrevista, Intención, Discusión y Léxico (el riel de texto las
+ * nombra) con el tono y el nombre de quien habla; y, cuando un término se debate, el par
+ * de sus intenciones más distintas, que se acercan o alejan según su similitud y al
+ * final se funden en la que queda.
  *
  * A la derecha, cada término que va apareciendo y qué pasó con él. Al terminar, la
  * esfera se vuelve a fundir y queda el resumen con el paso siguiente: validar el léxico.
@@ -52,7 +54,7 @@ export default function EscenaEntrevista() {
     else setFase(terminada ? "division" : "preparacion");
   }, [fase, doc, params]);
 
-  const coreografia = useMemo(() => crearCoreografia(orb, { nodos: ORDEN_NODOS_ENTREVISTA }), [orb]);
+  const coreografia = useMemo(() => crearCoreografia(orb, { estaciones: ESTACIONES_ENTREVISTA }), [orb]);
   const vivo = useEnVivo(fase === "trabajo" || fase === "fusion" ? eid : null,
     { coreografia, ritmoInicial: 2, seguir: seguirEntrevista, pausa: null });
   const alDia = vivo.animados >= vivo.mensajes.length;
@@ -136,6 +138,7 @@ export default function EscenaEntrevista() {
         <Volver a={`/proyectos/${pid}?fase=entrevista`}>{nombre ?? "Proyecto"}</Volver>
       </div>
       {fase === "preparacion" && <Preparacion proyecto={pid} onListo={() => setFase("division")} />}
+      {fase === "trabajo" && <Riel coreografia={coreografia} />}
       {fase === "trabajo" && (
         <Columna doc={doc} vivo={vivo} lateral={lateral} cancelando={cancelando}
           onCancelar={TERMINALES_ENTREVISTA.includes(vivo.estado) ? null : cancelar} />
@@ -188,15 +191,16 @@ function terminosDe(mensajes) {
 }
 
 function Columna({ doc, vivo, lateral, cancelando, onCancelar }) {
-  const animados = vivo.mensajes.slice(0, vivo.animados);
+  const animados = useMemo(() => vivo.mensajes.slice(0, vivo.animados), [vivo.mensajes, vivo.animados]);
   const actual = animados.at(-1);
-  const terminos = terminosDe(animados);
+  const terminos = useMemo(() => terminosDe(animados), [animados]);
+  const [bitacora, setBitacora] = useState(false); // plegada no se dibuja
   const siguienteRitmo = RITMOS[(RITMOS.indexOf(vivo.ritmo) + 1) % RITMOS.length];
   const estilo = lateral ? { width: COLUMNA_ESCENA } : undefined;
   return (
     <aside className={lateral
       ? "aparece fixed top-24 right-4 bottom-4 z-20 flex flex-col overflow-hidden rounded-2xl border border-[var(--line)] bg-[color-mix(in_oklab,var(--bg)_92%,transparent)]"
-      : "aparece fixed inset-x-3 bottom-3 z-20 max-h-[42vh] overflow-y-auto rounded-2xl border border-[var(--line)] bg-[color-mix(in_oklab,var(--bg)_94%,transparent)]"}
+      : "aparece fixed inset-x-3 bottom-3 z-20 max-h-[42vh] overflow-y-auto [@media(max-height:720px)]:max-h-[33vh] rounded-2xl border border-[var(--line)] bg-[color-mix(in_oklab,var(--bg)_94%,transparent)]"}
     style={estilo}>
       <section className="border-b border-[var(--line)] px-5 py-4">
         <p className="mono text-[10px] text-[var(--bone-faint)]">
@@ -228,16 +232,18 @@ function Columna({ doc, vivo, lateral, cancelando, onCancelar }) {
             </li>
           ))}
         </ul>
-        <details className="plegable mt-5">
+        <details className="plegable mt-5" onToggle={(e) => setBitacora(e.currentTarget.open)}>
           <summary className="etiqueta py-1">Bitácora técnica</summary>
-          <ol className="mt-2 space-y-1.5">
-            {animados.map((m) => (
-              <li key={m.secuencia} className="text-[11.5px] leading-snug text-[var(--bone-dim)]">
-                <span className="mono text-[9px]" style={{ color: tintaNodo(m.emisor) }}>{m.secuencia} {nodo(m.emisor).nombre} → {nodo(m.receptor).nombre}</span>{" "}
-                {resumenMensaje(m)}
-              </li>
-            ))}
-          </ol>
+          {bitacora && (
+            <ol className="mt-2 space-y-1.5">
+              {animados.map((m) => (
+                <li key={m.secuencia} className="text-[11.5px] leading-snug text-[var(--bone-dim)]">
+                  <span className="mono text-[9px]" style={{ color: tintaNodo(m.emisor) }}>{m.secuencia} {nodo(m.emisor).nombre} → {nodo(m.receptor).nombre}</span>{" "}
+                  {resumenMensaje(m)}
+                </li>
+              ))}
+            </ol>
+          )}
         </details>
       </section>
     </aside>

@@ -145,7 +145,7 @@ export function NuevoProyecto({ onCancelar }) {
         <span className="etiqueta">Contexto general <span className="normal-case tracking-normal">(recomendado)</span></span>
         <textarea
           value={contexto} maxLength={CONTEXTO_MAX} rows={4} onChange={(e) => setContexto(e.target.value)}
-          onFocus={() => orb.setMood("listening")} onBlur={() => orb.setMood("idle")}
+          onFocus={() => orb.setMood("listening", { ambiente: false })} onBlur={() => orb.setMood("idle", { ambiente: false })}
           className="campo text-[14.5px]"
           placeholder="¿De qué trata el sistema? ¿Quién lo usa? ¿Cómo hablan en ese trabajo? Ej.: Consultorio médico de una doctora con su asistente en Ciudad Juárez; agendan citas y registran consultas."
         />
