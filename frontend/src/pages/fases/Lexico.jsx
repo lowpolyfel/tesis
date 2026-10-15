@@ -1,5 +1,6 @@
-import { useRef, useState } from "react";
+import { memo, useCallback, useDeferredValue, useMemo, useRef, useState } from "react";
 import { useApi } from "../../hooks/useApi";
+import { invalidarCache } from "../../hooks/useCache";
 import {
   agregarTermino, corregirTermino, descartarTermino, lexicoDeProyecto, olvidarAcuerdo, restaurarTermino,
   validarSinAmbiguedad, validarTermino,
@@ -43,6 +44,17 @@ const pasa = {
 };
 const lineas = (t) => t.split("\n").map((x) => x.trim()).filter(Boolean);
 
+/* El mismo resumen que arma el backend (`resumen` en app/fases/lexico.py): al cambiar un término
+   se cuenta aquí, sin volver a pedir todo el léxico */
+function resumenDe(entradas) {
+  const cuenta = Object.fromEntries(["propuesto", "validado", "corregido", "descartado"].map((k) => [k, entradas.filter((x) => x.estado === k).length]));
+  return {
+    ...cuenta, total: entradas.length, vigentes: entradas.length - cuenta.descartado,
+    ambiguos: entradas.filter((x) => x.ambiguedad && x.estado !== "descartado").length,
+    completo: entradas.length > 0 && cuenta.propuesto === 0 && entradas.length > cuenta.descartado,
+  };
+}
+
 export default function Lexico({ proyectoId, estado, onCambio, onSeguir }) {
   const orb = useOrb();
   const { datos, setDatos, error, recargar } = useApi(() => lexicoDeProyecto(proyectoId), [proyectoId]);
@@ -51,10 +63,36 @@ export default function Lexico({ proyectoId, estado, onCambio, onSeguir }) {
   const [agregando, setAgregando] = useState(false);
   const [enBloque, setEnBloque] = useState(false);
   const moodSeccion = seccion("lexico").mood;
+  // el buscador responde al teclear; la lista se filtra después, sin trabar la escritura
+  const qDiferida = useDeferredValue(q);
+  const entradas = datos?.entradas;
+  // el texto en el que se busca, sin acentos, una vez por entrada
+  const buscable = useMemo(() => new Map((entradas ?? []).map((e) => [e, sinAcentos(`${e.simbolo} ${e.terminos?.join(" ")} ${e.intencion}`)])), [entradas]);
+  const cuentas = useMemo(() => Object.fromEntries(FILTROS.map(([id]) => [id, (entradas ?? []).filter(pasa[id]).length])), [entradas]);
+  const activo = filtro ?? (datos?.resumen.propuesto ? "pendientes" : "todos");
+  const visibles = useMemo(() => {
+    const f = sinAcentos(qDiferida.trim());
+    return (entradas ?? []).filter((e) => pasa[activo](e) && (!f || buscable.get(e).includes(f)));
+  }, [entradas, buscable, activo, qDiferida]);
+
+  /* una entrada cambió: se reemplaza en el sitio y el resumen se cuenta aquí (las demás tarjetas no
+     se vuelven a pintar). Solo si tocó lo que aprendió el sistema (validar una ambigua, corregir,
+     descartar, restaurar) se vuelve a pedir el léxico, por los acuerdos. Se avisa al camino. */
+  const alCambiar = useCallback((nueva, previa) => {
+    setDatos((d) => {
+      const nuevas = d.entradas.map((x) => (x.entrada_id === nueva.entrada_id ? nueva : x));
+      return { ...d, entradas: nuevas, resumen: resumenDe(nuevas) };
+    });
+    if (nueva.aprendida || previa?.aprendida) recargar();
+    invalidarCache(`${proyectoId}:lexico`);
+    onCambio?.();
+  }, [setDatos, recargar, onCambio, proyectoId]);
+  /* cambió más de una entrada (en bloque, agregar, olvidar un acuerdo): se vuelve a pedir todo */
+  const alCambiarTodo = () => { recargar(); invalidarCache(`${proyectoId}:lexico`); onCambio?.(); };
 
   if (error) return <Aviso error={error} />;
   if (!datos) return <Cargando>Cargando el léxico…</Cargando>;
-  const { entradas, resumen, acuerdos, procesando } = datos;
+  const { resumen, acuerdos, procesando } = datos;
   const fase = estado?.fases.find((f) => f.id === "lexico");
   if (!entradas.length) {
     return (
@@ -66,19 +104,8 @@ export default function Lexico({ proyectoId, estado, onCambio, onSeguir }) {
     );
   }
 
-  const activo = filtro ?? (resumen.propuesto ? "pendientes" : "todos");
-  const f = sinAcentos(q.trim());
-  const visibles = entradas.filter((e) => pasa[activo](e)
-    && (!f || sinAcentos(`${e.simbolo} ${e.terminos?.join(" ")} ${e.intencion}`).includes(f)));
   const sinAmbiguedad = entradas.filter((e) => e.estado === "propuesto" && !e.ambiguedad).length;
   const hechos = resumen.validado + resumen.corregido;
-
-  /* una entrada cambió: se reemplaza en el sitio (sin recargar toda la lista) y se avisa al camino */
-  const alCambiar = (nueva) => {
-    setDatos((d) => ({ ...d, entradas: d.entradas.map((x) => (x.entrada_id === nueva.entrada_id ? nueva : x)) }));
-    recargar();
-    onCambio?.();
-  };
 
   return (
     <div className="space-y-6">
@@ -106,14 +133,11 @@ export default function Lexico({ proyectoId, estado, onCambio, onSeguir }) {
 
       <div className="flex flex-wrap items-center gap-2">
         <div role="tablist" aria-label="Qué términos ver" className="pestanas">
-          {FILTROS.map(([id, texto]) => {
-            const n = entradas.filter(pasa[id]).length;
-            return (
-              <button key={id} role="tab" aria-selected={activo === id} className="pestana" onClick={() => setFiltro(id)}>
-                {texto}<span className="ml-1.5 opacity-60">{n}</span>
-              </button>
-            );
-          })}
+          {FILTROS.map(([id, texto]) => (
+            <button key={id} role="tab" aria-selected={activo === id} className="pestana" onClick={() => setFiltro(id)}>
+              {texto}<span className="ml-1.5 opacity-60">{cuentas[id]}</span>
+            </button>
+          ))}
         </div>
         {entradas.length > 8 && (
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar…" aria-label="Buscar en el léxico"
@@ -137,7 +161,7 @@ export default function Lexico({ proyectoId, estado, onCambio, onSeguir }) {
             await validarSinAmbiguedad(proyectoId);
             orb.setMood("success"); orb.poke(1);
             setTimeout(() => orb.setMood(moodSeccion), 1200);
-            setEnBloque(false); recargar(); onCambio?.();
+            setEnBloque(false); alCambiarTodo();
           }}
         />
       )}
@@ -146,22 +170,23 @@ export default function Lexico({ proyectoId, estado, onCambio, onSeguir }) {
           const e = await agregarTermino(proyectoId, valores);
           setAgregando(false);
           setDatos((d) => ({ ...d, entradas: [e, ...d.entradas] }));
-          recargar(); onCambio?.();
+          alCambiarTodo();
         }} />}
 
       <ol className="space-y-4">
         {visibles.map((e) => <Termino key={e.entrada_id} e={e} moodSeccion={moodSeccion} onCambio={alCambiar} />)}
       </ol>
-      {!visibles.length && <p className="text-[14px] text-[var(--bone-faint)]">{q ? `Nada coincide con «${q}».` : "No hay términos aquí."}</p>}
+      {!visibles.length && <p className="text-[14px] text-[var(--bone-faint)]">{qDiferida ? `Nada coincide con «${qDiferida}».` : "No hay términos aquí."}</p>}
 
-      <Memoria acuerdos={acuerdos} onOlvidar={async (a) => { await olvidarAcuerdo(a.aprendizaje_id); recargar(); onCambio?.(); }} />
+      <Memoria acuerdos={acuerdos} onOlvidar={async (a) => { await olvidarAcuerdo(a.aprendizaje_id); alCambiarTodo(); }} />
     </div>
   );
 }
 
 /* ---------------------------------------------------------------- un término */
 
-function Termino({ e, moodSeccion, onCambio }) {
+/* memo: al validar uno, o al teclear en el buscador, las demás tarjetas no se vuelven a pintar */
+const Termino = memo(function Termino({ e, moodSeccion, onCambio }) {
   const orb = useOrb();
   const ref = useRef(null);
   const [modo, setModo] = useState(null); // null | {alternativa} (corregir)
@@ -177,7 +202,7 @@ function Termino({ e, moodSeccion, onCambio }) {
     try {
       const nueva = await fn();
       volarALaEsfera(orb, ref.current, { moodSeccion, ...vuelo });
-      onCambio(nueva);
+      onCambio(nueva, e);
     } catch (x) {
       setError(x);
     } finally {
@@ -202,7 +227,7 @@ function Termino({ e, moodSeccion, onCambio }) {
             const nueva = await corregirTermino(e.entrada_id, cambios, modo.alternativa ?? null);
             setModo(null);
             volarALaEsfera(orb, ref.current, { mood: "aprende", etiqueta: "✎", moodSeccion, aprendio: `«${nueva.simbolo}»` });
-            onCambio(nueva);
+            onCambio(nueva, e);
           }}
         />
       </li>
@@ -308,7 +333,7 @@ function Termino({ e, moodSeccion, onCambio }) {
       )}
     </li>
   );
-}
+});
 
 function textoHistorial(h) {
   const quien = h.autor === "persona" ? "Tú" : h.autor === "agentes" ? "Los agentes" : "El sistema";

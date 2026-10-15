@@ -10,7 +10,17 @@
  *   s:       escala (1 = esfera de 218 px)
  *   deriva:  amplitud (fracción del alto) de un vaivén lento a lo largo del borde
  *   onClick: la esfera se puede tocar (la principal abre el menú)
+ *
+ * setMood(mood, { revertAfter, ambiente = true }): tono de la esfera principal. Con
+ *   `ambiente: false` solo cambia la esfera; el fondo y la niebla se quedan como están
+ *   (vistas previas al pasar el cursor: el fondo de toda la página no parpadea).
+ *   `revertAfter` (ms) la regresa a "idle".
+ * update(id, patch): los rótulos (label, sub, desde, onClick) solo provocan un render de
+ *   React si de verdad cambiaron; cada cambio sube `rev` de esa esfera.
  */
+// Lo único de una esfera que dibuja React
+const VISIBLES = ["label", "sub", "desde", "onClick"];
+
 export function createOrbController() {
   const elevadores = new Set();
   const bodies = new Map();
@@ -21,7 +31,8 @@ export function createOrbController() {
   const emit = () => listeners.forEach((fn) => fn());
   let moodTimer;
 
-  bodies.set("core", { id: "core", mood: "idle", target: { x: 0, y: 0, s: 0 }, kick: 0 });
+  // rev: sube cada vez que cambia algo que React dibuja (rótulos, cronómetro, si se puede tocar)
+  bodies.set("core", { id: "core", mood: "idle", target: { x: 0, y: 0, s: 0 }, kick: 0, rev: 0 });
   const core = () => bodies.get("core");
 
   const api = {
@@ -36,7 +47,7 @@ export function createOrbController() {
     setPose(pose) {
       core().target = { ...core().target, deriva: 0, ...pose }; // sin deriva salvo que la pose la pida
     },
-    setMood(mood, { revertAfter } = {}) {
+    setMood(mood, { revertAfter, ambiente = true } = {}) {
       clearTimeout(moodTimer);
       const c = core();
       if (mood !== c.mood) {
@@ -44,8 +55,8 @@ export function createOrbController() {
         if (mood === "error") c.kick -= 0.7; // se encoge un instante, como un respingo
       }
       c.mood = mood;
-      state.ambient = mood;
-      if (revertAfter) moodTimer = setTimeout(() => { c.mood = "idle"; state.ambient = "idle"; }, revertAfter);
+      if (ambiente) state.ambient = mood;
+      if (revertAfter) moodTimer = setTimeout(() => { c.mood = "idle"; if (ambiente) state.ambient = "idle"; }, revertAfter);
     },
     setAmbient(mood) {
       state.ambient = mood;
@@ -84,6 +95,7 @@ export function createOrbController() {
           fuseInto: null,
           spawnFrom: prev && !prev.fuseInto ? null : parentId,
           target: { x: ch.x, y: ch.y, s: ch.s },
+          rev: (prev?.rev ?? 0) + 1,
         });
       }
       if (parent) parent.kick += conMembrana ? 0.9 : 0.25;
@@ -110,11 +122,16 @@ export function createOrbController() {
       const b = bodies.get(id);
       if (!b) return;
       const { x, y, s, ...rest } = patch;
+      // lo demás (ánimo, active, dim…) lo lee el motor en cada cuadro, sin pasar por React
+      const cambio = VISIBLES.some((k) => k in rest && rest[k] !== b[k]);
       Object.assign(b, rest);
       if (x != null || y != null || s != null) {
         b.target = { ...b.target, x: x ?? b.target.x, y: y ?? b.target.y, s: s ?? b.target.s };
       }
-      if ("label" in patch || "desde" in patch || "sub" in patch || "onClick" in patch) emit();
+      if (cambio) {
+        b.rev = (b.rev ?? 0) + 1;
+        emit();
+      }
     },
 
     /* Lo llama el motor cuando una esfera terminó de fusionarse */

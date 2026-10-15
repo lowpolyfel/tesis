@@ -41,7 +41,8 @@ y nunca se desmonta: cada pantalla solo le dice dónde estar y qué hacer
 - **Es el menú.** Tocarla (o «Menú») la lleva al centro y la divide en una esfera
   por destino (`components/orb/Orbita.jsx`); Esc o un clic fuera las vuelve a
   fundir.
-- **En la escena** se divide en los agentes conforme intervienen.
+- **En la escena** se divide en cuatro esferas como máximo: el sistema, el agente
+  que tiene el turno y las dos intenciones en debate (ADR 0025).
 
 Fuera de las esferas no hay animaciones: el grano es fijo y las pantallas entran
 con un fundido corto.
@@ -54,8 +55,8 @@ con un fundido corto.
   llena al validarse.
 - **Recibe la entrevista**: se suelta el PDF sobre la esfera (`pages/fases/NuevaEntrevista.jsx`).
 - **La procesa en escena** (`pages/fases/EscenaEntrevista.jsx`): la misma coreografía de
-  la versión 1 con otro orden de nodos (Revisor, Extractor, Filtros, Clasificador,
-  Divergencia, Crítico, Modelador) y la bitácora de la entrevista por SSE.
+  la versión 1 con otras estaciones (Entrevista, Intención, Discusión, Léxico) y la
+  bitácora de la entrevista por SSE.
 - **Aprende**: lo que la persona valida o corrige en el léxico, las metas o los requisitos
   viaja como una esfera pequeña de la tarjeta a la esfera grande
   (`components/fases/vuelo.js`); si el sistema aprendió un acuerdo, la esfera toma el tono
@@ -76,15 +77,17 @@ Si todos los requisitos ya terminaron, se salta.
 `/analisis` sigue cada requisito por SSE (`GET /eventos/{req_id}`) y anima
 **los mensajes reales de la traza**, en orden (`escena/coreografia.js`):
 
-- una esfera por nodo del grafo (Extractor, Filtros, Clasificador, Divergencia,
-  Crítico, Humano y Modelador) que nace por mitosis la primera vez que
-  interviene; la esfera principal es el sistema;
-- cada mensaje viaja como una partícula del emisor al receptor;
-- las interpretaciones de cada término nacen por mitosis del Clasificador y se
-  agrupan bajo la Divergencia, más cerca cuanto más se parecen;
-- retirar una interpretación la devuelve al Clasificador; en el consenso se
-  funden; en el arbitraje el Crítico absorbe las demás; si la validación fue
-  automática (ADR 0017) lo acordado pasa directo al Modelador.
+- cuatro esferas como máximo (ADR 0025). La principal es el **sistema**, arriba,
+  con el cronómetro;
+- el **agente** es una sola esfera que viaja por las estaciones del flujo
+  (Requisito, Interpretación, Discusión, Validación y Formalización en la v1;
+  Entrevista, Intención, Discusión y Léxico en la v2, `escena/Riel.jsx`). Toma el
+  tono y el nombre de quien emite cada mensaje («Extractor → Filtros») y dice lo
+  esencial en su subtítulo; su viaje es el mensaje;
+- el **par**: las dos intenciones más distintas del término en debate
+  (`par_minimo` de la divergencia), más cerca cuanto más se parecen. Si una se
+  retira vuelve al agente; en el consenso se funden en la propuesta; en el
+  arbitraje el Crítico absorbe la otra; lo acordado entra al sistema.
 
 En escritorio los requisitos van en una columna vertical a la derecha (el que
 se analiza arriba, con su paso actual, y la lista del lote con su estado) y las
@@ -152,7 +155,12 @@ Sin datos de ejemplo: todo sale del backend y cada cuenta empieza sin proyectos.
 La sesión es una cookie HttpOnly del backend (`credentials: "include"`), así que
 el origen del frontend debe estar en `CORS_ORIGENES`.
 
-Rendimiento (ADR 0019): lo que se anima en cada cuadro solo cambia `transform`
+Rendimiento (ADR 0019 y 0025): lo que se anima en cada cuadro solo cambia `transform`
 u `opacity`. No uses `backdrop-filter`, filtros SVG ni `mix-blend-mode` sobre
 algo que se mueva o que tenga la esfera detrás: obligan a repintar áreas
-grandes en cada cuadro.
+grandes en cada cuadro. Las ondas de cada esfera se dibujan en un `<canvas>`
+desde un worker (`components/orb/geometry.js`, con `OffscreenCanvas`; sin él,
+en el hilo principal). El color del ambiente se interpola solo en `.orb-ambient`:
+la raíz recibe el valor final una vez por cambio, porque cada variable escrita en
+`<html>` recalcula los estilos de todo el documento. Las vistas previas al pasar
+el cursor usan `setMood(m, { ambiente: false })`: cambian la esfera, no el fondo.

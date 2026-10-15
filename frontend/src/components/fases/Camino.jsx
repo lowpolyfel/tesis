@@ -6,7 +6,8 @@ import { FASES, seccionDeFase } from "../../constants/fases";
  * El camino del proyecto (ADR 0024): las cinco fases en orden, cada una con su esfera
  * pequeña en el tono de la fase. Una fase hecha (validada) lleva ✓; una que todavía no se
  * abre se ve apagada y dice por qué. Al pasar el cursor, la esfera grande toma el tono de
- * la fase, como con las pestañas.
+ * la fase, como con las pestañas: solo la esfera (`ambiente: false`); el fondo sigue siendo
+ * el de la fase actual.
  *   fases: [{id, disponible, hecho, motivo, …}] de GET /proyectos/{id}/fases
  */
 export function estadoCorto(f) {
@@ -32,7 +33,7 @@ export default function Camino({ fases, actual, onElegir }) {
   const porId = Object.fromEntries((fases ?? []).map((f) => [f.id, f]));
   const moodActual = seccion(seccionDeFase(actual)).mood;
   return (
-    <nav aria-label="Fases del proyecto" onPointerLeave={() => orb.setMood(moodActual)}>
+    <nav aria-label="Fases del proyecto" onPointerLeave={() => orb.setMood(moodActual, { ambiente: false })}>
       <ol className="camino">
         {FASES.map((f, i) => {
           const info = porId[f.id];
@@ -46,7 +47,7 @@ export default function Camino({ fases, actual, onElegir }) {
                 aria-current={elegida ? "step" : undefined}
                 title={!abierta ? info?.motivo ?? "" : f.que}
                 onClick={() => onElegir(f.id)}
-                onPointerEnter={() => { orb.setMood(seccion(seccionDeFase(f.id)).mood); orb.poke(0.25); }}
+                onPointerEnter={() => { orb.setMood(seccion(seccionDeFase(f.id)).mood, { ambiente: false }); orb.poke(0.25); }}
                 style={{ "--tono": f.tono }}
               >
                 <span className={`esferita ${hecho ? "hecha" : ""}`} aria-hidden="true">{hecho ? "✓" : i + 1}</span>

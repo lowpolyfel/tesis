@@ -122,8 +122,8 @@ export default function Requisitos({ r, onElegir, onCambio }) {
               const destino = q.estado === E.PENDIENTE_VALIDACION ? `/requisitos/${q.req_id}/validacion` : `/requisitos/${q.req_id}`;
               return (
                 <li key={q.req_id}
-                  onPointerEnter={() => orb.setMood(MOOD_SIMPLE[estadoSimple(q.estado).id])}
-                  onPointerLeave={() => orb.setMood(seccion("requisitos").mood)}
+                  onPointerEnter={() => orb.setMood(MOOD_SIMPLE[estadoSimple(q.estado).id], { ambiente: false })}
+                  onPointerLeave={() => orb.setMood(seccion("requisitos").mood, { ambiente: false })}
                   className="flex items-start gap-4 px-4 py-3.5 transition-colors hover:bg-white/[0.03]">
                   <input type="checkbox" aria-label={`Elegir ${q.req_id}`} className="casilla mt-1" checked={elegidos.has(q.req_id)} onChange={() => alternar(q.req_id)} />
                   <button onClick={() => navigate(destino)} className="flex min-w-0 flex-1 flex-col gap-1.5 text-left sm:flex-row sm:items-baseline sm:gap-4">

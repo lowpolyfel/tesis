@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { useApi } from "../../hooks/useApi";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCache } from "../../hooks/useCache";
 import { lexicoDeProyecto, urlMermaidMapa } from "../../services/backend";
 import { seccion } from "../../components/orb/secciones";
 import EditorMapa from "../../components/fases/EditorMapa";
@@ -16,7 +16,7 @@ import { Aviso, Cargando, Plegable } from "../../components/ui";
  */
 export default function Mapa({ proyectoId, onCambio, onSeguir }) {
   const { vista, setVista, error, guardar, conservar, recargar } = useFase(proyectoId, "mapa", onCambio);
-  const { datos: lex } = useApi(() => lexicoDeProyecto(proyectoId), [proyectoId]);
+  const { datos: lex } = useCache(`${proyectoId}:lexico`, () => lexicoDeProyecto(proyectoId)); // compartido con las demás fases
   const [generando, setGenerando] = useState(false);
   const [completa, setCompleta] = useState(false);
   const [version, setVersion] = useState(0); // el editor se vuelve a montar con un mapa nuevo
@@ -30,13 +30,15 @@ export default function Mapa({ proyectoId, onCambio, onSeguir }) {
   }, [completa]);
 
   const alGuardar = useCallback((contenido) => guardar(contenido), [guardar]);
+  const alternarCompleta = useCallback(() => setCompleta((x) => !x), []);
+  // la misma lista mientras el léxico no cambie: el editor no se vuelve a pintar con cada guardado
+  const simbolosLel = useMemo(() => (lex?.entradas ?? []).filter((e) => ["validado", "corregido"].includes(e.estado))
+    .map((e) => ({ simbolo: e.simbolo, tipo: e.tipo, intencion: e.intencion }))
+    .sort((a, b) => a.simbolo.localeCompare(b.simbolo, "es")), [lex]);
 
   if (error) return <Aviso error={error} />;
   if (!vista || !lex) return <Cargando>Cargando el mapa…</Cargando>;
   const doc = vista.documento;
-  const simbolosLel = lex.entradas.filter((e) => ["validado", "corregido"].includes(e.estado))
-    .map((e) => ({ simbolo: e.simbolo, tipo: e.tipo, intencion: e.intencion }))
-    .sort((a, b) => a.simbolo.localeCompare(b.simbolo, "es"));
 
   const generacion = generando && (
     <GeneracionFase proyectoId={proyectoId} fase="mapa" seccionId="mapa" moodGenerando="mapa_generando" moodSeccion={sec.mood}
@@ -61,9 +63,9 @@ export default function Mapa({ proyectoId, onCambio, onSeguir }) {
       {!vista.al_dia && <Desactualizado que="el mapa" onRegenerar={() => setGenerando(true)} onConservar={conservar} />}
       {vista.hecho && <Hecho texto="El mapa conceptual está validado. Con él y el léxico, los agentes proponen las metas." accion="Seguir a las metas" onAccion={onSeguir} />}
       <EditorMapa key={`${doc.generado}-${version}`} inicial={doc.contenido} simbolosLel={simbolosLel} onGuardar={alGuardar}
-        completa={completa} onCompleta={() => setCompleta((x) => !x)} />
+        completa={completa} onCompleta={alternarCompleta} />
       <Avisos avisos={doc.avisos} />
-      <Plegable titulo="Exportar" nota="PNG, SVG o Mermaid">
+      <Plegable titulo="Exportar" nota="PNG, SVG o Mermaid" alAbrir>
         <ExportarMapa proyectoId={proyectoId} actualizado={doc.actualizado} />
       </Plegable>
       <Historial doc={doc} />
@@ -73,7 +75,8 @@ export default function Mapa({ proyectoId, onCambio, onSeguir }) {
   );
 }
 
-/* El mapa guardado como Mermaid (lo arma el backend), dibujado para descargarlo */
+/* El mapa guardado como Mermaid (lo arma el backend), dibujado para descargarlo. Se monta al abrir
+   «Exportar»: dibujarlo (Mermaid con ELK) cuesta y casi nunca se abre */
 function ExportarMapa({ proyectoId, actualizado }) {
   const [mermaid, setMermaid] = useState(null);
   const [error, setError] = useState(null);

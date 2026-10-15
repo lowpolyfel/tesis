@@ -3,9 +3,13 @@
  * mensaje en orden con un ritmo legible. Los mensajes llegan a veces de golpe
  * (al reabrir un requisito terminado, o si los LLM responden rápido): la cola
  * los reparte en el tiempo; `acelerar()` vacía la cola sin pausas, aplicando
- * cada mensaje a la escena para que quede como dice la traza. En
+ * cada mensaje a la escena para que quede como dice la traza. La coreografía
+ * recibe el ritmo para que sus pasos diferidos duren lo mismo a 2× o a 4×. En
  * pendiente_validacion el SSE se cierra: nada cambia hasta que una persona
  * valide, y una conexión retenida por pestaña agota las del navegador.
+ *
+ * Lo que llega por el SSE se junta y se vuelca una vez por cuadro: al reabrir algo
+ * terminado llegan decenas de eventos seguidos y cada uno sería un render.
  *
  * `seguir` cambia la fuente (una entrevista en la versión 2: seguirEntrevista) y `pausa` el estado
  * en que se deja de escuchar.
@@ -41,6 +45,21 @@ export function useEnVivo(reqId, { coreografia = null, ritmoInicial = 1, seguir 
     let vivo = true;
     let despertar = null;
     const avisar = () => { despertar?.(); despertar = null; };
+    // mensajes y estados en el orden en que llegaron; pasan a la lista y a la cola juntos
+    let llegados = [];
+    let cuadro = 0;
+    const volcar = () => {
+      cuadro = 0;
+      const nuevos = llegados.filter((x) => !x.estado);
+      if (nuevos.length) setMensajes((l) => [...l, ...nuevos]);
+      cola.push(...llegados);
+      llegados = [];
+      avisar();
+    };
+    const recibir = (x) => {
+      llegados.push(x);
+      if (!cuadro) cuadro = requestAnimationFrame(volcar);
+    };
 
     (async () => {
       while (vivo) {
@@ -56,7 +75,7 @@ export function useEnVivo(reqId, { coreografia = null, ritmoInicial = 1, seguir 
           continue;
         }
         const saltando = saltarRef.current;
-        const dur = coreografia ? coreografia.aplicar(item, { rapido: saltando }) : 0;
+        const dur = coreografia ? coreografia.aplicar(item, { rapido: saltando, ritmo: ritmoRef.current }) : 0;
         setAnimados((n) => n + 1);
         if (dur && !saltando) await espera(dur / Math.max(0.25, ritmoRef.current));
         if (!cola.length) saltarRef.current = false;
@@ -67,19 +86,16 @@ export function useEnVivo(reqId, { coreografia = null, ritmoInicial = 1, seguir 
       onMensaje: (m) => {
         if (recibidos.has(m.secuencia)) return; // reconexión: el mismo mensaje no se anima dos veces
         recibidos.add(m.secuencia);
-        setMensajes((l) => [...l, m]);
-        cola.push(m);
-        avisar();
+        recibir(m);
       },
       onEstado: (d) => {
-        cola.push({ estado: d.estado });
-        avisar();
+        recibir({ estado: d.estado });
         if (d.estado === pausa) detener(); // ya llegaron todos sus mensajes
       },
-      onFin: (d) => { cola.push({ estado: d.estado, fin: true }); avisar(); },
+      onFin: (d) => recibir({ estado: d.estado, fin: true }),
       onError: (e) => setError(e),
     });
-    return () => { vivo = false; avisar(); detener(); };
+    return () => { vivo = false; cancelAnimationFrame(cuadro); avisar(); detener(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reqId, coreografia]);
 

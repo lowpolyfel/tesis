@@ -139,10 +139,11 @@ veces en desarrollo; la persona puede volver a la pantalla).
 - Cada fase es una sección con su tono (entrevista rosa durazno, léxico cian, mapa turquesa,
   metas oro, requisitos verde); el camino del proyecto las dibuja como esferas pequeñas que
   se llenan al validarse.
-- La esfera **recibe** la entrevista (se suelta el PDF sobre ella) y la **procesa en escena**:
-  se divide en el Revisor, el Extractor, los Filtros, el Clasificador, la Divergencia, el
-  Crítico y el Modelador; las intenciones de un término ambiguo nacen del Clasificador y se
-  acercan o alejan según su similitud.
+- La esfera **recibe** la entrevista (se suelta el PDF sobre ella) y la **procesa en escena**
+  con cuatro esferas como máximo (ADR 0025): el sistema; el agente que tiene el turno, que
+  viaja por las estaciones Entrevista, Intención, Discusión y Léxico con el tono y el nombre
+  de quien habla; y las dos intenciones más distintas de un término ambiguo, que se acercan o
+  alejan según su similitud.
 - En la validación, lo que la persona valida o corrige **viaja como una esfera pequeña** de la
   tarjeta a la esfera grande; si el sistema aprendió algo, la esfera toma el tono «aprende» y
   dice qué aprendió.

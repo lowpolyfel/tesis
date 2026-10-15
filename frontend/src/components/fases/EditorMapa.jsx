@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BaseEdge, ConnectionMode, Controls, EdgeLabelRenderer, Handle, MarkerType, MiniMap, Panel, Position, ReactFlow,
   ReactFlowProvider, getBezierPath, useEdgesState, useNodesState, useReactFlow, Background,
@@ -26,6 +26,30 @@ const PAUSA_GUARDAR_MS = 700;
 const MAX_DESHACER = 40;
 
 const sig = (prefijo, ids) => `${prefijo}${Math.max(0, ...ids.map((x) => Number(x.slice(1)) || 0)) + 1}`;
+
+/* Lo que React Flow recibe igual en cada render va fuera del componente: un objeto nuevo en cada
+   cuadro de arrastre le haría volver a calcular y pintar el lienzo entero */
+const AJUSTE = { padding: 0.2 };
+const MARCADOR = { type: MarkerType.ArrowClosed, width: 16, height: 16 };
+const BORRAR = ["Backspace", "Delete"];
+const LADOS = [Position.Top, Position.Right, Position.Bottom, Position.Left];
+const colorNodo = (n) => (n.data?.validado ? "#57f7a7" : "#34d3be");
+const MASCARA = "color-mix(in oklab,var(--bg) 70%,transparent)";
+
+/* El nodo o la arista de antes si nada de lo suyo cambió (React Flow solo vuelve a pintar lo
+   distinto); si cambió, uno nuevo que conserva lo que React Flow midió y eligió */
+const mismos = (a, b) => !!a && Object.keys(b).every((k) => a[k] === b[k]);
+function nodoDe(previo, nuevo) {
+  if (previo && previo.type === nuevo.type && previo.deletable === nuevo.deletable && previo.position.x === nuevo.position.x
+    && previo.position.y === nuevo.position.y && mismos(previo.data, nuevo.data)) return previo;
+  return { ...(previo ?? {}), ...nuevo };
+}
+function aristaDe(previa, nueva) {
+  if (previa && ["source", "target", "sourceHandle", "targetHandle", "type", "markerEnd"].every((k) => previa[k] === nueva[k])
+    && mismos(previa.data, nueva.data)) return previa;
+  return { ...(previa ?? {}), ...nueva };
+}
+const igualesEnOrden = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
 
 /* Capas desde el concepto central (como un árbol): el que falte, en la última capa */
 export function acomodar(contenido) {
@@ -60,10 +84,10 @@ function lados(a, b) {
 
 /* ---------------------------------------------------------------- piezas del lienzo */
 
-function Concepto({ data, selected }) {
+const Concepto = memo(function Concepto({ data, selected }) {
   return (
     <div className={`concepto-mapa ${data.central ? "central" : ""} ${data.validado ? "ok" : ""} ${selected ? "sel" : ""}`}>
-      {[Position.Top, Position.Right, Position.Bottom, Position.Left].map((p) => (
+      {LADOS.map((p) => (
         <Handle key={p} id={p} type="source" position={p} className="asa-mapa" />
       ))}
       <span className="block text-[14px] leading-tight">{data.etiqueta}</span>
@@ -71,9 +95,9 @@ function Concepto({ data, selected }) {
       {data.validado && <span className="marca-ok" aria-label="validado">✓</span>}
     </div>
   );
-}
+});
 
-function Proposicion({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, markerEnd, selected }) {
+const Proposicion = memo(function Proposicion({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, markerEnd, selected }) {
   const [ruta, lx, ly] = getBezierPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
   return (
     <>
@@ -88,7 +112,7 @@ function Proposicion({ id, sourceX, sourceY, targetX, targetY, sourcePosition, t
       </EdgeLabelRenderer>
     </>
   );
-}
+});
 
 const TIPOS_NODO = { concepto: Concepto };
 const TIPOS_ENLACE = { proposicion: Proposicion };
@@ -162,29 +186,30 @@ function Editor({ inicial, simbolosLel, onGuardar, completa, onCompleta }) {
   const elegirRelacion = useCallback((id) => setEleccion({ tipo: "relacion", id }), []);
 
   /* del contenido al lienzo, conservando lo que React Flow ya midió y lo que tiene elegido
-     (la selección la maneja React Flow; aquí solo se lee, para el panel) */
+     (la selección la maneja React Flow; aquí solo se lee, para el panel). Lo que no cambió se
+     queda con el mismo objeto: al soltar un concepto solo cambian él y sus enlaces */
   useEffect(() => {
     const porId = new Map(contenido.conceptos.map((c) => [c.id, c]));
     setNodes((previos) => {
       const antes = new Map(previos.map((n) => [n.id, n]));
-      return contenido.conceptos.map((c) => ({
-        ...(antes.get(c.id) ?? {}),
+      const nuevos = contenido.conceptos.map((c) => nodoDe(antes.get(c.id), {
         id: c.id, type: "concepto", position: { x: c.x ?? 0, y: c.y ?? 0 },
         deletable: c.id !== contenido.central,
         data: { etiqueta: c.etiqueta, simbolo: c.simbolo, validado: c.validado, central: c.id === contenido.central },
       }));
+      return igualesEnOrden(nuevos, previos) ? previos : nuevos;
     });
     setEdges((previas) => {
       const antes = new Map(previas.map((e) => [e.id, e]));
-      return contenido.relaciones.map((r) => {
+      const nuevas = contenido.relaciones.map((r) => {
         const [sh, th] = lados(porId.get(r.origen), porId.get(r.destino));
-        return {
-          ...(antes.get(r.id) ?? {}),
+        return aristaDe(antes.get(r.id), {
           id: r.id, source: r.origen, target: r.destino, sourceHandle: sh, targetHandle: th, type: "proposicion",
-          markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 },
+          markerEnd: MARCADOR,
           data: { enlace: r.enlace, validado: r.validado, elegir: elegirRelacion },
-        };
+        });
       });
+      return igualesEnOrden(nuevas, previas) ? previas : nuevas;
     });
   }, [contenido, setNodes, setEdges, elegirRelacion]);
 
@@ -219,10 +244,23 @@ function Editor({ inicial, simbolosLel, onGuardar, completa, onCompleta }) {
     setEleccion(null);
   }, [cambiar]);
 
-  const editarConcepto = (id, cambios) => cambiar((c) => ({ ...c, conceptos: c.conceptos.map((x) => (x.id === id ? { ...x, ...cambios } : x)) }));
-  const editarRelacion = (id, cambios) => cambiar((c) => ({ ...c, relaciones: c.relaciones.map((r) => (r.id === id ? { ...r, ...cambios } : r)) }));
+  const editarConcepto = useCallback((id, cambios) => cambiar((c) => ({ ...c, conceptos: c.conceptos.map((x) => (x.id === id ? { ...x, ...cambios } : x)) })), [cambiar]);
+  const editarRelacion = useCallback((id, cambios) => cambiar((c) => ({ ...c, relaciones: c.relaciones.map((r) => (r.id === id ? { ...r, ...cambios } : r)) })), [cambiar]);
+  const hacerCentral = useCallback((id) => cambiar((c) => ({ ...c, central: id })), [cambiar]);
+  const quitarConcepto = useCallback((id) => quitar({ nodes: [{ id }] }), [quitar]);
+  const quitarRelacion = useCallback((id) => quitar({ edges: [{ id }] }), [quitar]);
+  const cerrar = useCallback(() => setEleccion(null), []);
+  const cambiarProposito = useCallback((proposito, valido) => cambiar((c) => ({ ...c, proposito, proposito_validado: valido })), [cambiar]);
 
-  const agregarConcepto = (etiqueta, simbolo) => {
+  /* el inspector se actualiza solo si cambió lo elegido (React Flow es dueño de la selección:
+     controlar `selected` desde aquí lo hacía entrar en un bucle de actualizaciones) */
+  const alElegir = useCallback(({ nodes: ns, edges: es }) => {
+    const uno = ns.length === 1 && !es.length ? { tipo: "concepto", id: ns[0].id }
+      : es.length === 1 && !ns.length ? { tipo: "relacion", id: es[0].id } : null;
+    if (uno) setEleccion((x) => (x?.tipo === uno.tipo && x.id === uno.id ? x : uno));
+  }, []);
+
+  const agregarConcepto = useCallback((etiqueta, simbolo) => {
     const centro = rf.screenToFlowPosition({ x: innerWidth / 2, y: innerHeight / 2 });
     let nuevo = null;
     cambiar((c) => {
@@ -230,7 +268,7 @@ function Editor({ inicial, simbolosLel, onGuardar, completa, onCompleta }) {
       return { ...c, conceptos: [...c.conceptos, { id: nuevo, etiqueta, simbolo: simbolo || null, x: centro.x, y: centro.y, validado: true, origen: "persona" }] };
     });
     setTimeout(() => nuevo && setEleccion({ tipo: "concepto", id: nuevo }), 0);
-  };
+  }, [rf, cambiar]);
 
   const validarTodo = () => cambiar((c) => ({
     ...c, proposito_validado: true,
@@ -238,7 +276,11 @@ function Editor({ inicial, simbolosLel, onGuardar, completa, onCompleta }) {
   }));
   const reacomodar = () => { cambiar((c) => acomodar(c)); setTimeout(() => rf.fitView({ padding: 0.2, duration: 400 }), 50); };
 
-  const usados = new Set(contenido.conceptos.map((c) => c.simbolo).filter(Boolean));
+  // los términos del LEL que todavía no son un concepto (la misma lista mientras no cambien)
+  const libres = useMemo(() => {
+    const usados = new Set(contenido.conceptos.map((c) => c.simbolo).filter(Boolean));
+    return simbolosLel.filter((s) => !usados.has(s.simbolo));
+  }, [contenido.conceptos, simbolosLel]);
   const pendientes = (contenido.proposito_validado ? 0 : 1) + contenido.conceptos.filter((c) => !c.validado).length
     + contenido.relaciones.filter((r) => !r.validado).length;
   const elegido = eleccion?.tipo === "concepto" ? contenido.conceptos.find((c) => c.id === eleccion.id)
@@ -246,25 +288,20 @@ function Editor({ inicial, simbolosLel, onGuardar, completa, onCompleta }) {
 
   return (
     <div className={`space-y-3 ${completa ? "mapa-completo" : ""}`}>
-      <Proposito contenido={contenido} onCambio={(proposito, valido) => cambiar((c) => ({ ...c, proposito, proposito_validado: valido }))} />
+      <Proposito proposito={contenido.proposito} validado={contenido.proposito_validado} onCambio={cambiarProposito} />
       <div className="lienzo-mapa">
         <ReactFlow
           nodes={nodes} edges={edges} nodeTypes={TIPOS_NODO} edgeTypes={TIPOS_ENLACE}
           onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onNodeDragStop={alSoltar} onConnect={unir}
-          onDelete={quitar} connectionMode={ConnectionMode.Loose} deleteKeyCode={["Backspace", "Delete"]}
-          onSelectionChange={({ nodes: ns, edges: es }) => {
-            const uno = ns.length === 1 && !es.length ? { tipo: "concepto", id: ns[0].id }
-              : es.length === 1 && !ns.length ? { tipo: "relacion", id: es[0].id } : null;
-            if (uno) setEleccion((x) => (x?.tipo === uno.tipo && x.id === uno.id ? x : uno));
-          }}
-          onPaneClick={() => setEleccion(null)}
-          colorMode={tema === "claro" ? "light" : "dark"} fitView fitViewOptions={{ padding: 0.2 }} minZoom={0.2} maxZoom={2.5}
+          onDelete={quitar} connectionMode={ConnectionMode.Loose} deleteKeyCode={BORRAR}
+          onSelectionChange={alElegir} onPaneClick={cerrar}
+          colorMode={tema === "claro" ? "light" : "dark"} fitView fitViewOptions={AJUSTE} minZoom={0.2} maxZoom={2.5}
         >
           <Background gap={22} size={1} color="var(--line)" />
           <Controls showInteractive={false} />
-          {completa && <MiniMap pannable zoomable nodeColor={(n) => (n.data?.validado ? "#57f7a7" : "#34d3be")} maskColor="color-mix(in oklab,var(--bg) 70%,transparent)" />}
+          {completa && <MiniMap pannable zoomable nodeColor={colorNodo} maskColor={MASCARA} />}
           <Panel position="top-left" className="flex flex-wrap gap-1.5">
-            <AgregarConcepto simbolos={simbolosLel.filter((s) => !usados.has(s.simbolo))} onAgregar={agregarConcepto} />
+            <AgregarConcepto simbolos={libres} onAgregar={agregarConcepto} />
             <button className="boton-mapa" onClick={reacomodar} title="Ordenar desde el concepto central">Acomodar</button>
             <button className="boton-mapa" onClick={deshacer} disabled={!pila.current.length} title="⌘Z / Ctrl+Z">Deshacer</button>
             <button className="boton-mapa" onClick={onCompleta}>{completa ? "Salir de pantalla completa" : "Pantalla completa"}</button>
@@ -276,13 +313,10 @@ function Editor({ inicial, simbolosLel, onGuardar, completa, onCompleta }) {
             <Panel position="top-right" className="inspector-mapa">
               {eleccion.tipo === "concepto" ? (
                 <InspectorConcepto c={elegido} central={elegido.id === contenido.central} simbolosLel={simbolosLel}
-                  onCambio={(cambios) => editarConcepto(elegido.id, cambios)}
-                  onCentral={() => cambiar((c) => ({ ...c, central: elegido.id }))}
-                  onQuitar={() => quitar({ nodes: [{ id: elegido.id }] })} onCerrar={() => setEleccion(null)} />
+                  onCambio={editarConcepto} onCentral={hacerCentral} onQuitar={quitarConcepto} onCerrar={cerrar} />
               ) : (
                 <InspectorRelacion r={elegido} enfocar={eleccion.nueva} conceptos={contenido.conceptos}
-                  onCambio={(cambios) => editarRelacion(elegido.id, cambios)}
-                  onQuitar={() => quitar({ edges: [{ id: elegido.id }] })} onCerrar={() => setEleccion(null)} />
+                  onCambio={editarRelacion} onQuitar={quitarRelacion} onCerrar={cerrar} />
               )}
             </Panel>
           )}
@@ -300,36 +334,38 @@ function Editor({ inicial, simbolosLel, onGuardar, completa, onCompleta }) {
   );
 }
 
-function Proposito({ contenido, onCambio }) {
+/* Las piezas fuera del lienzo van con memo y reciben funciones estables: arrastrar un concepto
+   vuelve a pintar el editor en cada cuadro, pero no a ellas */
+const Proposito = memo(function Proposito({ proposito, validado, onCambio }) {
   const [editando, setEditando] = useState(false);
-  const [texto, setTexto] = useState(contenido.proposito);
-  useEffect(() => setTexto(contenido.proposito), [contenido.proposito]);
+  const [texto, setTexto] = useState(proposito);
+  useEffect(() => setTexto(proposito), [proposito]);
   return (
     <div className="flex flex-wrap items-start gap-3">
       <div className="min-w-0 flex-1">
         <p className="etiqueta">Propósito · la pregunta que responde el mapa</p>
         {editando ? (
-          <form className="mt-1 flex gap-2" onSubmit={(e) => { e.preventDefault(); onCambio(texto.trim() || contenido.proposito, true); setEditando(false); }}>
+          <form className="mt-1 flex gap-2" onSubmit={(e) => { e.preventDefault(); onCambio(texto.trim() || proposito, true); setEditando(false); }}>
             <input autoFocus value={texto} maxLength={240} onChange={(e) => setTexto(e.target.value)} className="campo text-[15px]" />
             <button className="pill sm">Listo</button>
           </form>
         ) : (
-          <p className="serif mt-1 text-[24px] leading-tight">{contenido.proposito}</p>
+          <p className="serif mt-1 text-[24px] leading-tight">{proposito}</p>
         )}
       </div>
       {!editando && (
         <span className="flex gap-1.5 pt-5">
           <button className="boton-mapa" onClick={() => setEditando(true)}>Editar</button>
-          <button className={`boton-mapa ${contenido.proposito_validado ? "ok" : ""}`} onClick={() => onCambio(contenido.proposito, !contenido.proposito_validado)}>
-            {contenido.proposito_validado ? "✓ Validado" : "Validar"}
+          <button className={`boton-mapa ${validado ? "ok" : ""}`} onClick={() => onCambio(proposito, !validado)}>
+            {validado ? "✓ Validado" : "Validar"}
           </button>
         </span>
       )}
     </div>
   );
-}
+});
 
-function AgregarConcepto({ simbolos, onAgregar }) {
+const AgregarConcepto = memo(function AgregarConcepto({ simbolos, onAgregar }) {
   const [abierto, setAbierto] = useState(false);
   const [libre, setLibre] = useState("");
   if (!abierto) return <button className="boton-mapa" onClick={() => setAbierto(true)}>+ Concepto</button>;
@@ -352,12 +388,13 @@ function AgregarConcepto({ simbolos, onAgregar }) {
       <button className="mono text-[9.5px] text-[var(--bone-faint)] hover:text-[var(--bone)]" onClick={() => setAbierto(false)}>cerrar</button>
     </div>
   );
-}
+});
 
-function InspectorConcepto({ c, central, simbolosLel, onCambio, onCentral, onQuitar, onCerrar }) {
+/* Los inspectores reciben funciones que piden el id: las mismas para cualquier concepto o enlace */
+const InspectorConcepto = memo(function InspectorConcepto({ c, central, simbolosLel, onCambio, onCentral, onQuitar, onCerrar }) {
   const [etiqueta, setEtiqueta] = useState(c.etiqueta);
   useEffect(() => setEtiqueta(c.etiqueta), [c.id, c.etiqueta]);
-  const guardar = () => { if (etiqueta.trim() && etiqueta.trim() !== c.etiqueta) onCambio({ etiqueta: etiqueta.trim(), validado: true }); };
+  const guardar = () => { if (etiqueta.trim() && etiqueta.trim() !== c.etiqueta) onCambio(c.id, { etiqueta: etiqueta.trim(), validado: true }); };
   return (
     <div className="w-64 space-y-3">
       <p className="etiqueta flex">Concepto {c.id}{central && " · central"}<button className="ml-auto" onClick={onCerrar} aria-label="Cerrar">✕</button></p>
@@ -365,28 +402,28 @@ function InspectorConcepto({ c, central, simbolosLel, onCambio, onCentral, onQui
         onKeyDown={(e) => e.key === "Enter" && guardar()} className="campo text-[15px]" aria-label="Nombre del concepto" />
       <label className="block space-y-1">
         <span className="etiqueta">Término del LEL</span>
-        <select className="campo text-[13px]" value={c.simbolo ?? ""} onChange={(e) => onCambio({ simbolo: e.target.value || null, validado: true })}>
+        <select className="campo text-[13px]" value={c.simbolo ?? ""} onChange={(e) => onCambio(c.id, { simbolo: e.target.value || null, validado: true })}>
           <option value="">— ninguno —</option>
           {simbolosLel.map((s) => <option key={s.simbolo} value={s.simbolo}>{s.simbolo}</option>)}
         </select>
       </label>
       {c.simbolo && <p className="text-[12.5px] leading-snug text-[var(--bone-dim)]">{simbolosLel.find((s) => s.simbolo === c.simbolo)?.intencion}</p>}
       <div className="flex flex-wrap gap-1.5">
-        <button className={`boton-mapa ${c.validado ? "ok" : ""}`} onClick={() => onCambio({ validado: !c.validado })}>{c.validado ? "✓ Validado" : "Validar"}</button>
-        {!central && <button className="boton-mapa" onClick={onCentral}>Hacer central</button>}
-        {!central && <button className="boton-mapa peligro" onClick={onQuitar}>Quitar</button>}
+        <button className={`boton-mapa ${c.validado ? "ok" : ""}`} onClick={() => onCambio(c.id, { validado: !c.validado })}>{c.validado ? "✓ Validado" : "Validar"}</button>
+        {!central && <button className="boton-mapa" onClick={() => onCentral(c.id)}>Hacer central</button>}
+        {!central && <button className="boton-mapa peligro" onClick={() => onQuitar(c.id)}>Quitar</button>}
       </div>
     </div>
   );
-}
+});
 
-function InspectorRelacion({ r, enfocar, conceptos, onCambio, onQuitar, onCerrar }) {
+const InspectorRelacion = memo(function InspectorRelacion({ r, enfocar, conceptos, onCambio, onQuitar, onCerrar }) {
   const [enlace, setEnlace] = useState(r.enlace);
   const ref = useRef(null);
   useEffect(() => setEnlace(r.enlace), [r.id, r.enlace]);
   useEffect(() => { if (enfocar) ref.current?.select(); }, [enfocar, r.id]);
   const nombre = useMemo(() => Object.fromEntries(conceptos.map((c) => [c.id, c.etiqueta])), [conceptos]);
-  const guardar = () => { if (enlace.trim() && enlace.trim() !== r.enlace) onCambio({ enlace: enlace.trim(), validado: true }); };
+  const guardar = () => { if (enlace.trim() && enlace.trim() !== r.enlace) onCambio(r.id, { enlace: enlace.trim(), validado: true }); };
   return (
     <div className="w-64 space-y-3">
       <p className="etiqueta flex">Proposición {r.id}<button className="ml-auto" onClick={onCerrar} aria-label="Cerrar">✕</button></p>
@@ -395,10 +432,10 @@ function InspectorRelacion({ r, enfocar, conceptos, onCambio, onQuitar, onCerrar
         onKeyDown={(e) => e.key === "Enter" && guardar()} className="campo text-[14px]" aria-label="Enlace" />
       <p className="text-[14px] leading-snug"><span className="text-[var(--bone-faint)]">→</span> {nombre[r.destino]}</p>
       <div className="flex flex-wrap gap-1.5">
-        <button className={`boton-mapa ${r.validado ? "ok" : ""}`} onClick={() => onCambio({ validado: !r.validado })}>{r.validado ? "✓ Validada" : "Validar"}</button>
-        <button className="boton-mapa" onClick={() => onCambio({ origen: r.destino, destino: r.origen, validado: true })} title="Cambiar la dirección">⇄</button>
-        <button className="boton-mapa peligro" onClick={onQuitar}>Quitar</button>
+        <button className={`boton-mapa ${r.validado ? "ok" : ""}`} onClick={() => onCambio(r.id, { validado: !r.validado })}>{r.validado ? "✓ Validada" : "Validar"}</button>
+        <button className="boton-mapa" onClick={() => onCambio(r.id, { origen: r.destino, destino: r.origen, validado: true })} title="Cambiar la dirección">⇄</button>
+        <button className="boton-mapa peligro" onClick={() => onQuitar(r.id)}>Quitar</button>
       </div>
     </div>
   );
-}
+});

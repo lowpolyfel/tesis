@@ -26,10 +26,25 @@ export const NODOS = Object.freeze({
   sistema: { id: "sistema", nombre: "Sistema", rol: "Orquestación (LangGraph): reglas de consenso, solicitud de validación, errores", tipo: "mecanismo", fase: null, tono: "#94a3b8" },
 });
 
-/* Orden en la escena (izquierda a derecha, el flujo del requisito) */
-export const ORDEN_NODOS = ["extractor", "filtros", "clasificador", "divergencia", "critico", "humano", "modelador"];
+/*
+ * Estaciones de la escena (escena/coreografia.js), de izquierda a derecha: los tramos del
+ * flujo por los que viaja el agente que tiene el turno, con los nodos que caen en cada uno.
+ * Versión 1: las fases de KMoS-SSA de un requisito (FASES_KMOS), con nombre corto.
+ */
+export const ESTACIONES_REQUISITO = Object.freeze([
+  { id: "requisito", nombre: "Requisito", nodos: ["extractor", "filtros"] },
+  { id: "interpretacion", nombre: "Interpretación", nodos: ["clasificador"] },
+  { id: "discusion", nombre: "Discusión", nodos: ["divergencia", "critico"] },
+  { id: "validacion", nombre: "Validación", nodos: ["humano"] },
+  { id: "formalizacion", nombre: "Formalización", nodos: ["modelador"] },
+]);
 /* Versión 2 (ADR 0024): la entrevista completa; la persona valida después, en el léxico */
-export const ORDEN_NODOS_ENTREVISTA = ["revisor", "extractor", "filtros", "clasificador", "divergencia", "critico", "modelador"];
+export const ESTACIONES_ENTREVISTA = Object.freeze([
+  { id: "entrevista", nombre: "Entrevista", nodos: ["revisor", "extractor", "filtros"] },
+  { id: "intencion", nombre: "Intención", nodos: ["clasificador"] },
+  { id: "discusion", nombre: "Discusión", nodos: ["divergencia", "critico"] },
+  { id: "lexico", nombre: "Léxico", nodos: ["modelador"] },
+]);
 
 export const nodo = (id) => NODOS[id] ?? { id, nombre: id, rol: "", tipo: "mecanismo", fase: null, tono: "#94a3b8" };
 /** Color para escribir en el tono de un nodo: tal cual en oscuro; en claro, mezclado con la tinta

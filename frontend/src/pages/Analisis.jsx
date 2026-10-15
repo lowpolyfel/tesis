@@ -5,9 +5,10 @@ import { useOrb } from "../components/orb/useOrb";
 import { isMobile } from "../components/orb/poses";
 import { cancelarRequisitos, especificacionDeProyecto, obtenerCola, obtenerRequisito, obtenerProyecto, requisitosDeProyecto } from "../services/backend";
 import { ESTADOS as E, esTerminal, estadoSimple } from "../constants/estados";
-import { TIPO_REQUISITO, nodo, tintaNodo } from "../constants/agentes";
+import { ESTACIONES_REQUISITO, TIPO_REQUISITO, nodo, tintaNodo } from "../constants/agentes";
 import { COLUMNA_ESCENA, centroEscena, crearCoreografia } from "../escena/coreografia";
 import Preparacion from "../escena/Preparacion";
+import Riel from "../escena/Riel";
 import { useEnVivo } from "../escena/useEnVivo";
 import { resumenMensaje } from "../escena/resumenMensaje";
 import { pasoSimple } from "../escena/pasoSimple";
@@ -22,11 +23,13 @@ import { EstadoChip, Volver } from "../components/ui";
  * En escritorio, a la derecha va una columna con el requisito en foco, el paso
  * actual, la lista de requisitos del lote y la bitácora; la escena ocupa el resto.
  *
- * La esfera se divide en los nodos reales del sistema (Extractor, Filtros,
- * Clasificador, Divergencia, Crítico, Humano, Modelador). Cada mensaje del
- * protocolo que llega por SSE viaja de su emisor a su receptor; las
- * interpretaciones nacen del Clasificador y se acercan o alejan según la
- * similitud. Lo que se ve es exactamente lo que dice la traza.
+ * La esfera es el Sistema (arriba, con el cronómetro) y de ella nace el agente que
+ * tiene el turno: con cada mensaje del protocolo que llega por SSE viaja a la
+ * estación de su emisor (Requisito, Interpretación, Discusión, Validación,
+ * Formalización: las fases de KMoS-SSA, nombradas en un riel de texto) y dice lo
+ * esencial. Cuando un término se debate, sus dos interpretaciones más distintas se
+ * acercan o alejan según la similitud. Nunca hay más de cuatro esferas
+ * (escena/coreografia.js). Lo que se ve es exactamente lo que dice la traza.
  *
  * El backend procesa un requisito a la vez (cola); la escena sigue al que está
  * en proceso. Lo que se lee es un paso por mensaje, en lenguaje claro; la
@@ -88,7 +91,8 @@ export default function Analisis() {
     return () => { activo = false; clearTimeout(t); };
   }, [proyecto, ids]);
 
-  const coreografia = useMemo(() => crearCoreografia(orb), [orb]);
+  // en el teléfono la escena baja: arriba va el requisito en foco (Foco, fijo en top-[116px])
+  const coreografia = useMemo(() => crearCoreografia(orb, { estaciones: ESTACIONES_REQUISITO, bajarMovil: 0.14 }), [orb]);
   // A 2× por omisión: el ritmo de 1× se sentía lento; el botón de velocidad sigue cambiándolo
   const vivo = useEnVivo(fase === "trabajo" ? foco : null, { coreografia, ritmoInicial: 2 });
   const alDia = vivo.animados >= vivo.mensajes.length;
@@ -136,7 +140,7 @@ export default function Analisis() {
     return () => clearTimeout(t);
   }, [lista, fase, todosEnReposo, repetir, orb, coreografia, ids.length]);
 
-  /* ---- 2. todo en reposo y visto: los nodos se funden ---- */
+  /* ---- 2. todo en reposo y visto: el agente vuelve al sistema ---- */
   useEffect(() => {
     if (fase !== "trabajo" || !todosEnReposo || !todosVistos || !alDia || !enReposo(vivo.estado ?? E.CARGADO)) return undefined;
     const t = setTimeout(() => {
@@ -202,6 +206,7 @@ export default function Analisis() {
       {fase === "preparacion" && !todosEnReposo && lista && (
         <div className="fixed right-5 bottom-5 z-20"><CancelarAnalisis lista={lista} proyecto={proyecto} /></div>
       )}
+      {fase === "trabajo" && <Riel coreografia={coreografia} />}
       {fase === "trabajo" && lateral && (
         <Columna vivo={vivo} lista={lista} foco={foco} focoInfo={focoInfo} pendientes={pendientes} proyecto={proyecto}
           onSeguir={(id) => setFoco(id)} />
