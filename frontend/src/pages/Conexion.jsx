@@ -41,7 +41,7 @@ export default function Conexion() {
         titulo="Conexión."
         acciones={(
           <button className="pill ghost sm" onClick={recargar} disabled={cargando}>
-            {cargando && c ? <><span className="gira" /> Probando…</> : "Probar otra vez"}
+            {cargando && (c || error) ? <><span className="gira" /> Probando…</> : "Probar otra vez"}
           </button>
         )}
       />

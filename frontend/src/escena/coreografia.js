@@ -77,6 +77,15 @@ function geometria(estaciones, bajarMovil) {
 
 const PAR = ["par:1", "par:2"];
 
+/* La raíz sabe que hay escena (orb.css: en el teléfono, rótulos de un renglón); sin documento
+   (pruebas en Node) no hace nada */
+function marcarEscena(si) {
+  const raiz = globalThis.document?.documentElement;
+  if (!raiz) return;
+  if (si) raiz.dataset.escena = "";
+  else delete raiz.dataset.escena;
+}
+
 /*
  * `estaciones`: los tramos por los que viaja el agente (ESTACIONES_REQUISITO en la versión 1,
  * ESTACIONES_ENTREVISTA en la 2). `bajarMovil`: cuánto baja la escena en el teléfono (fracción
@@ -274,6 +283,7 @@ export function crearCoreografia(orb, { estaciones = ESTACIONES_REQUISITO, bajar
           if (orb.has(PAR[j])) orb.update(PAR[j], { sub: corto(significado(k, id), g.largo) });
           return id;
         });
+        colocarPar(); // si quedó una sola, al centro
       }
       return 1200;
     },
@@ -344,6 +354,7 @@ export function crearCoreografia(orb, { estaciones = ESTACIONES_REQUISITO, bajar
       g = geometria(estaciones, bajarMovil);
       if (montada) return;
       montada = true;
+      marcarEscena(true);
       orb.setPose({ ...g.sistema });
       orb.update("core", { label: "Sistema", sub: "coordina", s: g.sistema.s });
       actual = primero();
@@ -354,6 +365,7 @@ export function crearCoreografia(orb, { estaciones = ESTACIONES_REQUISITO, bajar
     desmontar() {
       if (!montada) return;
       montada = false;
+      marcarEscena(false);
       vuelta++;
       foco = null;
       fundir(["agente", ...PAR], "core");

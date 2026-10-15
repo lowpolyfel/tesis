@@ -92,7 +92,6 @@ function nuevaFisica(body, desde, el) {
     // Las que van a ser chicas nacen ya por debajo del umbral de es-chica (con la histéresis del tick)
     sc: desde ? Math.max(0.15, Math.min(desde.sc * 0.7, body.target.s * (body.target.s < 0.5 ? 1.15 : 1.3))) : body.target.s,
     edad: 0,
-    cuadro: 0,
     vs: 0,
     cur: Object.fromEntries(NUM_KEYS.map((k) => [k, MOODS[mood][k]])),
     lab: Object.fromEntries(COLOR_KEYS.map((c) => [c, [...MOODS_LAB[mood][c]]])),
@@ -374,13 +373,12 @@ export default function OrbField({ controller, rootRef }) {
         }
 
         // Ondas: concéntricas a la esfera; se agitan mientras viaja o trabaja
-        f.cuadro++;
         f.dtOndas = (f.dtOndas ?? 0) + dt;
         // Las ondas de las esferas atenuadas, chicas o en reposo (sin viajar, sin trabajar, sin
-        // rebotar) se redibujan a 30 Hz: no se nota y cuesta la mitad. En los cuadros que se
-        // saltan no se escribe nada
+        // rebotar) se redibujan a ~30 Hz: no se nota y cuesta la mitad. Se decide por tiempo: si
+        // la página va a 30 fps, se dibujan en cada cuadro. En los que se saltan no se escribe nada
         const reposo = !body.active && travelN < 0.02 && Math.abs(f.popVel) < 0.3;
-        if ((body.dim || chica || reposo) && f.cuadro % 2) continue;
+        if ((body.dim || chica || reposo) && f.dtOndas < 0.028) continue;
         const pulseMul = 1 + cur.pulse * 0.35 * (0.5 + 0.5 * Math.sin(f.pulsePh));
         const activo = body.active ? 0.5 : 0;
         f.fase += f.dtOndas * cur.speed * (1 + travelN * 1.6 + activo * 1.6);

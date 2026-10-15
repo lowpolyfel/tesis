@@ -200,7 +200,7 @@ function Columna({ doc, vivo, lateral, cancelando, onCancelar }) {
   return (
     <aside className={lateral
       ? "aparece fixed top-24 right-4 bottom-4 z-20 flex flex-col overflow-hidden rounded-2xl border border-[var(--line)] bg-[color-mix(in_oklab,var(--bg)_92%,transparent)]"
-      : "aparece fixed inset-x-3 bottom-3 z-20 max-h-[42vh] overflow-y-auto rounded-2xl border border-[var(--line)] bg-[color-mix(in_oklab,var(--bg)_94%,transparent)]"}
+      : "aparece fixed inset-x-3 bottom-3 z-20 max-h-[42vh] overflow-y-auto [@media(max-height:720px)]:max-h-[33vh] rounded-2xl border border-[var(--line)] bg-[color-mix(in_oklab,var(--bg)_94%,transparent)]"}
     style={estilo}>
       <section className="border-b border-[var(--line)] px-5 py-4">
         <p className="mono text-[10px] text-[var(--bone-faint)]">
