@@ -2,7 +2,7 @@
 
 Núcleo del sistema en Python 3.12: agentes (Revisor, Extractor, Clasificador, Crítico,
 Modelador), mecanismo de divergencia, filtros deterministas y orquestación con
-LangGraph, expuestos por FastAPI (versión 2.0.0). Incluye una sandbox desechable en `/sandbox`.
+LangGraph, expuestos por FastAPI (versión 2.1.0). Incluye una sandbox desechable en `/sandbox`.
 
 La versión 2 (ADR 0024) parte de una **entrevista**: los agentes proponen el LEL con la
 intención de cada término, una persona lo valida (y el sistema aprende de sus

@@ -32,7 +32,7 @@ function estado(c) {
 const ms = (x) => (x == null ? null : `${x} ms`);
 
 export default function Conexion() {
-  const { datos: c, error, cargando, recargar } = useApi(probarConexion);
+  const { datos: c, error, cargando, recargar } = useApi(probarConexion, [], { silencioso: false });
 
   return (
     <div className="space-y-8">
