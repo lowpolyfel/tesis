@@ -75,7 +75,7 @@ tesis/
 │   │   ├── analisis/           # vista por término y análisis del proyecto
 │   │   ├── artefactos/         # especificación RF/RNF, modelo de metas y Big Picture
 │   │   ├── comparacion/        # comparación entre requisitos (exploratorio)
-│   │   ├── calibracion/        # sensibilidad del umbral sobre entrevistas, corridas y Overleaf
+│   │   ├── calibracion/        # umbral sobre entrevistas, prueba de modelos con banco de términos, Overleaf
 │   │   ├── evaluacion/         # corpus y evaluación contra un solo agente
 │   │   ├── nlp/                # spaCy, etiquetado, PhraseMatcher
 │   │   ├── models/             # esquemas Pydantic

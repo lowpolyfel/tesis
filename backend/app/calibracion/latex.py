@@ -24,7 +24,7 @@ import io
 import json
 import zipfile
 
-ESTILO = r"""%% Estilo de las figuras y tablas de Dudamel (calibración, ADR 0026).
+ESTILO = r"""%% Estilo de las figuras y tablas de Dudamel (calibración, ADR 0026 y 0027).
 %% Requiere pdfLaTeX con pgfplots y booktabs (incluidos en Overleaf).
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.18}
@@ -60,6 +60,10 @@ ESTILO = r"""%% Estilo de las figuras y tablas de Dudamel (calibración, ADR 002
   dudamel/directos/.style={dudamelAzul, line width=1.2pt, densely dashed, mark=square*, mark size=1.6pt},
   dudamel/roc/.style={dudamelAzul, line width=1.2pt, mark=*, mark size=1.4pt},
   dudamel/azar/.style={dudamelGris, densely dotted, line width=0.8pt},
+  dudamel/deteccion/.style={dudamelNaranja, only marks, mark=*, mark size=2.4pt, mark options={fill=dudamelNaranja, draw=white, line width=0.4pt},
+    error bars/x dir=both, error bars/x explicit, error bars/error bar style={dudamelNaranja, line width=0.9pt}},
+  dudamel/aprobacion/.style={dudamelAqua, only marks, mark=square*, mark size=2.2pt, mark options={fill=dudamelAqua, draw=white, line width=0.4pt},
+    error bars/x dir=both, error bars/x explicit, error bars/error bar style={dudamelAqua, line width=0.9pt}},
 }
 """
 

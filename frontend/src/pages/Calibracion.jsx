@@ -6,11 +6,15 @@ import {
 } from "../services/backend";
 import ElegirProyecto, { useProyectoElegido } from "../components/ElegirProyecto";
 import Etiquetar from "../components/calibracion/Etiquetar";
+import PruebaModelos from "../components/calibracion/PruebaModelos";
 import { GraficaDebates, GraficaDistribucion, GraficaMetricas, GraficaRoc } from "../components/calibracion/graficas";
 import { TIPOS } from "../constants/agentes";
-import { Aviso, Cargando, Cifra, Confirmar, Plegable, Vacio } from "../components/ui";
+import { Aviso, Cargando, Cifra, Confirmar, Pestanas, Plegable, Vacio } from "../components/ui";
 
 /*
+ * Calibración, en dos pestañas: el umbral sobre las entrevistas (abajo) y la prueba de modelos con
+ * el banco de términos ambiguos (components/calibracion/PruebaModelos.jsx, ADR 0027).
+ *
  * Calibración del umbral sobre las entrevistas (ADR 0026; antes, sobre los requisitos, ADR 0013).
  * Solo lectura respecto de la configuración: qué habría decidido «similitud ≥ umbral» con otros
  * umbrales y cuánto separa la similitud los términos que la persona anotadora marcó como
@@ -24,7 +28,30 @@ const fmt = (x, d = 3) => (x == null ? "—" : Number(x).toFixed(d));
 const ic = (m) => (m?.bajo == null ? "" : ` [${fmt(m.bajo)}, ${fmt(m.alto)}]`);
 const NOMBRE_TIPO = (t) => (t === "no_ambiguo" ? "No ambiguo" : TIPOS[t]?.etiqueta ?? t);
 
+const CLAVE_VISTA = "dudamel.calibracion.vista";
+const VISTAS = [
+  { id: "umbral", texto: "Umbral · entrevistas" },
+  { id: "modelos", texto: "Modelos · banco de términos" },
+];
+
 export default function Calibracion() {
+  const [vista, setVista] = useState(() => { try { return localStorage.getItem(CLAVE_VISTA) ?? "umbral"; } catch { return "umbral"; } });
+  const cambiar = (v) => { setVista(v); try { localStorage.setItem(CLAVE_VISTA, v); } catch { /* sin almacenamiento */ } };
+  return (
+    <div className="space-y-8">
+      <header className="space-y-3">
+        <p className="mono text-[10px] text-[var(--bone-faint)]">
+          {vista === "umbral" ? "Análisis de sensibilidad del umbral · entrevistas" : "Prueba de modelos · banco de términos ambiguos"}
+        </p>
+        <h1>Calibración.</h1>
+        <Pestanas opciones={VISTAS} valor={vista} onCambio={cambiar} etiqueta="Qué se calibra" />
+      </header>
+      {vista === "umbral" ? <CalibracionUmbral /> : <PruebaModelos />}
+    </div>
+  );
+}
+
+function CalibracionUmbral() {
   const { proyectoId, proyectos, elegir } = useProyectoElegido();
   const { datos: cfg } = useApi(obtenerConfiguracion);
   const [rejilla, setRejilla] = useState({});
@@ -46,8 +73,6 @@ export default function Calibracion() {
   return (
     <div className="space-y-10">
       <header className="space-y-3">
-        <p className="mono text-[10px] text-[var(--bone-faint)]">Análisis de sensibilidad del umbral · entrevistas</p>
-        <h1>Calibración.</h1>
         {c && <p className="max-w-3xl text-sm text-[var(--bone-dim)]">{c.nota}</p>}
         <ElegirProyecto proyectoId={proyectoId} proyectos={proyectos.filter((p) => p.tipo !== "evaluacion")} onCambio={elegir} />
       </header>

@@ -1,5 +1,27 @@
 # Cambios
 
+## 2.3.0 — 2026-10-18
+
+Prueba de modelos con un banco de 50 términos ambiguos y revisión humana (ADR 0027).
+
+- **Banco de términos.** 50 términos ambiguos del español de México (31 de polisemia y 19
+  regionalismos), cada uno con su dominio, la cita de entrevista donde aparece y las lecturas
+  esperadas. Va versionado y se cita por su huella.
+- **Pruebas a elegir.** En Calibración → «Modelos · banco de términos» se eligen de 1 a 8
+  modelos (Ollama y los proveedores con clave guardada: Gemini, OpenAI, Claude, Groq…) y los
+  términos (todos, una clase o una prueba rápida de 10). El Clasificador real corre con cada
+  modelo en segundo plano. Se puede cancelar, reanudar y reintentar los errores.
+- **Revisión humana.** Una tabla con el término y sus lecturas esperadas, lo que respondió el
+  modelo y una tercera columna para marcar ✓ / ✗ si hizo un buen trabajo. Se puede revisar sin
+  ver los nombres de los modelos.
+- **Medidas.**
+  - Detección y aprobación por modelo y por clase, con intervalos de Wilson al 95 %.
+  - Errores, reintentos y latencia.
+  - Prueba exacta de McNemar entre cada par de modelos.
+- **Gráfica y Overleaf.** La gráfica usa el mismo sistema visual que el resto de la calibración.
+  El paquete para LaTeX trae la figura en pgfplots, las tablas booktabs, el banco y las
+  respuestas.
+
 ## 2.2.0 — 2026-10-18
 
 La calibración, sobre las entrevistas y lista para la tesis (ADR 0026).

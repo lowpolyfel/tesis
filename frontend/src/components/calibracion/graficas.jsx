@@ -321,3 +321,61 @@ export function GraficaDebates({ rejilla, umbral, n, parametros }) {
     </Marco>
   );
 }
+
+/* 5. Prueba de modelos (ADR 0027): por modelo, la detección (naranja: marcó «ambiguo») y la
+ * aprobación de la persona revisora (aqua), cada una con su intervalo de Wilson al 95 %. */
+const SERIES_MODELOS = [
+  { clave: "deteccion", texto: "Detección", color: "var(--viz-naranja)", dy: -7 },
+  { clave: "aprobacion", texto: "Aprobación (revisión)", color: "var(--viz-aqua)", marca: "cuadro", dy: 7 },
+];
+
+export function GraficaModelos({ modelos, nombres }) {
+  const [sobre, setSobre] = useState(null);
+  const corto = (t) => (t.length > 30 ? `${t.slice(0, 29)}…` : t);
+  const izquierda = Math.min(230, Math.max(96, 16 + 6.4 * Math.max(...modelos.map((m) => corto(nombres(m)).length))));
+  const pct = (x) => (x == null ? "—" : `${Math.round(x * 100)} %`);
+  return (
+    <Marco titulo="Detección y aprobación por modelo" nombre="modelos" alto={74 + modelos.length * 46} leyenda={SERIES_MODELOS}
+      descripcion="Por modelo, la proporción de términos que marcó como ambiguos y la proporción que la persona revisora aprobó, con su intervalo de confianza al 95 %."
+      x={{ min: 0, max: 1, marcas: [0, 0.25, 0.5, 0.75, 1], formato: pct, titulo: "Proporción · intervalo de Wilson al 95 %" }}
+      y={{ min: modelos.length - 0.5, max: -0.5 }} izquierda={izquierda}>
+      {({ sx, sy, ancho }) => (
+        <g>
+          {modelos.map((m, k) => (
+            <text key={m.id} x={izquierda - 10} y={sy(k)} textAnchor="end" dominantBaseline="middle" className="viz-titulo">
+              {corto(nombres(m))}<title>{nombres(m)}</title>
+            </text>
+          ))}
+          {modelos.map((m, k) => SERIES_MODELOS.map((s) => {
+            const v = m[s.clave];
+            if (v?.valor == null) return null;
+            const y = sy(k) + s.dy;
+            const clave = `${m.id}-${s.clave}`;
+            return (
+              <g key={clave} onPointerEnter={() => setSobre(clave)} onPointerLeave={() => setSobre(null)}>
+                <line x1={sx(v.bajo)} x2={sx(v.alto)} y1={y} y2={y} stroke={s.color} strokeWidth="2" />
+                <line x1={sx(v.bajo)} x2={sx(v.bajo)} y1={y - 4} y2={y + 4} stroke={s.color} strokeWidth="2" />
+                <line x1={sx(v.alto)} x2={sx(v.alto)} y1={y - 4} y2={y + 4} stroke={s.color} strokeWidth="2" />
+                {s.marca === "cuadro"
+                  ? <rect x={sx(v.valor) - 4} y={y - 4} width="8" height="8" rx="1.5" fill={s.color} stroke="var(--bg)" strokeWidth="1.5" />
+                  : <circle cx={sx(v.valor)} cy={y} r="4.5" fill={s.color} stroke="var(--bg)" strokeWidth="1.5" />}
+                <rect x={sx(v.bajo) - 6} y={y - 7} width={Math.max(12, sx(v.alto) - sx(v.bajo) + 12)} height="14" fill="transparent" />
+                <title>{`${nombres(m)} · ${s.texto.toLowerCase()} ${pct(v.valor)} (${v.exitos}/${v.n}) · IC 95 % ${pct(v.bajo)}–${pct(v.alto)}`}</title>
+              </g>
+            );
+          }))}
+          {sobre && (() => {
+            const [mid, clave] = sobre.split("-");
+            const m = modelos.find((x) => x.id === mid);
+            const v = m[clave];
+            return (
+              <text x={ancho - M.derecha} y={M.arriba - 4} textAnchor="end" className="viz-titulo">
+                {corto(nombres(m))} · {pct(v.valor)} ({v.exitos}/{v.n}) · [{pct(v.bajo)}, {pct(v.alto)}]
+              </text>
+            );
+          })()}
+        </g>
+      )}
+    </Marco>
+  );
+}
