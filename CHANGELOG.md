@@ -1,5 +1,23 @@
 # Cambios
 
+## 2.3.1 — 2026-10-18
+
+La prueba de modelos, con controles negativos y revisión a ciegas (ADR 0028).
+
+- **Banco v2 con 23 controles inequívocos.** Trae los 50 ambiguos de v1 sin cambios y suma 23
+  términos de dominio con una sola lectura: 10 inequívocos de dominio («contraseña»,
+  «kilometraje»…) y 13 sustantivos genéricos de negocio («paciente», «recibo», «caja
+  registradora»…). Veinte de los controles van en pareja con un ambiguo del mismo dominio. El
+  banco v1 no se toca, así que las pruebas viejas siguen correspondiendo a su banco.
+- **Precisión y falsas alarmas.** Con los controles, la prueba mide además de la exhaustividad
+  la tasa de falsas alarmas, la precisión, la matriz de confusión y las parejas (en cuántas
+  marcó el ambiguo y no su control). Un modelo que marcara todo como ambiguo ya no sale perfecto.
+  Todo va con intervalos de Wilson, en la pantalla, en la gráfica y en el paquete para Overleaf.
+- **Revisión a ciegas de verdad.** Con los nombres ocultos, las letras de los modelos y el orden
+  de los términos se barajan, y los avisos no nombran modelos. «Rehacer la revisión» borra las
+  marcas para repetirla a ciegas.
+- Se elige la versión del banco al crear una prueba; cada prueba se mide con la suya.
+
 ## 2.3.0 — 2026-10-18
 
 Prueba de modelos con un banco de 50 términos ambiguos y revisión humana (ADR 0027).

@@ -1,0 +1,973 @@
+{
+ "banco": "ambiguedad",
+ "version": "v2",
+ "titulo": "Banco de 73 términos: 50 ambiguos y 23 controles inequívocos (español de México)",
+ "descripcion": "Los 50 términos ambiguos del banco v1, sin cambios y con los mismos ids, más 23 controles negativos: vocabulario de dominio que el Extractor sí levantaría y que en su dominio solo tiene una lectura. Con los dos grupos la prueba mide la exhaustividad (cuántos ambiguos detecta) y también la precisión y la tasa de falsas alarmas (cuántos inequívocos marca como ambiguos): un modelo que contestara «ambiguo» a todo ya no sale perfecto.",
+ "clases": {
+  "polisemia": "Palabra con varios sentidos dentro del mismo oficio o dominio.",
+  "regionalismo": "Expresión del español de trabajo en México que alguien de otra región u otro oficio puede leer distinto.",
+  "inequivoco": "Vocabulario de dominio con una sola lectura en ese dominio (control negativo). Muchos son la pareja de un término ambiguo del mismo dominio."
+ },
+ "criterio": "Buen trabajo en un término ambiguo: el modelo lo marca como ambiguo y sus interpretaciones cubren al menos dos de las lecturas esperadas, sin inventar. Buen trabajo en un término inequívoco: lo marca como unívoco y su única intención coincide con la lectura esperada.",
+ "terminos": [
+  {
+   "id": "B01",
+   "termino": "consulta",
+   "clase": "polisemia",
+   "dominio": "Clínica familiar",
+   "contexto": "Sistema para una clínica familiar que agenda citas y lleva los expedientes de los pacientes.",
+   "cita": "Cada consulta tiene que quedar registrada en el sistema antes de que se vaya el paciente.",
+   "lecturas": [
+    "La atención médica del doctor al paciente",
+    "Una búsqueda de información en el sistema"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B02",
+   "termino": "cuenta",
+   "clase": "polisemia",
+   "dominio": "Restaurante",
+   "contexto": "Sistema de un restaurante para tomar pedidos en las mesas y cobrar.",
+   "cita": "El mesero abre la cuenta en cuanto se sienta el cliente y la cierra cuando paga.",
+   "lecturas": [
+    "La nota de consumo de la mesa",
+    "La cuenta de usuario del mesero o del cliente en el sistema"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B03",
+   "termino": "orden",
+   "clase": "polisemia",
+   "dominio": "Almacén",
+   "contexto": "Sistema de inventario para el almacén de una distribuidora de abarrotes.",
+   "cita": "Cuando llega la orden del gerente, el almacén la surte ese mismo día.",
+   "lecturas": [
+    "Un pedido de mercancía (orden de compra o de surtido)",
+    "Una instrucción o mandato del gerente"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B04",
+   "termino": "sesión",
+   "clase": "polisemia",
+   "dominio": "Centro de terapia",
+   "contexto": "Sistema para un centro de terapia psicológica que agenda pacientes y cobra.",
+   "cita": "Cada sesión se cobra por separado y el terapeuta la cierra al terminar.",
+   "lecturas": [
+    "La cita de terapia con el paciente",
+    "La sesión de usuario del terapeuta en el sistema"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B05",
+   "termino": "expediente",
+   "clase": "polisemia",
+   "dominio": "Despacho jurídico",
+   "contexto": "Sistema para un despacho de abogados que lleva los asuntos de sus clientes.",
+   "cita": "El expediente se cierra cuando el juez dicta sentencia.",
+   "lecturas": [
+    "El caso o asunto jurídico del cliente",
+    "La carpeta física con los documentos",
+    "El registro digital del asunto en el sistema"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B06",
+   "termino": "registro",
+   "clase": "polisemia",
+   "dominio": "Escuela secundaria",
+   "contexto": "Sistema de control escolar de una secundaria.",
+   "cita": "El registro de los alumnos se hace en agosto y lo revisa la dirección.",
+   "lecturas": [
+    "La inscripción de los alumnos (el proceso)",
+    "La lista o base de datos de alumnos"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B07",
+   "termino": "pedido",
+   "clase": "polisemia",
+   "dominio": "Almacén de refacciones",
+   "contexto": "Sistema para una tienda de refacciones que compra a proveedores y vende a talleres.",
+   "cita": "El pedido se registra cuando llega al almacén.",
+   "lecturas": [
+    "La solicitud que hace un cliente (taller)",
+    "La mercancía que se le compró al proveedor y llega"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B08",
+   "termino": "corte",
+   "clase": "polisemia",
+   "dominio": "Tienda de conveniencia",
+   "contexto": "Sistema de punto de venta para una tienda de conveniencia con varios turnos.",
+   "cita": "Al final del turno se hace el corte y se entrega al encargado.",
+   "lecturas": [
+    "El corte de caja: arqueo del dinero cobrado",
+    "El cierre o interrupción de las ventas del turno"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B09",
+   "termino": "movimiento",
+   "clase": "polisemia",
+   "dominio": "Caja de ahorro",
+   "contexto": "Sistema para una caja de ahorro popular donde los socios depositan y piden préstamos.",
+   "cita": "Cada movimiento tiene que aparecer en el estado de cuenta del socio.",
+   "lecturas": [
+    "Una transacción de dinero (depósito, retiro, pago)",
+    "Un cambio en los datos de la cuenta del socio"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B10",
+   "termino": "servicio",
+   "clase": "polisemia",
+   "dominio": "Taller mecánico",
+   "contexto": "Sistema para un taller mecánico que agenda vehículos y lleva su historial.",
+   "cita": "El servicio se agenda cada seis meses o cada diez mil kilómetros.",
+   "lecturas": [
+    "El mantenimiento preventivo del vehículo",
+    "Cualquier trabajo que hace el taller"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B11",
+   "termino": "lote",
+   "clase": "polisemia",
+   "dominio": "Farmacia",
+   "contexto": "Sistema de inventario para una cadena de farmacias.",
+   "cita": "Si un lote viene mal, se regresa completo al proveedor.",
+   "lecturas": [
+    "El lote de fabricación del medicamento (mismo número de lote)",
+    "El envío o entrega completa que mandó el proveedor"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B12",
+   "termino": "grupo",
+   "clase": "polisemia",
+   "dominio": "Escuela preparatoria",
+   "contexto": "Plataforma escolar donde los maestros capturan calificaciones.",
+   "cita": "El maestro solo ve las calificaciones de su grupo.",
+   "lecturas": [
+    "El grupo escolar o salón asignado al maestro",
+    "Un grupo de usuarios o permisos dentro de la plataforma"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B13",
+   "termino": "reporte",
+   "clase": "polisemia",
+   "dominio": "Mantenimiento de edificios",
+   "contexto": "Sistema para la administración de un condominio que atiende fallas.",
+   "cita": "Cuando hay un reporte, el técnico va al edificio ese mismo día.",
+   "lecturas": [
+    "Una queja o aviso de falla de un vecino",
+    "Un informe que genera el sistema"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B14",
+   "termino": "ficha",
+   "clase": "polisemia",
+   "dominio": "Universidad pública",
+   "contexto": "Sistema de admisión de una universidad pública.",
+   "cita": "Para presentar el examen, el aspirante tiene que traer su ficha.",
+   "lecturas": [
+    "La ficha de admisión que le da derecho al examen",
+    "La ficha de depósito del pago",
+    "La ficha con sus datos personales"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B15",
+   "termino": "turno",
+   "clase": "polisemia",
+   "dominio": "Hospital",
+   "contexto": "Sistema de enfermería de un hospital general.",
+   "cita": "El turno de la tarde recibe los pendientes del de la mañana.",
+   "lecturas": [
+    "El horario de trabajo (y el personal de ese horario)",
+    "El número o lugar de espera de un paciente"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B16",
+   "termino": "caja",
+   "clase": "polisemia",
+   "dominio": "Supermercado",
+   "contexto": "Sistema de punto de venta de un supermercado.",
+   "cita": "La caja se cierra a las nueve y no se puede volver a abrir.",
+   "lecturas": [
+    "El punto de cobro (la terminal)",
+    "El dinero o fondo de caja",
+    "El empaque o caja de mercancía"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B17",
+   "termino": "nota",
+   "clase": "polisemia",
+   "dominio": "Ferretería",
+   "contexto": "Sistema de ventas de una ferretería de barrio.",
+   "cita": "Al cliente se le entrega su nota y con ella puede hacer cambios.",
+   "lecturas": [
+    "El comprobante de venta (nota de remisión)",
+    "Una anotación o comentario"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B18",
+   "termino": "respaldo",
+   "clase": "polisemia",
+   "dominio": "Oficina de gobierno",
+   "contexto": "Sistema de gestión documental de una dirección municipal.",
+   "cita": "Todo oficio tiene que llevar su respaldo antes de que lo firme el director.",
+   "lecturas": [
+    "Los documentos que lo soportan o justifican",
+    "Una copia de seguridad del archivo",
+    "El visto bueno o apoyo de un superior"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B19",
+   "termino": "plaza",
+   "clase": "polisemia",
+   "dominio": "Recursos humanos de gobierno",
+   "contexto": "Sistema de recursos humanos de una secretaría estatal.",
+   "cita": "Cada plaza se asigna por concurso y se publica en la página.",
+   "lecturas": [
+    "Un puesto de trabajo con su código presupuestal",
+    "Una ciudad o sede donde se trabaja"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B20",
+   "termino": "tarjeta",
+   "clase": "polisemia",
+   "dominio": "Clínica dental",
+   "contexto": "Sistema de una clínica dental con planes de pago.",
+   "cita": "Cada paciente tiene su tarjeta y ahí se le van marcando las visitas.",
+   "lecturas": [
+    "La tarjeta de control o de citas del paciente",
+    "Una tarjeta bancaria con la que paga",
+    "Una tarjeta de lealtad o membresía"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B21",
+   "termino": "carga",
+   "clase": "polisemia",
+   "dominio": "Universidad",
+   "contexto": "Sistema escolar de una universidad que inscribe materias cada semestre.",
+   "cita": "La carga se aprueba con el coordinador antes de pagar.",
+   "lecturas": [
+    "La carga académica: las materias inscritas",
+    "La subida de archivos o documentos al sistema"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B22",
+   "termino": "póliza",
+   "clase": "polisemia",
+   "dominio": "Despacho contable",
+   "contexto": "Sistema para un despacho contable que lleva la contabilidad de pequeñas empresas.",
+   "cita": "La póliza se registra al cierre del mes con su comprobante.",
+   "lecturas": [
+    "La póliza contable (asiento de diario, ingreso o egreso)",
+    "Una póliza de seguro"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B23",
+   "termino": "unidad",
+   "clase": "polisemia",
+   "dominio": "Transporte de personal",
+   "contexto": "Sistema de rastreo para una empresa de transporte de personal.",
+   "cita": "Cada unidad reporta su ubicación cada cinco minutos.",
+   "lecturas": [
+    "Un vehículo de la flotilla",
+    "Un área o unidad administrativa de la empresa"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B24",
+   "termino": "etiqueta",
+   "clase": "polisemia",
+   "dominio": "Centro de distribución",
+   "contexto": "Sistema de un centro de distribución que recibe y despacha cajas.",
+   "cita": "Cada caja lleva su etiqueta antes de subir al camión.",
+   "lecturas": [
+    "La etiqueta impresa pegada a la caja (código de barras, guía)",
+    "Una etiqueta o categoría asignada en el sistema"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B25",
+   "termino": "captura",
+   "clase": "polisemia",
+   "dominio": "Oficina administrativa",
+   "contexto": "Sistema administrativo de una empresa constructora.",
+   "cita": "La captura la hace el auxiliar y el contador la revisa.",
+   "lecturas": [
+    "El registro o tecleo de los datos en el sistema",
+    "Una captura de pantalla"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B26",
+   "termino": "perfil",
+   "clase": "polisemia",
+   "dominio": "Reclutamiento",
+   "contexto": "Sistema de reclutamiento de una agencia de empleo.",
+   "cita": "El perfil se revisa antes de agendar la entrevista.",
+   "lecturas": [
+    "El perfil del puesto (requisitos)",
+    "El perfil o currículum del candidato",
+    "El perfil de usuario en la plataforma"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B27",
+   "termino": "acta",
+   "clase": "polisemia",
+   "dominio": "Escuela primaria",
+   "contexto": "Sistema de control escolar de una primaria.",
+   "cita": "El acta se firma al final del ciclo y se manda a la supervisión.",
+   "lecturas": [
+    "El acta de calificaciones o de evaluación",
+    "El acta de nacimiento del alumno",
+    "El acta de una reunión"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B28",
+   "termino": "cuota",
+   "clase": "polisemia",
+   "dominio": "Gimnasio",
+   "contexto": "Sistema de membresías de un gimnasio con vendedores.",
+   "cita": "La cuota se revisa cada primero de mes.",
+   "lecturas": [
+    "La mensualidad que paga el socio",
+    "La meta de ventas de cada vendedor"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B29",
+   "termino": "depósito",
+   "clase": "polisemia",
+   "dominio": "Renta de departamentos",
+   "contexto": "Sistema de una inmobiliaria que renta departamentos.",
+   "cita": "El depósito se confirma al día siguiente de firmar.",
+   "lecturas": [
+    "El depósito en garantía del inquilino",
+    "Una transferencia o pago bancario",
+    "Una bodega o lugar de almacenamiento"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B30",
+   "termino": "factura",
+   "clase": "polisemia",
+   "dominio": "Constructora",
+   "contexto": "Sistema de compras de una constructora mediana.",
+   "cita": "Sin factura no se le paga al proveedor.",
+   "lecturas": [
+    "La factura fiscal electrónica (CFDI)",
+    "Cualquier nota o comprobante de cobro"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B31",
+   "termino": "nómina",
+   "clase": "polisemia",
+   "dominio": "Empresa manufacturera",
+   "contexto": "Sistema de recursos humanos de una fábrica.",
+   "cita": "La nómina la revisa contabilidad antes de cada pago.",
+   "lecturas": [
+    "El cálculo y pago de los sueldos del periodo",
+    "La lista de empleados que cobran"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B32",
+   "termino": "dar de alta",
+   "clase": "regionalismo",
+   "dominio": "Hospital",
+   "contexto": "Sistema de admisión y egreso de un hospital privado.",
+   "cita": "Al paciente lo damos de alta en recepción.",
+   "lecturas": [
+    "Registrarlo en el sistema (crear su registro)",
+    "Darle el alta médica para que salga del hospital"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B33",
+   "termino": "checar",
+   "clase": "regionalismo",
+   "dominio": "Maquiladora",
+   "contexto": "Sistema de control de asistencia de una maquiladora.",
+   "cita": "Los trabajadores tienen que checar al entrar y al salir.",
+   "lecturas": [
+    "Registrar su entrada y salida en el reloj checador",
+    "Revisar o verificar algo"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B34",
+   "termino": "jalar",
+   "clase": "regionalismo",
+   "dominio": "Sucursal bancaria",
+   "contexto": "Sistema interno de una sucursal bancaria.",
+   "cita": "Cuando el sistema no jala, se anota todo en papel.",
+   "lecturas": [
+    "Funcionar o responder (el sistema no funciona)",
+    "Traer o descargar la información (el sistema no trae los datos)"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B35",
+   "termino": "apartar",
+   "clase": "regionalismo",
+   "dominio": "Mueblería",
+   "contexto": "Sistema de ventas de una mueblería con sistema de apartado.",
+   "cita": "El cliente puede apartar con el diez por ciento.",
+   "lecturas": [
+    "Reservar la mercancía con un anticipo (apartado)",
+    "Separar o hacer a un lado un artículo"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B36",
+   "termino": "cotizar",
+   "clase": "regionalismo",
+   "dominio": "Recursos humanos",
+   "contexto": "Sistema de recursos humanos de una pequeña empresa.",
+   "cita": "Los trabajadores cotizan desde el primer día.",
+   "lecturas": [
+    "Aportar al seguro social (IMSS) y acumular semanas",
+    "Pedir o hacer un presupuesto (una cotización)"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B37",
+   "termino": "quincena",
+   "clase": "regionalismo",
+   "dominio": "Empresa de limpieza",
+   "contexto": "Sistema de nómina de una empresa de limpieza.",
+   "cita": "Los descuentos se aplican en la quincena.",
+   "lecturas": [
+    "El pago quincenal (el sueldo)",
+    "El periodo de quince días"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B38",
+   "termino": "feria",
+   "clase": "regionalismo",
+   "dominio": "Transporte público",
+   "contexto": "Sistema de cobro para una ruta de transporte colectivo.",
+   "cita": "Le pedimos al pasaje que traiga feria para no batallar.",
+   "lecturas": [
+    "Dinero suelto o cambio (monedas)",
+    "Una feria o evento"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B39",
+   "termino": "abono",
+   "clase": "regionalismo",
+   "dominio": "Tienda de electrodomésticos",
+   "contexto": "Sistema de crédito de una tienda que vende a plazos.",
+   "cita": "El abono se registra cada semana en la tarjeta del cliente.",
+   "lecturas": [
+    "Un pago parcial del crédito",
+    "Un saldo a favor o bonificación (abono a la cuenta)"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B40",
+   "termino": "padrón",
+   "clase": "regionalismo",
+   "dominio": "Programa social municipal",
+   "contexto": "Sistema para entregar apoyos de un programa social municipal.",
+   "cita": "Antes de entregar el apoyo se revisa el padrón.",
+   "lecturas": [
+    "La lista de beneficiarios del programa",
+    "El padrón electoral"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B41",
+   "termino": "baja",
+   "clase": "regionalismo",
+   "dominio": "Escuela particular",
+   "contexto": "Sistema administrativo de una escuela particular.",
+   "cita": "Si el alumno no paga tres meses, se le da de baja.",
+   "lecturas": [
+    "Baja temporal (puede regresar)",
+    "Baja definitiva de la escuela",
+    "Borrar o desactivar su registro en el sistema"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B42",
+   "termino": "raya",
+   "clase": "regionalismo",
+   "dominio": "Rancho agrícola",
+   "contexto": "Sistema de pago a jornaleros de un rancho agrícola.",
+   "cita": "Los sábados se paga la raya en la oficina del rancho.",
+   "lecturas": [
+    "El salario semanal de los jornaleros",
+    "Una línea o marca (raya)"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B43",
+   "termino": "refacción",
+   "clase": "regionalismo",
+   "dominio": "Taller de motos",
+   "contexto": "Sistema de inventario de un taller de motocicletas con sucursal en Centroamérica.",
+   "cita": "La refacción se pide al proveedor en cuanto se acaba.",
+   "lecturas": [
+    "Una pieza de repuesto (uso en México)",
+    "Una merienda o refrigerio (uso en Centroamérica)"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B44",
+   "termino": "credencial",
+   "clase": "regionalismo",
+   "dominio": "Biblioteca universitaria",
+   "contexto": "Sistema de préstamos de una biblioteca universitaria.",
+   "cita": "Para sacar un libro necesitan su credencial.",
+   "lecturas": [
+    "La credencial de estudiante",
+    "La credencial para votar (INE)",
+    "Las credenciales de acceso (usuario y contraseña)"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B45",
+   "termino": "el licenciado",
+   "clase": "regionalismo",
+   "dominio": "Despacho de cobranza",
+   "contexto": "Sistema de un despacho de cobranza.",
+   "cita": "El licenciado autoriza los descuentos de cada cliente.",
+   "lecturas": [
+    "El abogado del despacho",
+    "Cualquier jefe o profesionista con licenciatura (trato de cortesía)"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B46",
+   "termino": "ahorita",
+   "clase": "regionalismo",
+   "dominio": "Mesa de ayuda",
+   "contexto": "Sistema de tickets de la mesa de ayuda de una empresa.",
+   "cita": "Si el usuario dice que ahorita lo revisa, el ticket se queda abierto.",
+   "lecturas": [
+    "En este momento, de inmediato",
+    "Más tarde, en un momento indefinido"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B47",
+   "termino": "tanda",
+   "clase": "regionalismo",
+   "dominio": "Cooperativa de ahorro",
+   "contexto": "Sistema de una cooperativa de mujeres artesanas.",
+   "cita": "Las socias entran a la tanda en enero.",
+   "lecturas": [
+    "Un esquema de ahorro rotativo entre las socias",
+    "Un turno o grupo de trabajo"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B48",
+   "termino": "papelería",
+   "clase": "regionalismo",
+   "dominio": "Licitaciones",
+   "contexto": "Sistema de compras públicas de un ayuntamiento.",
+   "cita": "Si falta la papelería del proveedor, se le rechaza.",
+   "lecturas": [
+    "Los documentos y trámites del proveedor",
+    "Los artículos de papelería (útiles)"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B49",
+   "termino": "timbrar",
+   "clase": "regionalismo",
+   "dominio": "Nómina",
+   "contexto": "Sistema de nómina para un despacho que atiende a varias empresas.",
+   "cita": "La nómina se timbra cada quincena.",
+   "lecturas": [
+    "Emitir el CFDI de nómina ante el SAT",
+    "Poner un sello o timbre físico"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B50",
+   "termino": "apoyo",
+   "clase": "regionalismo",
+   "dominio": "Programa de becas",
+   "contexto": "Sistema de becas de un gobierno estatal.",
+   "cita": "El apoyo se entrega el primer viernes de cada mes.",
+   "lecturas": [
+    "El pago o beca en dinero",
+    "Asesoría o ayuda en especie"
+   ],
+   "ambiguo": true
+  },
+  {
+   "id": "B51",
+   "termino": "contraseña",
+   "clase": "inequivoco",
+   "dominio": "Mesa de ayuda",
+   "contexto": "Sistema de tickets de la mesa de ayuda de una empresa.",
+   "cita": "Cuando el usuario se bloquea le reseteamos la contraseña y ya puede volver a entrar.",
+   "lecturas": [
+    "La clave de acceso del usuario al sistema"
+   ],
+   "ambiguo": false,
+   "pareja": "B46"
+  },
+  {
+   "id": "B52",
+   "termino": "código de barras",
+   "clase": "inequivoco",
+   "dominio": "Supermercado",
+   "contexto": "Sistema de punto de venta de un supermercado.",
+   "cita": "Si el código de barras no pasa, la cajera teclea el número a mano y ya.",
+   "lecturas": [
+    "El código impreso en el producto que lee el escáner"
+   ],
+   "ambiguo": false,
+   "pareja": null
+  },
+  {
+   "id": "B53",
+   "termino": "radiografía",
+   "clase": "inequivoco",
+   "dominio": "Clínica dental",
+   "contexto": "Sistema de una clínica dental con planes de pago.",
+   "cita": "La radiografía se le toma antes de cualquier tratamiento y se guarda con sus datos.",
+   "lecturas": [
+    "La imagen radiológica de los dientes del paciente"
+   ],
+   "ambiguo": false,
+   "pareja": "B20"
+  },
+  {
+   "id": "B54",
+   "termino": "kilometraje",
+   "clase": "inequivoco",
+   "dominio": "Taller mecánico",
+   "contexto": "Sistema para un taller mecánico que agenda vehículos y lleva su historial.",
+   "cita": "Cuando entra el carro anotamos el kilometraje del tablero, para saber cuándo le toca.",
+   "lecturas": [
+    "Los kilómetros recorridos por el vehículo, según el tablero"
+   ],
+   "ambiguo": false,
+   "pareja": "B10"
+  },
+  {
+   "id": "B55",
+   "termino": "temperatura",
+   "clase": "inequivoco",
+   "dominio": "Farmacia",
+   "contexto": "Sistema de inventario para una cadena de farmacias.",
+   "cita": "La temperatura del refri de las vacunas se revisa en la mañana y en la tarde.",
+   "lecturas": [
+    "Los grados a los que se conservan los medicamentos en el refrigerador"
+   ],
+   "ambiguo": false,
+   "pareja": "B11"
+  },
+  {
+   "id": "B56",
+   "termino": "número de serie",
+   "clase": "inequivoco",
+   "dominio": "Almacén de refacciones",
+   "contexto": "Sistema para una tienda de refacciones que compra a proveedores y vende a talleres.",
+   "cita": "Cada pieza que sale lleva su número de serie anotado, por si regresa en garantía.",
+   "lecturas": [
+    "El identificador único de fábrica de la pieza"
+   ],
+   "ambiguo": false,
+   "pareja": "B07"
+  },
+  {
+   "id": "B57",
+   "termino": "fecha de caducidad",
+   "clase": "inequivoco",
+   "dominio": "Tienda de conveniencia",
+   "contexto": "Sistema de punto de venta para una tienda de conveniencia con varios turnos.",
+   "cita": "Lo que ya pasó su fecha de caducidad se saca del anaquel y se reporta como merma.",
+   "lecturas": [
+    "El día en que vence el producto"
+   ],
+   "ambiguo": false,
+   "pareja": "B08"
+  },
+  {
+   "id": "B58",
+   "termino": "correo electrónico",
+   "clase": "inequivoco",
+   "dominio": "Oficina administrativa",
+   "contexto": "Sistema administrativo de una empresa constructora.",
+   "cita": "Al empleado nuevo se le da su correo electrónico de la empresa desde el primer día.",
+   "lecturas": [
+    "La dirección de correo del empleado"
+   ],
+   "ambiguo": false,
+   "pareja": "B25"
+  },
+  {
+   "id": "B59",
+   "termino": "huella digital",
+   "clase": "inequivoco",
+   "dominio": "Maquiladora",
+   "contexto": "Sistema de control de asistencia de una maquiladora.",
+   "cita": "Ahora el checador es con huella digital, ya no con tarjeta como antes.",
+   "lecturas": [
+    "La huella del dedo que registra el reloj checador"
+   ],
+   "ambiguo": false,
+   "pareja": "B33"
+  },
+  {
+   "id": "B60",
+   "termino": "signos vitales",
+   "clase": "inequivoco",
+   "dominio": "Hospital",
+   "contexto": "Sistema de admisión y egreso de un hospital privado.",
+   "cita": "La enfermera toma los signos vitales cada cuatro horas y los apunta en la hoja.",
+   "lecturas": [
+    "Las mediciones clínicas del paciente (presión, pulso, temperatura, respiración)"
+   ],
+   "ambiguo": false,
+   "pareja": "B15"
+  },
+  {
+   "id": "B61",
+   "termino": "paciente",
+   "clase": "inequivoco",
+   "dominio": "Clínica familiar",
+   "contexto": "Sistema para una clínica familiar que agenda citas y lleva los expedientes de los pacientes.",
+   "cita": "El paciente llega, se registra en recepción y se espera a que lo llamen.",
+   "lecturas": [
+    "La persona que recibe atención médica"
+   ],
+   "ambiguo": false,
+   "pareja": "B01"
+  },
+  {
+   "id": "B62",
+   "termino": "cita",
+   "clase": "inequivoco",
+   "dominio": "Centro de terapia",
+   "contexto": "Sistema para un centro de terapia psicológica que agenda pacientes y cobra.",
+   "cita": "La cita se agenda por teléfono y un día antes se le manda recordatorio.",
+   "lecturas": [
+    "El horario agendado para la terapia del paciente"
+   ],
+   "ambiguo": false,
+   "pareja": "B04"
+  },
+  {
+   "id": "B63",
+   "termino": "caja registradora",
+   "clase": "inequivoco",
+   "dominio": "Supermercado",
+   "contexto": "Sistema de punto de venta de un supermercado.",
+   "cita": "Cada cajera tiene su caja registradora y nadie más la puede usar en su turno.",
+   "lecturas": [
+    "El aparato donde se cobra"
+   ],
+   "ambiguo": false,
+   "pareja": "B16"
+  },
+  {
+   "id": "B64",
+   "termino": "alumno",
+   "clase": "inequivoco",
+   "dominio": "Escuela primaria",
+   "contexto": "Sistema de control escolar de una primaria.",
+   "cita": "Cada alumno tiene que traer la boleta firmada por su papá o su mamá.",
+   "lecturas": [
+    "El estudiante inscrito en la escuela"
+   ],
+   "ambiguo": false,
+   "pareja": "B27"
+  },
+  {
+   "id": "B65",
+   "termino": "recibo",
+   "clase": "inequivoco",
+   "dominio": "Gimnasio",
+   "contexto": "Sistema de membresías de un gimnasio con vendedores.",
+   "cita": "Cuando el socio paga se le da su recibo impreso con la fecha y el monto.",
+   "lecturas": [
+    "El comprobante del pago entregado al socio"
+   ],
+   "ambiguo": false,
+   "pareja": "B28"
+  },
+  {
+   "id": "B66",
+   "termino": "contrato",
+   "clase": "inequivoco",
+   "dominio": "Renta de departamentos",
+   "contexto": "Sistema de una inmobiliaria que renta departamentos.",
+   "cita": "El contrato se firma por un año y el inquilino se queda con una copia.",
+   "lecturas": [
+    "El documento de arrendamiento firmado"
+   ],
+   "ambiguo": false,
+   "pareja": "B29"
+  },
+  {
+   "id": "B67",
+   "termino": "salario",
+   "clase": "inequivoco",
+   "dominio": "Empresa manufacturera",
+   "contexto": "Sistema de recursos humanos de una fábrica.",
+   "cita": "El salario de cada trabajador depende de su puesto y de cuánto tiempo lleva.",
+   "lecturas": [
+    "La paga del trabajador"
+   ],
+   "ambiguo": false,
+   "pareja": "B31"
+  },
+  {
+   "id": "B68",
+   "termino": "vacante",
+   "clase": "inequivoco",
+   "dominio": "Reclutamiento",
+   "contexto": "Sistema de reclutamiento de una agencia de empleo.",
+   "cita": "Cuando una empresa nos pide gente abrimos la vacante y la subimos a las bolsas de trabajo.",
+   "lecturas": [
+    "El puesto disponible por cubrir"
+   ],
+   "ambiguo": false,
+   "pareja": "B26"
+  },
+  {
+   "id": "B69",
+   "termino": "sucursal",
+   "clase": "inequivoco",
+   "dominio": "Sucursal bancaria",
+   "contexto": "Sistema interno de una sucursal bancaria.",
+   "cita": "Cada sucursal abre a las nueve y cierra a las cuatro, de lunes a viernes.",
+   "lecturas": [
+    "La oficina física del banco"
+   ],
+   "ambiguo": false,
+   "pareja": "B34"
+  },
+  {
+   "id": "B70",
+   "termino": "CURP",
+   "clase": "inequivoco",
+   "dominio": "Programa social municipal",
+   "contexto": "Sistema para entregar apoyos de un programa social municipal.",
+   "cita": "Para registrarse, la persona tiene que traer su CURP impresa; si no la trae, no se puede.",
+   "lecturas": [
+    "La Clave Única de Registro de Población"
+   ],
+   "ambiguo": false,
+   "pareja": "B40"
+  },
+  {
+   "id": "B71",
+   "termino": "proveedor",
+   "clase": "inequivoco",
+   "dominio": "Almacén",
+   "contexto": "Sistema de inventario para el almacén de una distribuidora de abarrotes.",
+   "cita": "El proveedor entrega los lunes y el almacenista revisa que venga completo.",
+   "lecturas": [
+    "La empresa que surte la mercancía"
+   ],
+   "ambiguo": false,
+   "pareja": "B03"
+  },
+  {
+   "id": "B72",
+   "termino": "domicilio",
+   "clase": "inequivoco",
+   "dominio": "Programa de becas",
+   "contexto": "Sistema de becas de un gobierno estatal.",
+   "cita": "El domicilio tiene que coincidir con el del comprobante que trae el solicitante.",
+   "lecturas": [
+    "La dirección donde vive el solicitante"
+   ],
+   "ambiguo": false,
+   "pareja": null
+  },
+  {
+   "id": "B73",
+   "termino": "teléfono",
+   "clase": "inequivoco",
+   "dominio": "Despacho de cobranza",
+   "contexto": "Sistema de un despacho de cobranza.",
+   "cita": "Si el deudor no contesta en el teléfono que dejó, se le manda una carta a su casa.",
+   "lecturas": [
+    "El número de contacto del deudor"
+   ],
+   "ambiguo": false,
+   "pareja": null
+  }
+ ]
+}

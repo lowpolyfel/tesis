@@ -1,20 +1,25 @@
 """Prueba de modelos con el banco de términos ambiguos (ADR 0027).
 
-El banco (`banco/ambiguedad_v1.json`) trae 50 términos ambiguos, cada uno en una cita de
-entrevista con su dominio y sus lecturas esperadas. Una prueba corre el Clasificador real de la
-versión 2 (`intenciones`, prompt `clasificador_intencion_v1`) con cada modelo elegido sobre los
-términos elegidos, un término por llamada, y guarda lo que respondió cada modelo.
+Los bancos están en `banco/ambiguedad_vN.json` y no se editan una vez publicados: un cambio es
+una versión nueva, para que cada prueba siga correspondiendo a su banco (guarda versión y huella).
+- v1: 50 términos ambiguos (31 de polisemia y 19 regionalismos).
+- v2: los mismos 50 más 23 controles **inequívocos**: vocabulario de dominio con una sola lectura
+  en su dominio, muchos en pareja con un ambiguo del mismo dominio («caja» / «caja registradora»).
+
+Cada término trae una cita de entrevista, su dominio y sus lecturas esperadas. Una prueba corre el
+Clasificador real de la versión 2 (`intenciones`, prompt `clasificador_intencion_v1`) con cada
+modelo elegido sobre los términos elegidos, un término por llamada, y guarda lo que respondió.
 
 Luego una persona revisa, término por término y modelo por modelo, si el modelo hizo un buen
 trabajo (✓ / ✗). Las revisiones van en otra colección (`revisiones_modelos`) para que la prueba
 pueda seguir corriendo mientras se revisa.
 
-Medidas por modelo (`resumen`):
-- detección: cuántos términos marcó como ambiguos (2 o más intenciones), sobre todos los
-  términos de la prueba; un error cuenta como no detectado;
+Medidas por modelo (`resumen`), todas con su intervalo de Wilson al 95 %:
+- exhaustividad (`deteccion`): ambiguos que marcó como ambiguos (2 o más intenciones);
+- con controles: tasa de falsas alarmas (inequívocos marcados como ambiguos) y precisión;
+  y en las parejas del mismo dominio, en cuántas marcó el ambiguo y no su control;
 - aprobación: ✓ sobre los revisados;
-- ambas con su intervalo de Wilson al 95 %, por clase de término, con reintentos, errores y
-  latencia;
+- por clase de término, con reintentos, errores y latencia;
 - entre cada par de modelos, la prueba exacta de McNemar sobre los términos que ambos tienen
   revisados (¿la diferencia de aprobación es más que azar?).
 
@@ -44,7 +49,7 @@ log = logging.getLogger(__name__)
 COLECCION_PRUEBAS = "pruebas_modelos"
 COLECCION_REVISIONES = "revisiones_modelos"
 PREFIJO = "P"
-BANCO = Path(__file__).with_name("banco") / "ambiguedad_v1.json"
+BANCOS = Path(__file__).with_name("banco")
 PROMPT = "clasificador_intencion_v1"
 SIN_LEL = "(sin LEL: la prueba usa solo la cita y el contexto)"
 Z = 1.959963984540054  # normal al 97.5 %: intervalos al 95 %
@@ -55,16 +60,37 @@ def ahora() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
+def versiones() -> list[str]:
+    """Las versiones del banco que hay en `banco/`, de la más vieja a la más nueva."""
+    return sorted((r.stem.removeprefix("ambiguedad_") for r in BANCOS.glob("ambiguedad_v*.json")),
+                  key=lambda v: int(v.removeprefix("v")))
+
+
 @cache
-def banco() -> dict:
-    """El banco con su huella (sha256 de los términos), para citar exactamente qué se usó."""
-    datos = json.loads(BANCO.read_text(encoding="utf-8"))
+def banco(version: str | None = None) -> dict:
+    """El banco con su huella (sha256 de los términos), para citar exactamente qué se usó. Sin
+    versión, el más nuevo. Una versión publicada no se edita: los cambios van en una nueva, para
+    que las pruebas viejas sigan correspondiendo a su banco."""
+    version = version or versiones()[-1]
+    if version not in versiones():
+        raise KeyError(version)
+    datos = json.loads((BANCOS / f"ambiguedad_{version}.json").read_text(encoding="utf-8"))
     crudo = json.dumps(datos["terminos"], ensure_ascii=False, sort_keys=True).encode()
-    return {**datos, "huella": hashlib.sha256(crudo).hexdigest()}
+    return {**datos, "huella": hashlib.sha256(crudo).hexdigest(), "versiones": versiones()}
 
 
-def por_id() -> dict[str, dict]:
-    return {t["id"]: t for t in banco()["terminos"]}
+def banco_de(prueba: dict) -> dict:
+    """El banco con que corrió la prueba (las de la v2.3.0 no guardaban más que la v1)."""
+    return banco(prueba.get("banco", {}).get("version") or "v1")
+
+
+def por_id(version: str | None = None) -> dict[str, dict]:
+    return {t["id"]: t for t in banco(version)["terminos"]}
+
+
+def es_ambiguo(t: dict) -> bool:
+    """La verdad del banco: en v1 todos son ambiguos; desde v2 lo dice cada término."""
+    return t.get("ambiguo", t["clase"] != "inequivoco")
 
 
 def etiqueta_modelo(m: dict) -> str:
@@ -107,9 +133,21 @@ def _percentil(xs: list[float], q: float) -> float | None:
 
 
 def resumen(prueba: dict, revisiones: dict | None) -> dict:
-    """Medidas por modelo y comparación por pares. `revisiones`: el doc de `revisiones_modelos` o None."""
-    terminos = por_id()
+    """Medidas por modelo y comparación por pares. `revisiones`: el doc de `revisiones_modelos` o None.
+
+    Positivo = el modelo marcó el término como ambiguo (2 o más intenciones); la verdad es la del
+    banco. Con controles negativos (banco v2) hay matriz de confusión completa:
+    - exhaustividad (`deteccion`): ambiguos marcados sobre TODOS los ambiguos; un error cuenta como
+      no detectado (el sistema fallaría igual);
+    - tasa de falsas alarmas: inequívocos marcados como ambiguos sobre los inequívocos que
+      respondieron (un error no es ni alarma ni contención: se reporta aparte);
+    - precisión: ambiguos marcados sobre todo lo marcado.
+    """
+    b = banco_de(prueba)
+    terminos = {t["id"]: t for t in b["terminos"]}
     items = prueba["items"]
+    positivos = [i for i in items if es_ambiguo(terminos[i])]
+    negativos = [i for i in items if not es_ambiguo(terminos[i])]
     marcas = (revisiones or {}).get("marcas", {})
     modelos = []
     for m in prueba["modelos"]:
@@ -117,51 +155,77 @@ def resumen(prueba: dict, revisiones: dict | None) -> dict:
         rev = marcas.get(m["id"], {})
         hechos = [i for i in items if i in res]
         ok = [i for i in hechos if res[i]["ok"]]
-        detectados = [i for i in ok if res[i]["ambiguo"]]
+        marcados = {i for i in ok if res[i]["ambiguo"]}
+        vp = sum(i in marcados for i in positivos)
+        neg_ok = [i for i in negativos if i in ok]
+        fp = sum(i in marcados for i in neg_ok)
         revisados = [i for i in items if rev.get(i, {}).get("bueno") is not None]
         buenos = [i for i in revisados if rev[i]["bueno"]]
         ms = [res[i]["ms"] for i in ok if res[i].get("ms") is not None]
         por_clase = {}
-        for clase in banco()["clases"]:
+        for clase in b["clases"]:
             de_clase = [i for i in items if terminos[i]["clase"] == clase]
             if not de_clase:
                 continue
             rv = [i for i in de_clase if i in revisados]
-            por_clase[clase] = {"n": len(de_clase),
-                                "deteccion": wilson(sum(i in detectados for i in de_clase), len(de_clase)),
+            base = de_clase if clase != "inequivoco" else [i for i in de_clase if i in ok]
+            # «marcó ambiguo»: en una clase ambigua es la exhaustividad; en la inequívoca, las falsas alarmas
+            por_clase[clase] = {"n": len(de_clase), "ambiguo": clase != "inequivoco",
+                                "deteccion": wilson(sum(i in marcados for i in base), len(base)),
                                 "aprobacion": wilson(sum(i in buenos for i in rv), len(rv))}
+        parejas = [(t["pareja"], t["id"]) for t in terminos.values()
+                   if t.get("pareja") and t["id"] in items and t["pareja"] in items]
+        parejas_ok = [(a, n) for a, n in parejas if a in ok and n in ok]
         modelos.append({
             "id": m["id"], "proveedor": m["proveedor"], "modelo": m["modelo"], "etiqueta": etiqueta_modelo(m),
-            "n": len(items), "hechos": len(hechos), "respondidos": len(ok), "errores": len(hechos) - len(ok),
+            "n": len(items), "n_ambiguos": len(positivos), "n_inequivocos": len(negativos),
+            "hechos": len(hechos), "respondidos": len(ok), "errores": len(hechos) - len(ok),
+            "errores_inequivocos": sum(1 for i in negativos if i in res and not res[i]["ok"]),
             "reintentos": sum(1 for i in ok if res[i].get("intentos", 1) > 1),
-            "deteccion": wilson(len(detectados), len(items)),
+            "confusion": {"vp": vp, "fn": len(positivos) - vp, "fp": fp, "vn": len(neg_ok) - fp},
+            "deteccion": wilson(vp, len(positivos)),
+            "falsas_alarmas": wilson(fp, len(neg_ok)) if negativos else None,
+            "precision": wilson(vp, vp + fp) if negativos else None,
+            "parejas": {"n": len(parejas_ok), "discrimina": sum(1 for a, n in parejas_ok if a in marcados and n not in marcados)}
+            if parejas else None,
             "aprobacion": wilson(len(buenos), len(revisados)),
             "revisados": len(revisados),
-            "intenciones_media": statistics.fmean([len(res[i]["intenciones"]) for i in detectados]) if detectados else None,
+            "intenciones_media": statistics.fmean([len(res[i]["intenciones"]) for i in marcados]) if marcados else None,
             "latencia_ms": {"mediana": _percentil(ms, 0.5), "p90": _percentil(ms, 0.9)},
             "por_clase": por_clase,
         })
     pares = []
     for a_i, a in enumerate(prueba["modelos"]):
-        for b in prueba["modelos"][a_i + 1:]:
-            ra, rb = marcas.get(a["id"], {}), marcas.get(b["id"], {})
+        for b_ in prueba["modelos"][a_i + 1:]:
+            ra, rb = marcas.get(a["id"], {}), marcas.get(b_["id"], {})
             comunes = [i for i in items if ra.get(i, {}).get("bueno") is not None and rb.get(i, {}).get("bueno") is not None]
             solo_a = sum(1 for i in comunes if ra[i]["bueno"] and not rb[i]["bueno"])
             solo_b = sum(1 for i in comunes if rb[i]["bueno"] and not ra[i]["bueno"])
-            pares.append({"a": a["id"], "b": b["id"], "comunes": len(comunes), "solo_a": solo_a, "solo_b": solo_b,
+            pares.append({"a": a["id"], "b": b_["id"], "comunes": len(comunes), "solo_a": solo_a, "solo_b": solo_b,
                           "p": mcnemar(solo_a, solo_b)})
     avisos = []
     if len(items) < 20:
         avisos.append(f"Solo {len(items)} términos: los intervalos son anchos; para citar, corre el banco completo.")
-    sin_revisar = [m["etiqueta"] for m in modelos if m["respondidos"] and m["revisados"] < m["respondidos"]]
-    if sin_revisar:
-        avisos.append("Faltan revisiones de " + ", ".join(sin_revisar) + ": la aprobación solo cuenta los revisados.")
+    if not negativos:
+        avisos.append("Sin controles inequívocos: la detección es solo la exhaustividad. Un modelo que marcara todo como "
+                      "ambiguo saldría perfecto; no hay precisión ni falsas alarmas. Usa el banco v2 o posterior.")
+    elif len(negativos) < 20:
+        avisos.append(f"Solo {len(negativos)} controles inequívocos: la tasa de falsas alarmas y la precisión tienen "
+                      "intervalos muy anchos.")
+    # sin nombres de modelos: la pantalla puede estar revisando a ciegas
+    respondidas, revisadas = sum(m["respondidos"] for m in modelos), sum(m["revisados"] for m in modelos)
+    if revisadas < respondidas:
+        avisos.append(f"Faltan revisiones ({revisadas} de {respondidas} respuestas revisadas): la aprobación solo "
+                      "cuenta los revisados.")
     if any(m["errores"] for m in modelos):
-        avisos.append("Hay términos con error (el modelo no respondió o no dio un JSON válido tras el reintento): "
-                      "cuentan como no detectados.")
+        avisos.append("Hay términos con error (el modelo no respondió o no dio un JSON válido tras el reintento): en los "
+                      "ambiguos cuentan como no detectados; en los inequívocos se dejan fuera de las falsas alarmas.")
     if revisiones and revisiones.get("a_ciegas") is False:
-        avisos.append("La revisión se hizo viendo el nombre de los modelos.")
-    return {"modelos": modelos, "pares": pares, "avisos": avisos}
+        avisos.append("La revisión se hizo viendo el nombre de los modelos: la aprobación es la medida más blanda. "
+                      "Para endurecerla, rehaz la revisión con los nombres ocultos (el orden se baraja).")
+    return {"modelos": modelos, "pares": pares, "avisos": avisos,
+            "banco": {"version": b["version"], "huella": b["huella"],
+                      "coincide": b["huella"] == prueba.get("banco", {}).get("huella", b["huella"])}}
 
 
 def resumen_corto(prueba: dict, revisiones: dict | None) -> dict:
@@ -169,15 +233,17 @@ def resumen_corto(prueba: dict, revisiones: dict | None) -> dict:
     r = resumen(prueba, revisiones)
     return {k: prueba.get(k) for k in ("prueba_id", "nota", "creado", "terminado", "estado", "avance")} | {
         "n_items": len(prueba["items"]),
+        "banco": prueba.get("banco", {}).get("version"),
         "modelos": [{"id": m["id"], "etiqueta": m["etiqueta"], "deteccion": m["deteccion"]["valor"],
+                     "falsas_alarmas": (m["falsas_alarmas"] or {}).get("valor"),
                      "aprobacion": m["aprobacion"]["valor"], "revisados": m["revisados"]} for m in r["modelos"]]}
 
 
 # ---------------------------------------------------------------- creación
 
 def nueva_prueba(pid: str, *, usuario_id: str, modelos: list[dict], items: list[str], nota: str | None,
-                 version: str, settings) -> dict:
-    b = banco()
+                 version: str, settings, banco_version: str | None = None) -> dict:
+    b = banco(banco_version)
     return {
         "prueba_id": pid, "usuario_id": usuario_id, "nota": nota, "creado": ahora(), "terminado": None,
         "estado": "en_proceso", "version_app": version,
@@ -260,7 +326,7 @@ class Ejecutor:
 
     def _correr(self, srv, prueba: dict, elecciones: dict[str, dict], cancelar: threading.Event) -> None:
         s = srv.deps.settings
-        terminos = por_id()
+        terminos = {t["id"]: t for t in banco_de(prueba)["terminos"]}
         por_proveedor: dict[str, list[dict]] = {}
         for m in prueba["modelos"]:
             por_proveedor.setdefault(m["proveedor"], []).append(m)

@@ -4,8 +4,9 @@ Mismo formato que el de las corridas de calibración (ADR 0026), con el mismo pr
 
     main.tex                 ejemplo que usa todo (se puede borrar)
     estilo-dudamel.tex       preámbulo común
-    figuras/modelos.tex      detección y aprobación por modelo, con su intervalo de Wilson
+    figuras/modelos.tex      exhaustividad, falsas alarmas y aprobación por modelo, con su intervalo de Wilson
     tablas/modelos.tex       resumen por modelo
+    tablas/confusion.tex     VP, FN, FP, VN por modelo y las parejas del mismo dominio (con controles)
     tablas/clases.tex        detección y aprobación por clase de término
     tablas/pares.tex         prueba exacta de McNemar entre cada par de modelos (si hay revisiones)
     tablas/banco.tex         los términos de la prueba con sus lecturas esperadas (longtable)
@@ -22,9 +23,9 @@ import json
 import zipfile
 
 from .latex import ESTILO, _celda, _csv, _num, tex
-from .pruebas_modelos import banco, etiqueta_modelo
+from .pruebas_modelos import banco_de, es_ambiguo, etiqueta_modelo
 
-NOMBRE_CLASE = {"polisemia": "Polisemia", "regionalismo": "Regionalismo"}
+NOMBRE_CLASE = {"polisemia": "Polisemia", "regionalismo": "Regionalismo", "inequivoco": "Inequívoco"}
 # lo que pdfLaTeX con T1 y utf8 compila sin paquetes extra; las respuestas de los modelos pueden traer otros
 _PUNTUACION = set("–—‘’“”…•«»¿¡°·")
 
@@ -39,45 +40,48 @@ def _ic(m: dict) -> str:
     return "---" if m["valor"] is None else f"{m['valor']:.2f} [{m['bajo']:.2f}, {m['alto']:.2f}]"
 
 
+# (clave del resumen, columna del CSV, estilo pgfplots, leyenda, desplazamiento vertical en la fila)
+SERIES = (("deteccion", "det", "deteccion", "Exhaustividad (ambiguos detectados)", 0.2),
+          ("falsas_alarmas", "fal", "falsasalarmas", "Falsas alarmas (inequívocos marcados)", 0.0),
+          ("aprobacion", "apr", "aprobacion", "Aprobación (revisión humana)", -0.2))
+
+
 def _datos_modelos(r: dict) -> str:
     """Una fila por modelo: la fila de la figura (de arriba abajo) y cada proporción con la
     distancia a sus extremos (lo que piden las barras de error de pgfplots)."""
-    filas = []
+    filas, encabezado = [], ["fila"]
+    for _, col, *_ in SERIES:
+        encabezado += [col, f"{col}_menos", f"{col}_mas"]
     n = len(r["modelos"])
     for k, m in enumerate(r["modelos"]):
         fila = [n - k]
-        for clave in ("deteccion", "aprobacion"):
-            x = m[clave]
+        for clave, *_ in SERIES:
+            x = m.get(clave) or {"valor": None}
             fila += [_num(x["valor"]), _num(None if x["valor"] is None else x["valor"] - x["bajo"]),
                      _num(None if x["valor"] is None else x["alto"] - x["valor"])]
         filas.append(fila)
-    return _csv(filas, ["fila", "deteccion", "det_menos", "det_mas", "aprobacion", "apr_menos", "apr_mas"])
+    return _csv(filas, encabezado)
 
 
 def _figura(r: dict) -> str:
     n = len(r["modelos"])
     nombres = ",".join("{" + tex(m["etiqueta"]) + "}" for m in reversed(r["modelos"]))
-    alto = f"{max(4.0, 1.6 + 1.1 * n):.1f}cm"
-    hay_aprobacion = any(m["aprobacion"]["valor"] is not None for m in r["modelos"])
-    series = [
-        ("  \\addplot[dudamel/deteccion] table[x=deteccion, y expr=\\thisrow{fila}+0.14, x error minus=det_menos,"
-         " x error plus=det_mas, col sep=comma] {\\dudameldir/datos/modelos.csv};"),
-        "  \\addlegendentry{Detección}",
-    ]
-    if hay_aprobacion:
-        series += [
-            ("  \\addplot[dudamel/aprobacion] table[x=aprobacion, y expr=\\thisrow{fila}-0.14, x error minus=apr_menos,"
-             " x error plus=apr_mas, col sep=comma] {\\dudameldir/datos/modelos.csv};"),
-            "  \\addlegendentry{Aprobación (revisión humana)}",
-        ]
+    alto = f"{max(4.4, 1.8 + 1.3 * n):.1f}cm"
+    series = []
+    for clave, col, estilo, leyenda, dy in SERIES:
+        if not any((m.get(clave) or {}).get("valor") is not None for m in r["modelos"]):
+            continue
+        series += [(f"  \\addplot[dudamel/{estilo}] table[x={col}, y expr=\\thisrow{{fila}}{dy:+.2f}, x error minus={col}_menos,"
+                    f" x error plus={col}_mas, col sep=comma] {{\\dudameldir/datos/modelos.csv}};"),
+                   f"  \\addlegendentry{{{leyenda}}}"]
     return "\n".join([
-        "% Por modelo: proporción de términos que marcó como ambiguos (detección) y proporción que la",
-        "% persona revisora aprobó (aprobación), con su intervalo de Wilson al 95 %.",
+        "% Por modelo: exhaustividad (ambiguos que marcó como ambiguos), falsas alarmas (inequívocos que",
+        "% marcó como ambiguos) y aprobación de la persona revisora, con su intervalo de Wilson al 95 %.",
         "\\begin{tikzpicture}",
         # más angosta que el texto: los nombres de los modelos van a la izquierda del eje
         f"\\begin{{axis}}[dudamel/eje, width=0.68\\linewidth, height={alto}, xmin=0, xmax=1, ymin=0.4, ymax={n + 0.6},",
         f"  ytick={{1,...,{n}}}, yticklabels={{{nombres}}}, ymajorgrids=false, xlabel={{Proporción}},",
-        "  unbounded coords=discard, legend columns=2, legend style={at={(0.5,1.03)}, anchor=south}]",
+        "  unbounded coords=discard, legend columns=1, legend style={at={(0.5,1.03)}, anchor=south}]",
         *series,
         "\\end{axis}",
         "\\end{tikzpicture}",
@@ -86,19 +90,49 @@ def _figura(r: dict) -> str:
 
 
 def _tabla_modelos(r: dict) -> str:
+    controles = any(m.get("falsas_alarmas") for m in r["modelos"])
     filas = []
     for m in r["modelos"]:
         lat = m["latencia_ms"]["mediana"]
-        filas.append(" & ".join([
-            tex(m["etiqueta"]), _ic(m["deteccion"]), _ic(m["aprobacion"]), f"{m['revisados']}/{m['n']}",
-            str(m["errores"]), str(m["reintentos"]), _celda(m["intenciones_media"], 1),
-            "---" if lat is None else f"{lat / 1000:.1f}"]) + " \\\\")
+        celdas = [tex(m["etiqueta"]), _ic(m["deteccion"])]
+        if controles:
+            celdas += [_ic(m["falsas_alarmas"]), _ic(m["precision"])]
+        celdas += [_ic(m["aprobacion"]), f"{m['revisados']}/{m['n']}", str(m["errores"]), str(m["reintentos"]),
+                   "---" if lat is None else f"{lat / 1000:.1f}"]
+        filas.append(" & ".join(celdas) + " \\\\")
+    columnas = "Modelo & Exhaustividad" + (" & Falsas alarmas & Precisión" if controles else "") + \
+        " & Aprobación & Revisados & Errores & Reintentos & Latencia (s) \\\\"
     return "\n".join([
-        "% Detección: términos marcados como ambiguos sobre los de la prueba (un error cuenta como no detectado).",
+        "% Exhaustividad: ambiguos marcados como ambiguos sobre todos los ambiguos (un error cuenta como no detectado).",
+        *(["% Falsas alarmas: inequívocos marcados como ambiguos sobre los inequívocos que respondieron.",
+           "% Precisión: ambiguos sobre todo lo marcado como ambiguo."] if controles else
+          ["% Sin controles inequívocos en el banco: no hay precisión ni falsas alarmas."]),
         "% Aprobación: ✓ de la persona revisora sobre los revisados. Entre corchetes, intervalo de Wilson al 95 %.",
-        "\\begin{tabular}{@{}lllrrrrr@{}}",
+        "\\begin{tabular}{@{}l" + "l" * (4 if controles else 2) + "rrrr@{}}",
         "\\toprule",
-        "Modelo & Detección & Aprobación & Revisados & Errores & Reintentos & Intenciones & Latencia (s) \\\\",
+        columnas,
+        "\\midrule",
+        *filas,
+        "\\bottomrule",
+        "\\end{tabular}",
+        "",
+    ])
+
+
+def _tabla_confusion(r: dict) -> str:
+    """Matriz de confusión por modelo (positivo = marcó ambiguo) y las parejas del mismo dominio."""
+    filas = []
+    for m in r["modelos"]:
+        c, par = m["confusion"], m.get("parejas")
+        parejas = "---" if not par else f"{par['discrimina']}/{par['n']}"
+        filas.append(f"{tex(m['etiqueta'])} & {c['vp']} & {c['fn']} & {c['fp']} & {c['vn']} & "
+                     f"{m['errores_inequivocos']} & {parejas} \\\\")
+    return "\n".join([
+        "% Positivo = el modelo marcó el término como ambiguo. VP/FN sobre los ambiguos (un error es FN); FP/VN sobre",
+        "% los inequívocos que respondieron. Parejas: en cuántas parejas del mismo dominio marcó el ambiguo y no su control.",
+        "\\begin{tabular}{@{}lrrrrrr@{}}",
+        "\\toprule",
+        "Modelo & VP & FN & FP & VN & Errores en inequívocos & Parejas \\\\",
         "\\midrule",
         *filas,
         "\\bottomrule",
@@ -114,10 +148,12 @@ def _tabla_clases(r: dict) -> str:
             filas.append(f"{tex(m['etiqueta'])} & {NOMBRE_CLASE.get(clase, tex(clase))} & {c['n']} & "
                          f"{_ic(c['deteccion'])} & {_ic(c['aprobacion'])} \\\\")
     return "\n".join([
-        "% Detección y aprobación por clase de término del banco.",
+        "% Por clase de término: proporción que el modelo marcó como ambiguos (en las clases ambiguas es la",
+        "% exhaustividad; en la inequívoca, las falsas alarmas) y aprobación. Con pocos casos por clase los",
+        "% intervalos se traslapan: una diferencia entre clases es una tendencia, no un resultado.",
         "\\begin{tabular}{@{}llrll@{}}",
         "\\toprule",
-        "Modelo & Clase & Términos & Detección & Aprobación \\\\",
+        "Modelo & Clase & Términos & Marcó ambiguo & Aprobación \\\\",
         "\\midrule",
         *filas,
         "\\bottomrule",
@@ -145,7 +181,7 @@ def _tabla_pares(r: dict) -> str:
 
 
 def _tabla_banco(prueba: dict) -> str:
-    terminos = {t["id"]: t for t in banco()["terminos"]}
+    terminos = {t["id"]: t for t in banco_de(prueba)["terminos"]}
     filas = []
     for i in prueba["items"]:
         t = terminos[i]
@@ -175,7 +211,7 @@ def _respuesta(r: dict | None) -> tuple[str, str]:
 
 
 def _tabla_respuestas(prueba: dict, marcas: dict) -> str:
-    terminos = {t["id"]: t for t in banco()["terminos"]}
+    terminos = {t["id"]: t for t in banco_de(prueba)["terminos"]}
     rev = {True: "bien", False: "mal", None: "---"}
     filas = []
     for m in prueba["modelos"]:
@@ -199,26 +235,29 @@ def _tabla_respuestas(prueba: dict, marcas: dict) -> str:
 
 
 def _datos_respuestas(prueba: dict, marcas: dict) -> str:
-    terminos = {t["id"]: t for t in banco()["terminos"]}
+    terminos = {t["id"]: t for t in banco_de(prueba)["terminos"]}
     filas = []
     for m in prueba["modelos"]:
         res = prueba["resultados"].get(m["id"], {})
         for i in prueba["items"]:
             r = res.get(i)
             marca = marcas.get(m["id"], {}).get(i, {})
-            filas.append([i, terminos[i]["termino"], terminos[i]["clase"], m["proveedor"], m["modelo"],
+            filas.append([i, terminos[i]["termino"], terminos[i]["clase"], int(es_ambiguo(terminos[i])), m["proveedor"], m["modelo"],
                           "" if r is None else int(r["ok"]), "" if not r or not r["ok"] else int(r["ambiguo"]),
                           "" if not r or not r["ok"] else len(r["intenciones"]), "" if not r else r.get("ms") or "",
                           "" if not r else r.get("intentos", ""),
                           {True: 1, False: 0, None: ""}[marca.get("bueno")], marca.get("nota") or ""])
-    return _csv(filas, ["id", "termino", "clase", "proveedor", "modelo", "respondio", "ambiguo", "intenciones", "ms",
+    return _csv(filas, ["id", "termino", "clase", "ambiguo_esperado", "proveedor", "modelo", "respondio", "ambiguo", "intenciones", "ms",
                         "intentos", "bueno", "nota"])
 
 
 def _main(prueba: dict, r: dict, revisiones: dict | None) -> str:
     b = prueba["banco"]
     revisor = (revisiones or {}).get("revisor")
-    tablas = [("modelos", "Resultados por modelo."), ("clases", "Por clase de término.")]
+    tablas = [("modelos", "Resultados por modelo.")]
+    if any(m.get("falsas_alarmas") for m in r["modelos"]):
+        tablas.append(("confusion", "Matriz de confusión por modelo (positivo = marcó ambiguo)."))
+    tablas.append(("clases", "Por clase de término."))
     if any(p["comunes"] for p in r["pares"]):
         tablas.append(("pares", "Comparación por pares (McNemar exacta)."))
     partes = [
@@ -236,7 +275,7 @@ def _main(prueba: dict, r: dict, revisiones: dict | None) -> str:
          f"Revisión: {tex(revisor or '---')}."),
         "",
         "\\begin{figure}[htbp]", "\\centering", "\\input{\\dudameldir/figuras/modelos}",
-        "\\caption{Detección y aprobación por modelo (intervalos de Wilson al 95~\\%).}",
+        "\\caption{Exhaustividad, falsas alarmas y aprobación por modelo (intervalos de Wilson al 95~\\%).}",
         "\\label{fig:dudamel-modelos}", "\\end{figure}", "",
     ]
     for nombre, pie in tablas:
@@ -263,8 +302,11 @@ LEEME = """# Paquete de la prueba de modelos {id} para Overleaf
 3. `prueba.json` es la prueba completa: modelos, configuración, banco (con su huella), cada
    respuesta y las revisiones. Cítala por su id ({id}) y fecha.
 
-Detección = términos que el modelo marcó como ambiguos / términos de la prueba. Aprobación =
-✓ de la persona revisora / términos revisados. Los intervalos son de Wilson al 95 %.
+Exhaustividad = ambiguos que el modelo marcó como ambiguos / ambiguos de la prueba (un error
+cuenta como no detectado). Con controles inequívocos (banco v2 o posterior): falsas alarmas =
+inequívocos marcados como ambiguos / inequívocos que respondieron, y precisión = ambiguos / todo
+lo marcado. Aprobación = ✓ de la persona revisora / términos revisados. Los intervalos son de
+Wilson al 95 %.
 """
 
 
@@ -283,6 +325,8 @@ def paquete_overleaf(prueba: dict, r: dict, revisiones: dict | None) -> bytes:
         "tablas/banco.tex": _tabla_banco(prueba),
         "tablas/respuestas.tex": _tabla_respuestas(prueba, marcas),
     }
+    if any(m.get("falsas_alarmas") for m in r["modelos"]):  # sin controles no hay FP ni VN que mostrar
+        archivos["tablas/confusion.tex"] = _tabla_confusion(r)
     if any(p["comunes"] for p in r["pares"]):
         archivos["tablas/pares.tex"] = _tabla_pares(r)
     archivos["main.tex"] = _main(prueba, r, revisiones)

@@ -238,11 +238,12 @@ export const borrarCorridaCalibracion = (calibracionId) => borrar(`/calibracione
 export const urlOverleaf = (calibracionId) => `${BASE_URL}/calibraciones/${id(calibracionId)}/overleaf.zip`;
 
 /* ---- Prueba de modelos con el banco de términos ambiguos (ADR 0027) ---- */
-/** { banco, version, titulo, descripcion, clases, criterio, huella, terminos: [{id, termino, clase, dominio, contexto, cita, lecturas}] } */
-export const bancoAmbiguedad = () => get("/bancos/ambiguedad");
+/** Un banco (sin versión, el más nuevo) → { banco, version, versiones, titulo, descripcion, clases, criterio, huella,
+ *  terminos: [{id, termino, clase, dominio, contexto, cita, lecturas, ambiguo?, pareja?}] } */
+export const bancoAmbiguedad = (version) => get("/bancos/ambiguedad", version ? { version } : undefined);
 /** Los modelos que la cuenta puede probar → { proveedores: [{id, nombre, modelos: [{id, nombre}], sugeridos, error}] } */
 export const modelosParaProbar = () => get("/pruebas-modelos/modelos");
-export const crearPruebaModelos = ({ modelos, items, nota }) => post("/pruebas-modelos", { modelos, items, nota: nota || null });
+export const crearPruebaModelos = ({ modelos, items, nota, banco }) => post("/pruebas-modelos", { modelos, items, nota: nota || null, banco: banco || null });
 export const pruebasModelos = () => get("/pruebas-modelos");
 /** La prueba con sus respuestas, `revisiones` y `resumen` ({modelos, pares, avisos}) */
 export const pruebaModelos = (pruebaId) => get(`/pruebas-modelos/${id(pruebaId)}`);
@@ -252,4 +253,6 @@ export const reanudarPruebaModelos = (pruebaId, errores = false) =>
   post(`/pruebas-modelos/${id(pruebaId)}/reanudar${errores ? "?errores=true" : ""}`);
 /** Marca ✓/✗ (bueno: true|false) o la quita (null) → { revisiones, resumen } */
 export const revisarPruebaModelos = (pruebaId, marca) => put(`/pruebas-modelos/${id(pruebaId)}/revision`, marca);
+/** Borra todas las marcas para rehacer la revisión (p. ej. a ciegas); las respuestas se conservan */
+export const rehacerRevisionModelos = (pruebaId) => borrar(`/pruebas-modelos/${id(pruebaId)}/revision`);
 export const urlOverleafModelos = (pruebaId) => `${BASE_URL}/pruebas-modelos/${id(pruebaId)}/overleaf.zip`;
