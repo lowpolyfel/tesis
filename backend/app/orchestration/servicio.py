@@ -69,7 +69,8 @@ COLECCIONES_DEL_PROYECTO = ("documentos", "comparaciones", "evaluaciones", COLEC
                             COLECCION_FICHAS,  # app/contexto/ficha.py
                             "lexico", "memoria",  # versión 2: el LEL interactivo y lo aprendido (ADR 0024)
                             "fase_mapa", "fase_metas", "fase_requisitos",
-                            "etiquetas_entrevista", "calibraciones")  # calibración sobre entrevistas (ADR 0026)
+                            "etiquetas_entrevista", "calibraciones",  # calibración sobre entrevistas (ADR 0026)
+                            "etiquetas_anotadores")  # etiquetado por persona (ADR 0029)
 
 
 class Servicio:

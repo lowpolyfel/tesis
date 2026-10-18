@@ -20,8 +20,19 @@ from typing import Iterable
 
 from app.divergence.similitud import decidir
 
-from .entrevistas import etiquetas_planas, similitudes_de_entrevista
-from .estadistica import auc, bootstrap, confusion, emparejar, por_tipo, rejilla_con_etiquetas, roc, separacion
+from .anotaciones import consolidar, desde_legado
+from .entrevistas import similitudes_de_entrevista
+from .estadistica import (
+    auc,
+    banda_roc,
+    bootstrap,
+    confusion,
+    emparejar,
+    por_tipo,
+    rejilla_con_etiquetas,
+    roc,
+    separacion,
+)
 from .sensibilidad import distribucion, rejilla
 
 COLECCION_CORRIDAS = "calibraciones"
@@ -75,6 +86,14 @@ def _avisos(valores: list[dict], gt: dict | None, modelos: list[str], umbrales_u
     if gt["separacion"]["separa"] is False:
         avisos.append("ningún umbral separa los casos etiquetados: la similitud inicial no basta para distinguirlos "
                       "(es un hallazgo, no un ajuste pendiente)")
+    if gt.get("desacuerdos"):
+        avisos.append(f"{len(gt['desacuerdos'])} términos con desacuerdo entre personas anotadoras quedan fuera del "
+                      "ground truth")
+    if gt.get("solo_no_se"):
+        avisos.append(f"{gt['solo_no_se']} términos solo con «no sé» quedan fuera del ground truth")
+    if not any(a["kappa"] is not None for a in gt.get("acuerdo", [])):
+        avisos.append("acuerdo entre personas anotadoras en «---»: hace falta que dos personas etiqueten la misma "
+                      "entrevista (kappa de Cohen)")
     if not gt["a_ciegas"]:
         avisos.append("hay entrevistas etiquetadas viendo la similitud o la decisión del sistema: el ground truth "
                       "puede estar sesgado hacia él")
@@ -83,7 +102,8 @@ def _avisos(valores: list[dict], gt: dict | None, modelos: list[str], umbrales_u
 
 def informe_entrevistas(entrevistas: Iterable[tuple[dict, dict]], docs_etiquetas: Iterable[dict], *,
                         umbral_configurado: float, max_rondas: int, desde: float, hasta: float, paso: float,
-                        remuestreos: int, semilla: int, proyecto_id: str | None = None) -> dict:
+                        remuestreos: int, semilla: int, proyecto_id: str | None = None,
+                        anotaciones: Iterable[dict] = ()) -> dict:
     """`entrevistas`: pares (documento de la entrevista, su bitácora). Forma::
 
         {proyecto_id, umbral_configurado, max_rondas, parametros{desde, hasta, paso},
@@ -92,11 +112,20 @@ def informe_entrevistas(entrevistas: Iterable[tuple[dict, dict]], docs_etiquetas
          distribucion, rejilla: [{umbral, configurado, directos, debates, cambian}],
          con_ground_truth | null: {n_etiquetas, n_emparejados, n_ambiguos, n_no_ambiguos, a_ciegas,
            etiquetas_sin_similitud, valores_sin_etiqueta, separacion, por_umbral, configurado,
-           roc, auc, confianza, por_tipo},
+           roc, roc_banda, auc, confianza, por_tipo, acuerdo, desacuerdos, solo_no_se},
          avisos, nota}
+
+    `docs_etiquetas`: los documentos de la v2.2 (uno por entrevista); `anotaciones`: los de cada
+    persona anotadora (ADR 0029). Se consolidan: cuenta el valor en el que coinciden todas.
     """
     entrevistas = list(entrevistas)
-    docs = {d["entrevista_id"]: d for d in docs_etiquetas}
+    ids = {e["entrevista_id"] for e, _ in entrevistas}
+    consolidado = consolidar([desde_legado(d) for d in docs_etiquetas if d["entrevista_id"] in ids] +
+                             [a for a in anotaciones if a["entrevista_id"] in ids])
+    docs = {eid: {"entrevista_id": eid, "anotador": ", ".join(r["anotadores"]) or None, "a_ciegas": r["a_ciegas"],
+                  "anotadores": r["anotadores"],
+                  "etiquetas": [x for x in consolidado["etiquetas"] if x["entrevista_id"] == eid]}
+            for eid, r in consolidado["por_entrevista"].items()}
     valores, resumen = [], []
     for e, b in entrevistas:
         vs = similitudes_de_entrevista(e, b)
@@ -104,8 +133,9 @@ def informe_entrevistas(entrevistas: Iterable[tuple[dict, dict]], docs_etiquetas
         valores += vs
         resumen.append({"entrevista_id": e["entrevista_id"], "titulo": e.get("titulo"), "estado": e.get("estado"),
                         "n_valores": len(vs), "n_etiquetas": len(d["etiquetas"]) if d else 0,
-                        "anotador": d.get("anotador") if d else None, "a_ciegas": d.get("a_ciegas") if d else None})
-    etiquetas = etiquetas_planas(d for d in docs.values() if d["entrevista_id"] in {e["entrevista_id"] for e, _ in entrevistas})
+                        "anotador": d.get("anotador") if d else None, "a_ciegas": d.get("a_ciegas") if d else None,
+                        "anotadores": d.get("anotadores", []) if d else []})
+    etiquetas = consolidado["etiquetas"]
     umbrales = rejilla(desde, hasta, paso, incluir=umbral_configurado)
     umbrales_usados = sorted({v["umbral_usado"] for v in valores if v["umbral_usado"] is not None})
     modelos = sorted({v["modelo_embeddings"] for v in valores if v["modelo_embeddings"]})
@@ -129,9 +159,13 @@ def informe_entrevistas(entrevistas: Iterable[tuple[dict, dict]], docs_etiquetas
             "por_umbral": rejilla_con_etiquetas(pares, umbrales, umbral_configurado),
             "configurado": confusion(pares, umbral_configurado),
             "roc": roc(pares),
+            "roc_banda": banda_roc(pares, remuestreos, semilla),
             "auc": auc(pares),
             "confianza": bootstrap(pares, umbral_configurado, remuestreos, semilla),
             "por_tipo": por_tipo(pares, umbral_configurado),
+            "acuerdo": consolidado["acuerdo"],
+            "desacuerdos": consolidado["desacuerdos"],
+            "solo_no_se": consolidado["solo_no_se"],
         }
         ambiguo = {(v["entrevista_id"], v["termino"]): x["ambiguo"] for v, x in pares}
         valores = [{**v, "ambiguo": ambiguo.get((v["entrevista_id"], v["termino"]))} for v in valores]
@@ -165,13 +199,21 @@ def huella(x) -> str:
 
 
 def nueva_corrida(calibracion_id: str, informe: dict, *, nota: str | None, version: str, configuracion: dict,
-                  docs_etiquetas: Iterable[dict]) -> dict:
-    """El documento de una corrida: el informe completo más lo necesario para citarla y reproducirla."""
+                  docs_etiquetas: Iterable[dict], anotaciones: Iterable[dict] = ()) -> dict:
+    """El documento de una corrida: el informe completo más lo necesario para citarla y reproducirla.
+    La huella de las etiquetas, sin anotaciones por persona, se calcula igual que en la v2.2 (las
+    corridas viejas se reproducen igual); con anotaciones, entran también sus respuestas."""
     por_entrevista: dict[str, list] = {}
     for v in informe["valores"]:
         por_entrevista.setdefault(v["entrevista_id"], []).append(
             [v["termino"], v["similitud"], v["decision_real"], v["modelo_embeddings"]])
-    etiquetas = {d["entrevista_id"]: d.get("etiquetas", []) for d in docs_etiquetas}
+    etiquetas: dict[str, object] = {d["entrevista_id"]: d.get("etiquetas", []) for d in docs_etiquetas}
+    por_persona: dict[str, list] = {}
+    for a in anotaciones:
+        por_persona.setdefault(a["entrevista_id"], []).append(
+            [a["anotador"], a.get("a_ciegas"), sorted((k, r["respuesta"]) for k, r in a["respuestas"].items())])
+    for eid, filas in por_persona.items():
+        etiquetas[eid] = {"v2.2": etiquetas.get(eid, []), "anotadores": sorted(filas, key=str)}
     return {
         "calibracion_id": calibracion_id,
         "proyecto_id": informe["proyecto_id"],

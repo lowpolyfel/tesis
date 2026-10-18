@@ -75,7 +75,7 @@ tesis/
 │   │   ├── analisis/           # vista por término y análisis del proyecto
 │   │   ├── artefactos/         # especificación RF/RNF, modelo de metas y Big Picture
 │   │   ├── comparacion/        # comparación entre requisitos (exploratorio)
-│   │   ├── calibracion/        # umbral sobre entrevistas, prueba de modelos con banco de términos, Overleaf
+│   │   ├── calibracion/        # umbral, ground truth por persona, prueba de modelos, Overleaf
 │   │   ├── evaluacion/         # corpus y evaluación contra un solo agente
 │   │   ├── nlp/                # spaCy, etiquetado, PhraseMatcher
 │   │   ├── models/             # esquemas Pydantic
@@ -98,7 +98,8 @@ tesis/
 ├── docs/
 │   ├── lel/                    # LEL del dominio del proyecto
 │   ├── diagramas/              # secuencia, actividad, componentes
-│   └── adr/                    # decisiones de diseño (incluye plantilla)
+│   ├── adr/                    # decisiones de diseño (incluye plantilla)
+│   └── rubrica-revision.md     # rúbrica de la revisión humana (apéndice; se genera desde el backend)
 └── scripts/                    # carga y evaluación
 ```
 

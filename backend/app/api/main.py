@@ -118,7 +118,7 @@ def create_app(servicio: Servicio | None = None) -> FastAPI:
         restaurar()
         app.state.servicio.detener()
 
-    app = FastAPI(title="Dudamel: de la entrevista a los requisitos", version="2.3.1", lifespan=lifespan)
+    app = FastAPI(title="Dudamel: de la entrevista a los requisitos", version="2.4.0", lifespan=lifespan)
     app.state.servicio = servicio
     app.state.apagando = threading.Event()
     settings = servicio.deps.settings if servicio else get_settings()

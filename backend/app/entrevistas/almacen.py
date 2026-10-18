@@ -23,6 +23,7 @@ from .turnos import EntrevistaLeida
 COLECCION = "entrevistas"
 COLECCION_BITACORAS = "bitacoras"
 COLECCION_ETIQUETAS = "etiquetas_entrevista"  # el ground truth de la calibración (app/calibracion/entrevistas.py)
+COLECCION_ANOTACIONES = "etiquetas_anotadores"  # el ground truth por persona (app/calibracion/anotaciones.py)
 
 # Estados de una entrevista. `lista`: su LEL propuesto espera a la persona experta.
 CARGADA, LEIDA, EXTRAIDA, INTERPRETADA, EN_DEBATE, ARBITRADA, LISTA, ERROR, CANCELADA = (
@@ -88,6 +89,7 @@ class Entrevistas:
     def borrar(self, entrevista_id: str) -> bool:
         self.repo.borrar_doc(COLECCION_BITACORAS, entrevista_id)
         self.repo.borrar_doc(COLECCION_ETIQUETAS, entrevista_id)  # su ground truth (ADR 0026)
+        self.repo.borrar_docs(COLECCION_ANOTACIONES, entrevista_id=entrevista_id)  # y el de cada persona (ADR 0029)
         return self.repo.borrar_doc(COLECCION, entrevista_id)
 
     def borrar_de_proyecto(self, proyecto_id: str) -> None:

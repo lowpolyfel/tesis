@@ -5,7 +5,7 @@ import {
   obtenerConfiguracion, urlOverleaf,
 } from "../services/backend";
 import ElegirProyecto, { useProyectoElegido } from "../components/ElegirProyecto";
-import Etiquetar from "../components/calibracion/Etiquetar";
+import EtiquetarEntrevista from "../components/calibracion/EtiquetarEntrevista";
 import PruebaModelos from "../components/calibracion/PruebaModelos";
 import { GraficaDebates, GraficaDistribucion, GraficaMetricas, GraficaRoc } from "../components/calibracion/graficas";
 import { TIPOS } from "../constants/agentes";
@@ -57,11 +57,12 @@ function CalibracionUmbral() {
   const [rejilla, setRejilla] = useState({});
   const [borrador, setBorrador] = useState(null);
   const [vista, setVista] = useState(null); // una corrida guardada a la vista (si no, en vivo)
+  const [etiquetando, setEtiquetando] = useState(null); // la entrevista que se está etiquetando (a ciegas)
 
   useEffect(() => {
     if (cfg && !borrador) setBorrador({ desde: cfg.calibracion.desde, hasta: cfg.calibracion.hasta, paso: cfg.calibracion.paso });
   }, [cfg, borrador]);
-  useEffect(() => setVista(null), [proyectoId]);
+  useEffect(() => { setVista(null); setEtiquetando(null); }, [proyectoId]);
 
   const { datos: vivo, error, cargando, recargar } = useApi(
     () => (proyectoId ? calibracionEntrevistas(proyectoId, rejilla) : Promise.resolve(null)),
@@ -106,13 +107,20 @@ function CalibracionUmbral() {
         </ul>
       )}
 
-      {!vista && vivo && <GroundTruth c={vivo} onCambio={recargar} />}
-      {c && c.n_valores > 0 && <Resultados c={c} />}
+      {!vista && vivo && <GroundTruth c={vivo} onCambio={recargar} abierta={etiquetando} onAbrir={setEtiquetando} />}
+      {/* a ciegas: mientras alguien etiqueta, nada de esta página muestra similitudes ni decisiones */}
+      {etiquetando && (
+        <p className="tarjeta p-4 text-[13.5px] text-[var(--bone-dim)]">
+          Los resultados y las corridas están ocultos mientras etiquetas, para que la similitud del sistema no influya en tus respuestas.
+          Aparecen al cerrar el etiquetado.
+        </p>
+      )}
+      {!etiquetando && c && c.n_valores > 0 && <Resultados c={c} />}
       {c && c.n_valores === 0 && (
         <Vacio>Ninguna entrevista terminada de este proyecto tiene términos que hayan llegado al mecanismo de divergencia. Procesa una entrevista con términos ambiguos y vuelve aquí.</Vacio>
       )}
 
-      {proyectoId && (
+      {proyectoId && !etiquetando && (
         <Corridas proyectoId={proyectoId} corridas={corridas} rejilla={rejilla} hayDatos={vivo?.n_valores > 0}
           vista={vista} onVer={setVista} />
       )}
@@ -132,16 +140,16 @@ function Configuracion({ c }) {
   );
 }
 
-/* El ground truth: cada entrevista, cuántos términos tiene etiquetados y el panel para etiquetar */
-function GroundTruth({ c, onCambio }) {
-  const [abierta, setAbierta] = useState(null);
+/* El ground truth: cada entrevista, quién la etiquetó y el etiquetado a ciegas con teclado (ADR 0029) */
+function GroundTruth({ c, onCambio, abierta, onAbrir: setAbierta }) {
   return (
     <section className="space-y-4">
       <div>
         <h2>Ground truth</h2>
         <p className="mt-1 max-w-3xl text-[13.5px] text-[var(--bone-dim)]">
-          Marca en cada entrevista qué términos son ambiguos. Hazlo a ciegas (sin ver la similitud del sistema) y, de
-          preferencia, que lo revise otra persona: es la referencia contra la que se mide el umbral.
+          En cada entrevista, qué términos de los que llegaron a la divergencia eran de verdad ambiguos. Se etiqueta a ciegas (sin ver
+          la similitud ni la decisión del sistema), con el teclado (S sí, N no, X no sé) y en un orden barajado. Si dos personas
+          etiquetan la misma entrevista, cuentan los términos en que coinciden y se calcula la kappa de Cohen.
         </p>
       </div>
       {!c.entrevistas.length && <Vacio>Este proyecto no tiene entrevistas terminadas.</Vacio>}
@@ -152,13 +160,15 @@ function GroundTruth({ c, onCambio }) {
               <span className="mono text-[10px] text-[var(--bone-faint)]">{e.entrevista_id}</span>
               <span className="text-[15px]">{e.titulo}</span>
               <span className="text-[12.5px] text-[var(--bone-dim)]">
-                {e.n_valores} con similitud · {e.n_etiquetas ? `${e.n_etiquetas} etiquetados por ${e.anotador}${e.a_ciegas ? " (a ciegas)" : " (viendo al sistema)"}` : "sin etiquetar"}
+                {e.n_valores} con similitud · {e.n_etiquetas ? `${e.n_etiquetas} en el ground truth` : e.anotadores?.length ? "0 en el ground truth (sin acuerdo todavía)" : "sin etiquetar"}
+                {e.anotadores?.length ? ` · ${e.anotadores.join(", ")}` : ""}
               </span>
-              <button className={`pill sm ml-auto ${e.n_etiquetas ? "ghost" : ""}`} onClick={() => setAbierta(abierta === e.entrevista_id ? null : e.entrevista_id)}>
-                {abierta === e.entrevista_id ? "Ocultar" : e.n_etiquetas ? "Revisar etiquetas" : "Etiquetar"}
+              <button className={`pill sm ml-auto ${e.n_etiquetas ? "ghost" : ""}`} disabled={!e.n_valores}
+                onClick={() => setAbierta(abierta === e.entrevista_id ? null : e.entrevista_id)}>
+                {abierta === e.entrevista_id ? "Ocultar" : "Etiquetar"}
               </button>
             </div>
-            {abierta === e.entrevista_id && <Etiquetar entrevistaId={e.entrevista_id} onGuardado={onCambio} onCerrar={() => setAbierta(null)} />}
+            {abierta === e.entrevista_id && <EtiquetarEntrevista entrevistaId={e.entrevista_id} onCambio={onCambio} onCerrar={() => setAbierta(null)} />}
           </li>
         ))}
       </ul>
@@ -193,7 +203,7 @@ function Resultados({ c }) {
         <div className="grid gap-6 xl:grid-cols-2">
           {gt.por_umbral.some((f) => f.f1 != null || f.precision != null || f.exhaustividad != null) &&
             <GraficaMetricas porUmbral={gt.por_umbral} umbral={c.umbral_configurado} confianza={gt.confianza} parametros={c.parametros} />}
-          {gt.roc.length > 0 && <GraficaRoc roc={gt.roc} auc={gt.auc} ic={m.auc} />}
+          {gt.roc.length > 0 && <GraficaRoc roc={gt.roc} auc={gt.auc} ic={m.auc} banda={gt.roc_banda} />}
         </div>
       )}
       <GraficaDebates rejilla={c.rejilla} umbral={c.umbral_configurado} n={c.n_valores} parametros={c.parametros} />
@@ -222,6 +232,23 @@ function Resultados({ c }) {
             </table>
             <p className="text-[11.5px] text-[var(--bone-faint)]">En los no ambiguos, ir a debate es un falso positivo.</p>
           </div>
+        </div>
+      )}
+
+      {gt?.acuerdo?.length > 0 && (
+        <div className="tarjeta space-y-2 p-4">
+          <p className="etiqueta">Acuerdo entre personas anotadoras · kappa de Cohen</p>
+          <table className="tabla-viz">
+            <thead><tr><th>Entrevista</th><th>Persona A</th><th>Persona B</th><th>Términos</th><th>Acuerdo observado</th><th>κ</th></tr></thead>
+            <tbody>
+              {gt.acuerdo.map((k) => (
+                <tr key={`${k.entrevista_id}-${k.a}-${k.b}`}><td className="mono text-[10px]">{k.entrevista_id}</td><td>{k.a}</td><td>{k.b}</td><td>{k.n}</td><td>{fmt(k.acuerdo_observado, 2)}</td><td>{fmt(k.kappa, 2)}</td></tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="text-[11.5px] text-[var(--bone-faint)]">
+            {gt.desacuerdos?.length ?? 0} términos en desacuerdo y {gt.solo_no_se ?? 0} solo con «no sé» quedan fuera del ground truth.
+          </p>
         </div>
       )}
 

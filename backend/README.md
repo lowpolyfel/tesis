@@ -2,7 +2,7 @@
 
 Núcleo del sistema en Python 3.12: agentes (Revisor, Extractor, Clasificador, Crítico,
 Modelador), mecanismo de divergencia, filtros deterministas y orquestación con
-LangGraph, expuestos por FastAPI (versión 2.3.1). Incluye una sandbox desechable en `/sandbox`.
+LangGraph, expuestos por FastAPI (versión 2.4.0). Incluye una sandbox desechable en `/sandbox`.
 
 La versión 2 (ADR 0024) parte de una **entrevista**: los agentes proponen el LEL con la
 intención de cada término, una persona lo valida (y el sistema aprende de sus
@@ -118,8 +118,8 @@ trabajador, ADR 0008):
 | Contexto y triaje | `GET/POST /proyectos/{id}/ficha` (ficha del contexto, ADR 0022), `POST /proyectos/{id}/triaje` (claro, ambiguo o incompleto, contra la ficha) |
 | Modelos por cuenta | `GET/PUT /cuenta/modelos` (proveedor y modelo por agente, claves cifradas), `POST /cuenta/modelos/probar`, `POST /cuenta/modelos/listar` (ADR 0021) |
 | Exploratorio | `POST/GET /proyectos/{id}/comparaciones`, `GET /comparaciones/{id}` (ADR 0012) |
-| Calibración (ADR 0026) | `GET /proyectos/{id}/calibracion/entrevistas`, `GET/PUT /entrevistas/{id}/etiquetas`, `POST/GET /proyectos/{id}/calibraciones`, `GET/DELETE /calibraciones/{id}`, `GET /calibraciones/{id}/overleaf.zip` |
-| Prueba de modelos (ADR 0027, 0028) | `GET /bancos/ambiguedad?version=`, `GET /pruebas-modelos/modelos`, `POST/GET /pruebas-modelos`, `GET/DELETE /pruebas-modelos/{id}`, `POST /pruebas-modelos/{id}/cancelar`, `POST /pruebas-modelos/{id}/reanudar`, `PUT/DELETE /pruebas-modelos/{id}/revision`, `GET /pruebas-modelos/{id}/overleaf.zip` |
+| Calibración (ADR 0026, 0029) | `GET /proyectos/{id}/calibracion/entrevistas`, `GET/PUT /entrevistas/{id}/etiquetas` (v2.2), `GET/POST /entrevistas/{id}/anotaciones`, `GET/DELETE /anotaciones/{id}`, `PUT /anotaciones/{id}/respuesta`, `POST/GET /proyectos/{id}/calibraciones`, `GET/DELETE /calibraciones/{id}`, `GET /calibraciones/{id}/overleaf.zip` |
+| Prueba de modelos (ADR 0027–0029) | `GET /bancos/ambiguedad?version=`, `GET /rubricas/revision`, `GET /pruebas-modelos/modelos`, `POST/GET /pruebas-modelos`, `GET/DELETE /pruebas-modelos/{id}`, `POST /pruebas-modelos/{id}/cancelar`, `/reanudar`, `/repetir`, `GET /pruebas-modelos/series/{serie}`, `GET/POST/DELETE /pruebas-modelos/{id}/revision-calidad`, `PUT/DELETE /pruebas-modelos/{id}/revision-calidad/marca`, `PUT /pruebas-modelos/{id}/modos`, `GET /pruebas-modelos/{id}/overleaf.zip` |
 | Experimentación | `GET /calibracion`, `GET /proyectos/{id}/calibracion` (v1, ADR 0013), `GET /corpus`, `GET /corpus/{nombre}`, `POST/GET /evaluaciones`, `GET /evaluaciones/{id}` |
 | Configuración | `GET /configuracion`, `GET /catalogos`, `GET /salud`, `GET /conexion` |
 | Preparación | `GET /preparacion` (base, Ollama y modelos del análisis: descargados y en memoria), `POST /preparacion/cargar` (precarga uno de esos modelos) |
@@ -173,7 +173,7 @@ paralelo.
 - `app/artefactos/`: especificación RF/RNF, modelo de metas y Big Picture, sin LLM (ADR 0011, 0017), y el
   mapa conceptual, que organiza el Modelador sobre un protocolo previo en código (ADR 0020).
 - `app/comparacion/`: comparación entre requisitos, **exploratoria** (ADR 0012).
-- `app/calibracion/`: sensibilidad del umbral y contraste con el ground truth: sobre las entrevistas, con ROC, AUC, intervalos bootstrap, corridas guardadas y el paquete para Overleaf (ADR 0026); sobre las trazas v1 (ADR 0013). La prueba de modelos con bancos versionados de términos (`banco/`: v1 con 50 ambiguos; v2 con 23 controles inequívocos más), con exhaustividad, falsas alarmas y precisión, revisión humana a ciegas, intervalos de Wilson, McNemar y su paquete para Overleaf (ADR 0027, 0028).
+- `app/calibracion/`: sensibilidad del umbral y contraste con el ground truth: sobre las entrevistas, con ROC, AUC, intervalos bootstrap, corridas guardadas y el paquete para Overleaf (ADR 0026); sobre las trazas v1 (ADR 0013). La prueba de modelos con bancos versionados de términos (`banco/`: v1 con 50 ambiguos; v2 con 23 controles inequívocos más), con exhaustividad, falsas alarmas y precisión; calidad con tres criterios binarios a ciegas (`calidad.py`, rúbrica en `rubrica.py`), McNemar sobre detección y criterios, subenumeración, modos de falla y estabilidad entre corridas (`estabilidad.py`); etiquetado de entrevistas por varias personas con kappa de Cohen (`anotaciones.py`); ids que no se reutilizan (`verificar_ids.py`) y paquetes para Overleaf que compilan con pdfLaTeX y XeLaTeX (ADR 0027–0029).
 - `app/evaluacion/`: corpus y evaluación contra un solo agente (ADR 0014).
 - `app/api/`: FastAPI y `static/sandbox.html`.
 - `tests/`: replican la estructura de `app/`.

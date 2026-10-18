@@ -199,7 +199,7 @@ def test_etiquetar_guardar_una_corrida_y_exportarla(cliente):
     assert corrida.json()["auc"] == 1.0 and corrida.json()["n_emparejados"] == 2
     assert [x["calibracion_id"] for x in c.get(f"/proyectos/{pid}/calibraciones").json()] == [cid]
     completa = c.get(f"/calibraciones/{cid}").json()
-    assert completa["version_app"] == "2.3.1" and completa["entrevistas"][0]["huella_similitudes"]
+    assert completa["version_app"] == "2.4.0" and completa["entrevistas"][0]["huella_similitudes"]
 
     z = c.get(f"/calibraciones/{cid}/overleaf.zip")
     assert z.status_code == 200 and z.headers["content-type"] == "application/zip"

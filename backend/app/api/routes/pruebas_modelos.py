@@ -1,29 +1,35 @@
-"""Prueba de modelos con el banco de términos ambiguos (ADR 0027).
+"""Prueba de modelos con el banco de términos ambiguos (ADR 0027, 0028 y 0029).
 
-- `GET /bancos/ambiguedad?version=`: un banco (el más nuevo si no se pide versión), con su cita,
-  dominio y lecturas esperadas por término; `versiones` dice cuáles hay.
-- `GET /pruebas-modelos/modelos`: los modelos que esta cuenta puede probar (proveedores con
-  clave guardada, y Ollama).
-- `POST /pruebas-modelos`: crea una prueba y la corre en segundo plano.
-- `GET /pruebas-modelos`, `GET|DELETE /pruebas-modelos/{id}`: listar, ver (con resumen y
-  revisiones) y borrar.
-- `POST /pruebas-modelos/{id}/cancelar` y `/reanudar`.
-- `PUT /pruebas-modelos/{id}/revision`: la marca ✓/✗ de la persona en un término de un modelo;
-  `DELETE` la borra entera, para rehacerla (por ejemplo, a ciegas).
+- `GET /bancos/ambiguedad?version=`: un banco (el más nuevo si no se pide versión).
+- `GET /rubricas/revision`: la rúbrica de la revisión humana (la misma del apéndice).
+- `GET /pruebas-modelos/modelos`: los modelos que esta cuenta puede probar.
+- `POST /pruebas-modelos`: crea una prueba (o una serie de `repeticiones` corridas idénticas) y
+  la corre en segundo plano.
+- `GET /pruebas-modelos`, `GET|DELETE /pruebas-modelos/{id}`: listar, ver y borrar (borrar deja
+  una lápida: el número no se reutiliza).
+- `POST /pruebas-modelos/{id}/cancelar`, `/reanudar` y `/repetir` (más corridas de la serie).
+- `GET /pruebas-modelos/series/{serie}`: la estabilidad entre las corridas de una serie.
+- Revisión de calidad: `GET|POST|DELETE /pruebas-modelos/{id}/revision-calidad` y
+  `PUT|DELETE /pruebas-modelos/{id}/revision-calidad/marca`.
+- `PUT /pruebas-modelos/{id}/modos`: el modo de falla de un falso negativo.
 - `GET /pruebas-modelos/{id}/overleaf.zip`: el paquete para LaTeX.
 
-Cada prueba es de la cuenta que la creó.
+La revisión ✓/✗ de la v2.3 (`revisiones_modelos`) ya no se escribe: se lee y se reporta aparte,
+con su criterio viejo. Cada prueba es de la cuenta que la creó.
 """
 from __future__ import annotations
 
 import copy
 import threading
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.calibracion import calidad as cal
+from app.calibracion.estabilidad import estabilidad
 from app.calibracion.latex_modelos import paquete_overleaf
 from app.calibracion.pruebas_modelos import (
     COLECCION_PRUEBAS,
@@ -31,21 +37,25 @@ from app.calibracion.pruebas_modelos import (
     EJECUTOR,
     PREFIJO,
     TERMINALES,
-    ahora,
     al_dia,
     banco,
+    banco_de,
+    codigo_de,
+    es_ambiguo,
+    lapida,
     nueva_prueba,
     resolver,
     resumen,
     resumen_corto,
 )
+from app.calibracion.rubrica import CLAVES, publica
 from app.llm.proveedores import CATALOGO, FalloProveedor, listar_modelos
 
 from ..dependencias import UsuarioDep
 from .calibracion import ServicioDep
 
 router = APIRouter(tags=["calibracion"])
-_REVISIONES = threading.Lock()  # las marcas llegan de una en una y se guardan sobre el mismo documento
+_CANDADO = threading.Lock()  # las marcas llegan de una en una y se guardan sobre el mismo documento
 
 
 class ModeloElegido(BaseModel):
@@ -60,16 +70,37 @@ class EntradaPrueba(BaseModel):
     items: list[str] | None = Field(None, description="ids del banco (B01…); vacío o null = todos")
     banco: str | None = Field(None, pattern=r"^v\d+$", description="versión del banco; null = la más nueva")
     nota: str | None = Field(None, max_length=500)
+    repeticiones: int = Field(1, ge=1, le=10, description="corridas idénticas (serie) para medir la estabilidad")
 
 
-class Marca(BaseModel):
+class Repetir(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    veces: int = Field(1, ge=1, le=10)
+
+
+class NuevaRevision(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    revisor: str = Field(min_length=1, max_length=120)
+    a_ciegas: bool = Field(True, description="ocultar proveedor y modelo; con nombres es una opción explícita")
+
+
+class MarcaCalidad(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     modelo: str = Field(pattern=r"^M\d+$")
     item: str = Field(pattern=r"^B\d+$")
-    bueno: bool | None  # null quita la marca
+    fidelidad: bool
+    delimitacion: bool
+    intencion: bool
+    cobertura: list[int] = Field(default_factory=list, max_length=10, description="índices de las lecturas esperadas cubiertas")
     nota: str | None = Field(None, max_length=500)
-    revisor: str = Field(min_length=1, max_length=120)
-    a_ciegas: bool = True
+
+
+class Modo(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    modelo: str = Field(pattern=r"^M\d+$")
+    item: str = Field(pattern=r"^B\d+$")
+    modo: str | None = Field(None, max_length=40, description="clave del catálogo; null la quita")
+    nota: str | None = Field(None, max_length=500)
 
 
 @router.get("/bancos/ambiguedad")
@@ -78,6 +109,12 @@ def ver_banco(version: str | None = None) -> dict:
         return banco(version)
     except KeyError as e:
         raise HTTPException(404, f"No existe el banco {version}") from e
+
+
+@router.get("/rubricas/revision")
+def ver_rubrica() -> dict:
+    """Criterios, cobertura, etiqueta de entrevista y modos de falla, con el Markdown del apéndice."""
+    return publica()
 
 
 @router.get("/pruebas-modelos/modelos")
@@ -102,7 +139,7 @@ def modelos_disponibles(srv: ServicioDep, usuario: UsuarioDep) -> dict:
 
 def prueba_existente(prueba_id: str, srv: ServicioDep, usuario: UsuarioDep) -> dict:
     p = srv.repo.obtener_doc(COLECCION_PRUEBAS, prueba_id)
-    if p is None or p.get("usuario_id") != usuario.usuario_id:
+    if p is None or p.get("borrada") or p.get("usuario_id") != usuario.usuario_id:
         raise HTTPException(404, f"No existe la prueba {prueba_id}")
     return al_dia(p)
 
@@ -110,8 +147,10 @@ def prueba_existente(prueba_id: str, srv: ServicioDep, usuario: UsuarioDep) -> d
 PruebaDep = Annotated[dict, Depends(prueba_existente)]
 
 
-def _revisiones(srv, prueba_id: str) -> dict | None:
-    return srv.repo.obtener_doc(COLECCION_REVISIONES, prueba_id)
+def _docs(srv, prueba_id: str) -> tuple[dict | None, dict | None, dict | None]:
+    """(revisión v2.3, revisión de calidad, modos de falla) de una prueba."""
+    return (srv.repo.obtener_doc(COLECCION_REVISIONES, prueba_id), srv.repo.obtener_doc(cal.COLECCION_CALIDAD, prueba_id),
+            srv.repo.obtener_doc(cal.COLECCION_MODOS, prueba_id))
 
 
 def _elecciones(srv, usuario_id: str, prueba: dict) -> dict[str, dict]:
@@ -121,10 +160,24 @@ def _elecciones(srv, usuario_id: str, prueba: dict) -> dict[str, dict]:
         raise HTTPException(422, str(e)) from e
 
 
+def _crear_serie(srv, plantilla: dict, veces: int, *, serie: str | None, primera: int) -> list[dict]:
+    """Crea `veces` pruebas iguales a `plantilla` (una serie) y devuelve los documentos."""
+    creadas = []
+    for k in range(veces):
+        def fabricar(pid: str, k=k) -> dict:
+            p = copy.deepcopy(plantilla)
+            p.update(prueba_id=pid, uid=str(uuid.uuid4()), serie=serie or (creadas[0]["prueba_id"] if creadas else pid),
+                     corrida=primera + k)
+            p["codigo"] = codigo_de({**p, "codigo": None})
+            return p
+        creadas.append(srv.repo.crear_doc(COLECCION_PRUEBAS, PREFIJO, fabricar))
+    return creadas
+
+
 @router.post("/pruebas-modelos", status_code=201)
 def crear(entrada: EntradaPrueba, srv: ServicioDep, usuario: UsuarioDep, request: Request) -> dict:
-    """Crea la prueba y la corre en segundo plano (fuera de la cola de análisis). 422 si un
-    proveedor necesita clave y la cuenta no la tiene, o si un término no está en el banco."""
+    """Crea la prueba (o la serie) y la corre en segundo plano, fuera de la cola de análisis. 422 si
+    un proveedor necesita clave y la cuenta no la tiene, o si un término no está en el banco."""
     try:
         b = banco(entrada.banco)
     except KeyError as e:
@@ -135,34 +188,49 @@ def crear(entrada: EntradaPrueba, srv: ServicioDep, usuario: UsuarioDep, request
         raise HTTPException(422, f"No están en el banco: {', '.join(faltan)}")
     items.sort(key=todos.index)
     modelos = list({(m.proveedor, m.modelo): m.model_dump() for m in entrada.modelos}.values())
-    borrador = nueva_prueba("P0", usuario_id=usuario.usuario_id, modelos=modelos, items=items, nota=entrada.nota,
-                            version=request.app.version, settings=srv.deps.settings, banco_version=b["version"])
-    elecciones = _elecciones(srv, usuario.usuario_id, borrador)
-    prueba = srv.repo.crear_doc(COLECCION_PRUEBAS, PREFIJO, lambda pid: {**borrador, "prueba_id": pid})
-    respuesta = copy.deepcopy(prueba)  # el hilo de la prueba sigue escribiendo en `prueba`
-    EJECUTOR.lanzar(srv, prueba, elecciones)
-    return respuesta
+    plantilla = nueva_prueba("P0", usuario_id=usuario.usuario_id, modelos=modelos, items=items, nota=entrada.nota,
+                             version=request.app.version, settings=srv.deps.settings, banco_version=b["version"])
+    elecciones = _elecciones(srv, usuario.usuario_id, plantilla)
+    creadas = _crear_serie(srv, plantilla, entrada.repeticiones, serie=None, primera=1)
+    respuesta = copy.deepcopy(creadas[0])  # el hilo de la prueba sigue escribiendo en el original
+    EJECUTOR.lanzar_serie(srv, creadas, elecciones)
+    return {**respuesta, "serie_creada": [p["prueba_id"] for p in creadas]}
 
 
 @router.get("/pruebas-modelos")
 def listar(srv: ServicioDep, usuario: UsuarioDep) -> list[dict]:
-    pruebas = [al_dia(p) for p in srv.repo.listar_docs(COLECCION_PRUEBAS, usuario_id=usuario.usuario_id)]
-    return [resumen_corto(p, _revisiones(srv, p["prueba_id"])) for p in sorted(pruebas, key=lambda p: p["creado"], reverse=True)]
+    pruebas = [al_dia(p) for p in srv.repo.listar_docs(COLECCION_PRUEBAS, usuario_id=usuario.usuario_id)
+               if not p.get("borrada")]
+    return [resumen_corto(p, *_docs(srv, p["prueba_id"])) for p in sorted(pruebas, key=lambda p: p["creado"], reverse=True)]
+
+
+@router.get("/pruebas-modelos/series/{serie}")
+def ver_serie(serie: str, srv: ServicioDep, usuario: UsuarioDep) -> dict:
+    """La estabilidad entre las corridas de una serie: detección por corrida y su rango."""
+    pruebas = [al_dia(p) for p in srv.repo.listar_docs(COLECCION_PRUEBAS, usuario_id=usuario.usuario_id)
+               if not p.get("borrada") and (p.get("serie") or p["prueba_id"]) == serie]
+    if not pruebas:
+        raise HTTPException(404, f"No existe la serie {serie}")
+    return estabilidad(pruebas)
 
 
 @router.get("/pruebas-modelos/{prueba_id}")
 def ver(p: PruebaDep, srv: ServicioDep) -> dict:
     """La prueba con cada respuesta, sus revisiones y el resumen por modelo."""
-    rev = _revisiones(srv, p["prueba_id"])
-    return {**p, "revisiones": rev, "resumen": resumen(p, rev)}
+    legado, revision, modos = _docs(srv, p["prueba_id"])
+    return {**p, "codigo": codigo_de(p), "revisiones": legado, "revision_calidad": revision, "modos_falla": modos,
+            "resumen": resumen(p, legado, revision, modos)}
 
 
 @router.delete("/pruebas-modelos/{prueba_id}", status_code=204)
 def borrar(p: PruebaDep, srv: ServicioDep) -> Response:
+    """Borra la prueba y sus revisiones, y deja una lápida con su id, uid, código y banco: el número
+    no vuelve a usarse, así que una cita a «P03» siempre se refiere a la misma prueba."""
     if EJECUTOR.activa(p["prueba_id"]):
         raise HTTPException(409, "La prueba sigue corriendo: cancélala primero.")
-    srv.repo.borrar_doc(COLECCION_PRUEBAS, p["prueba_id"])
-    srv.repo.borrar_doc(COLECCION_REVISIONES, p["prueba_id"])
+    srv.repo.guardar_doc(COLECCION_PRUEBAS, p["prueba_id"], lapida(p))
+    for coleccion in (COLECCION_REVISIONES, cal.COLECCION_CALIDAD, cal.COLECCION_MODOS):
+        srv.repo.borrar_doc(coleccion, p["prueba_id"])
     return Response(status_code=204)
 
 
@@ -191,35 +259,114 @@ def reanudar(p: PruebaDep, srv: ServicioDep, usuario: UsuarioDep, errores: bool 
     return respuesta
 
 
-@router.put("/pruebas-modelos/{prueba_id}/revision")
-def revisar(marca: Marca, p: PruebaDep, srv: ServicioDep) -> dict:
-    """Guarda (o quita, con `bueno: null`) la marca de un término de un modelo."""
-    if marca.modelo not in {m["id"] for m in p["modelos"]} or marca.item not in p["items"]:
-        raise HTTPException(422, "Ese modelo o ese término no son de esta prueba.")
-    with _REVISIONES:
-        doc = _revisiones(srv, p["prueba_id"]) or {"prueba_id": p["prueba_id"], "usuario_id": p["usuario_id"], "marcas": {}}
-        marcas = doc["marcas"].setdefault(marca.modelo, {})
-        if marca.bueno is None:
-            marcas.pop(marca.item, None)
-        else:
-            marcas[marca.item] = {"bueno": marca.bueno, "nota": marca.nota or None, "fecha": ahora()}
-        # una sola marca vista cuenta: la revisión entera deja de ser a ciegas
-        doc.update(revisor=marca.revisor, a_ciegas=doc.get("a_ciegas", True) and marca.a_ciegas, actualizada=ahora())
-        srv.repo.guardar_doc(COLECCION_REVISIONES, p["prueba_id"], doc)
-    return {"revisiones": doc, "resumen": resumen(p, doc)}
+@router.post("/pruebas-modelos/{prueba_id}/repetir", status_code=201)
+def repetir(entrada: Repetir, p: PruebaDep, srv: ServicioDep, usuario: UsuarioDep, request: Request) -> dict:
+    """Más corridas idénticas de la misma serie (mismos modelos, términos, banco y configuración),
+    una tras otra, para medir la estabilidad."""
+    serie = p.get("serie") or p["prueba_id"]
+    hermanas = [d for d in srv.repo.listar_docs(COLECCION_PRUEBAS, usuario_id=usuario.usuario_id)
+                if not d.get("borrada") and (d.get("serie") or d["prueba_id"]) == serie]
+    plantilla = nueva_prueba("P0", usuario_id=p["usuario_id"], modelos=p["modelos"], items=p["items"], nota=p.get("nota"),
+                             version=request.app.version, settings=srv.deps.settings, banco_version=banco_de(p)["version"])
+    plantilla["configuracion"] = copy.deepcopy(p["configuracion"])  # la misma configuración, aunque cambie el .env
+    elecciones = _elecciones(srv, usuario.usuario_id, plantilla)
+    creadas = _crear_serie(srv, plantilla, entrada.veces, serie=serie,
+                           primera=max(d.get("corrida", 1) for d in hermanas) + 1)
+    respuestas = copy.deepcopy(creadas)
+    EJECUTOR.lanzar_serie(srv, creadas, elecciones)
+    return {"serie": serie, "creadas": [c["prueba_id"] for c in respuestas]}
 
 
-@router.delete("/pruebas-modelos/{prueba_id}/revision", status_code=204)
-def rehacer_revision(p: PruebaDep, srv: ServicioDep) -> Response:
-    """Borra todas las marcas de la prueba para revisarla de nuevo (las respuestas se conservan)."""
-    with _REVISIONES:
-        srv.repo.borrar_doc(COLECCION_REVISIONES, p["prueba_id"])
+# ---------------------------------------------------------------- revisión de calidad
+
+def _revision_al_dia(srv, p: dict) -> dict | None:
+    doc = srv.repo.obtener_doc(cal.COLECCION_CALIDAD, p["prueba_id"])
+    if doc and cal.completar_orden(doc, p):
+        srv.repo.guardar_doc(cal.COLECCION_CALIDAD, p["prueba_id"], doc)
+    return doc
+
+
+@router.get("/pruebas-modelos/{prueba_id}/revision-calidad")
+def ver_revision(p: PruebaDep, srv: ServicioDep) -> dict | None:
+    """La revisión en curso (o null), con el orden barajado y lo ya marcado: se retoma donde quedó."""
+    with _CANDADO:
+        return _revision_al_dia(srv, p)
+
+
+@router.post("/pruebas-modelos/{prueba_id}/revision-calidad", status_code=201)
+def empezar_revision(entrada: NuevaRevision, p: PruebaDep, srv: ServicioDep) -> dict:
+    """Empieza la revisión: guarda revisor, si es a ciegas, la semilla y el orden barajado."""
+    if p["estado"] == "en_proceso":
+        raise HTTPException(409, "La prueba sigue corriendo: espera a que termine para revisar.")
+    with _CANDADO:
+        if srv.repo.obtener_doc(cal.COLECCION_CALIDAD, p["prueba_id"]):
+            raise HTTPException(409, "Esta prueba ya tiene una revisión de calidad: retómala o rehazla.")
+        doc = cal.nueva_revision(p, revisor=entrada.revisor, a_ciegas=entrada.a_ciegas)
+        srv.repo.guardar_doc(cal.COLECCION_CALIDAD, p["prueba_id"], doc)
+    return doc
+
+
+@router.put("/pruebas-modelos/{prueba_id}/revision-calidad/marca")
+def marcar(entrada: MarcaCalidad, p: PruebaDep, srv: ServicioDep) -> dict:
+    """Guarda los tres criterios (y la cobertura, en los ambiguos) de una salida."""
+    r = (p["resultados"].get(entrada.modelo) or {}).get(entrada.item)
+    if entrada.item not in p["items"] or not r or not r.get("ok"):
+        raise HTTPException(422, "Esa salida no existe o no es revisable (el modelo no respondió).")
+    t = {x["id"]: x for x in banco_de(p)["terminos"]}[entrada.item]
+    with _CANDADO:
+        doc = _revision_al_dia(srv, p)
+        if doc is None:
+            raise HTTPException(409, "Primero empieza la revisión.")
+        marca = cal.marcar(doc, modelo=entrada.modelo, item=entrada.item,
+                           criterios={k: getattr(entrada, k) for k in CLAVES}, cobertura=entrada.cobertura,
+                           n_lecturas=len(t["lecturas"]), ambiguo=es_ambiguo(t), nota=entrada.nota)
+        srv.repo.guardar_doc(cal.COLECCION_CALIDAD, p["prueba_id"], doc)
+    return {"marca": marca, "revisadas": sum(len(v) for v in doc["marcas"].values()), "total": len(doc["orden"])}
+
+
+@router.delete("/pruebas-modelos/{prueba_id}/revision-calidad/marca", status_code=204)
+def desmarcar(modelo: str, item: str, p: PruebaDep, srv: ServicioDep) -> Response:
+    with _CANDADO:
+        doc = _revision_al_dia(srv, p)
+        if doc and doc["marcas"].get(modelo, {}).pop(item, None) is not None:
+            srv.repo.guardar_doc(cal.COLECCION_CALIDAD, p["prueba_id"], doc)
     return Response(status_code=204)
 
 
+@router.delete("/pruebas-modelos/{prueba_id}/revision-calidad", status_code=204)
+def rehacer_revision(p: PruebaDep, srv: ServicioDep) -> Response:
+    """Borra la revisión de calidad para empezarla de nuevo. La revisión ✓/✗ de la v2.3, si la
+    hay, no se toca: es el registro del criterio viejo."""
+    with _CANDADO:
+        srv.repo.borrar_doc(cal.COLECCION_CALIDAD, p["prueba_id"])
+    return Response(status_code=204)
+
+
+@router.put("/pruebas-modelos/{prueba_id}/modos")
+def asignar_modo(entrada: Modo, p: PruebaDep, srv: ServicioDep) -> dict:
+    """El modo de falla de un falso negativo (un ambiguo que el modelo no detectó)."""
+    r = (p["resultados"].get(entrada.modelo) or {}).get(entrada.item)
+    t = {x["id"]: x for x in banco_de(p)["terminos"]}.get(entrada.item)
+    if not r or not t or not es_ambiguo(t) or (r.get("ok") and r.get("ambiguo")):
+        raise HTTPException(422, "Solo se clasifican los falsos negativos: ambiguos que el modelo no detectó.")
+    with _CANDADO:
+        doc = srv.repo.obtener_doc(cal.COLECCION_MODOS, p["prueba_id"]) or {
+            "prueba_id": p["prueba_id"], "usuario_id": p["usuario_id"], "modos": {}}
+        try:
+            cal.asignar_modo(doc, modelo=entrada.modelo, item=entrada.item, modo=entrada.modo, nota=entrada.nota)
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from e
+        srv.repo.guardar_doc(cal.COLECCION_MODOS, p["prueba_id"], doc)
+    return doc
+
+
 @router.get("/pruebas-modelos/{prueba_id}/overleaf.zip")
-def exportar(p: PruebaDep, srv: ServicioDep) -> Response:
-    rev = _revisiones(srv, p["prueba_id"])
-    nombre = f"dudamel-modelos-{p['prueba_id']}.zip"
-    return Response(paquete_overleaf(p, resumen(p, rev), rev), media_type="application/zip",
-                    headers={"Content-Disposition": f'attachment; filename="{nombre}"'})
+def exportar(p: PruebaDep, srv: ServicioDep, usuario: UsuarioDep) -> Response:
+    legado, revision, modos = _docs(srv, p["prueba_id"])
+    serie = p.get("serie") or p["prueba_id"]
+    hermanas = [d for d in srv.repo.listar_docs(COLECCION_PRUEBAS, usuario_id=usuario.usuario_id)
+                if not d.get("borrada") and (d.get("serie") or d["prueba_id"]) == serie]
+    estab = estabilidad([al_dia(d) for d in hermanas]) if len(hermanas) > 1 else None
+    nombre = f"dudamel-modelos-{codigo_de(p)}.zip"
+    return Response(paquete_overleaf(p, resumen(p, legado, revision, modos), legado, revision, estab),
+                    media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{nombre}"'})

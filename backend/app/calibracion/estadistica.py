@@ -154,3 +154,35 @@ def separacion(pares: list[tuple[dict, dict]]) -> dict:
 def rejilla_con_etiquetas(pares: list[tuple[dict, dict]], umbrales: Iterable[float], configurado: float) -> list[dict]:
     """La matriz de confusión y las métricas en cada umbral de la rejilla."""
     return [{"umbral": u, "configurado": u == configurado, **confusion(pares, u)} for u in umbrales]
+
+
+def _tpr_en(curva: list[dict], fpr: float) -> float:
+    """La tasa de verdaderos positivos de una curva ROC escalonada en una tasa de falsos positivos."""
+    return max(p["tpr"] for p in curva if p["fpr"] <= fpr + 1e-12)
+
+
+def banda_roc(pares: list[tuple[dict, dict]], remuestreos: int, semilla: int, pasos: int = 20) -> list[dict]:
+    """Banda bootstrap (percentil, puntual) de la curva ROC: en cada tasa de falsos positivos de una
+    rejilla de `pasos` + 1 puntos, los percentiles de la tasa de verdaderos positivos sobre los
+    remuestreos que tienen las dos clases. Usa la misma semilla que los intervalos::
+
+        [{fpr, bajo, alto, validos}]   ([] si falta una clase)
+    """
+    if not roc(pares):
+        return []
+    rng = random.Random(semilla)
+    n = len(pares)
+    rejilla_fpr = [k / pasos for k in range(pasos + 1)]
+    muestras: list[list[float]] = [[] for _ in rejilla_fpr]
+    for _ in range(remuestreos):
+        curva = roc([pares[rng.randrange(n)] for _ in range(n)])
+        if curva:
+            for j, f in enumerate(rejilla_fpr):
+                muestras[j].append(_tpr_en(curva, f))
+    cola = (1 - NIVEL) / 2
+    banda = []
+    for f, xs in zip(rejilla_fpr, muestras):
+        xs.sort()
+        banda.append({"fpr": f, "bajo": _percentil(xs, cola) if xs else None,
+                      "alto": _percentil(xs, 1 - cola) if xs else None, "validos": len(xs)})
+    return banda
