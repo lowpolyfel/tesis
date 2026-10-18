@@ -24,13 +24,14 @@ import io
 import json
 import zipfile
 
-ESTILO = r"""%% Estilo de las figuras y tablas de Dudamel (calibración, ADR 0026 y 0027).
-%% Requiere pdfLaTeX con pgfplots y booktabs (incluidos en Overleaf).
+ESTILO = r"""%% Estilo de las figuras y tablas de Dudamel (calibración, ADR 0026, 0027 y 0029).
+%% Compila con pdfLaTeX y con XeLaTeX; requiere pgfplots, booktabs y longtable (incluidos en Overleaf).
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.18}
+\usepgfplotslibrary{fillbetween}
 \usepackage{booktabs}
 \usepackage{longtable}
-\usetikzlibrary{babel}
+\usetikzlibrary{babel,patterns}
 %% Carpeta del paquete respecto del documento principal: si lo copias dentro de tu tesis, define
 %% antes de \input{...estilo-dudamel}: \newcommand{\dudameldir}{carpeta-del-paquete}
 \providecommand{\dudameldir}{.}
@@ -66,6 +67,15 @@ ESTILO = r"""%% Estilo de las figuras y tablas de Dudamel (calibración, ADR 002
     error bars/x dir=both, error bars/x explicit, error bars/error bar style={dudamelAzul, line width=0.9pt}},
   dudamel/aprobacion/.style={dudamelAqua, only marks, mark=square*, mark size=2.2pt, mark options={fill=dudamelAqua, draw=white, line width=0.4pt},
     error bars/x dir=both, error bars/x explicit, error bars/error bar style={dudamelAqua, line width=0.9pt}},
+  %% barras (ADR 0029): cada serie lleva además su trama, para leerse en blanco y negro
+  dudamel/barra1/.style={fill=dudamelNaranja, draw=dudamelNaranja!70!black},
+  dudamel/barra2/.style={fill=white, draw=dudamelAzul, pattern=north east lines, pattern color=dudamelAzul},
+  dudamel/barra3/.style={fill=dudamelGris!45, draw=dudamelTinta},
+  dudamel/barra4/.style={fill=dudamelAqua!55, draw=dudamelAqua!60!black},
+  dudamel/error/.style={error bars/x dir=both, error bars/x explicit, error bars/error bar style={dudamelTinta, line width=0.7pt}},
+  dudamel/banda/.style={fill=dudamelAzul, fill opacity=0.15, draw=none},
+  dudamel/acierto/.style={only marks, mark=square*, mark size=13pt, mark options={fill=dudamelAqua!30, draw=dudamelAqua!60!black}},
+  dudamel/fallo/.style={only marks, mark=square*, mark size=13pt, mark options={fill=white, draw=dudamelGris, densely dashed}},
 }
 """
 
@@ -77,6 +87,25 @@ _ESCAPES = {"\\": r"\textbackslash{}", "&": r"\&", "%": r"\%", "$": r"\$", "#": 
 def tex(texto) -> str:
     """Texto de la persona o de los agentes, seguro dentro de LaTeX (los acentos van en UTF-8)."""
     return "".join(_ESCAPES.get(c, c) for c in str(texto if texto is not None else ""))
+
+
+def preambulo() -> list[str]:
+    """El preámbulo del `main.tex` de los paquetes: compila igual con pdfLaTeX (inputenc, T1,
+    Latin Modern) y con XeLaTeX (fontspec, que ya trae Latin Modern)."""
+    return [
+        "\\documentclass[11pt]{article}",
+        "\\usepackage{iftex}",
+        "\\ifPDFTeX",
+        "  \\usepackage[utf8]{inputenc}",
+        "  \\usepackage[T1]{fontenc}",
+        "  \\usepackage{lmodern}",
+        "\\else",
+        "  \\usepackage{fontspec}",
+        "\\fi",
+        "\\usepackage[spanish,es-noshorthands,es-tabla]{babel}",
+        "\\usepackage[margin=2.5cm]{geometry}",
+        "\\input{estilo-dudamel}",
+    ]
 
 
 def _num(x, d: int = 3) -> str:
@@ -171,15 +200,25 @@ def _figura_debates(r: dict) -> str:
     ])
 
 
-def _figura_roc(gt: dict) -> str:
+def _figura_roc(gt: dict, con_banda: bool) -> str:
     a = gt.get("auc")
     ic = (gt.get("confianza") or {}).get("medidas", {}).get("auc")
     leyenda = f"AUC = {a:.3f}{_ic(ic)}" if a is not None else "AUC no disponible"
+    conf = gt.get("confianza") or {}
+    banda = [
+        "  \\addplot[name path=alto, draw=none, forget plot] table[x=fpr, y=alto, col sep=comma] {\\dudameldir/datos/roc_banda.csv};",
+        "  \\addplot[name path=bajo, draw=none, forget plot] table[x=fpr, y=bajo, col sep=comma] {\\dudameldir/datos/roc_banda.csv};",
+        "  \\addplot[dudamel/banda] fill between[of=alto and bajo];",
+        f"  \\addlegendentry{{Banda bootstrap al {int(conf.get('nivel', 0.95) * 100)}~\\%}}",
+    ] if con_banda else []
     return "\n".join([
         "% Curva ROC: tasa de ambiguos a debate contra tasa de no ambiguos a debate, al mover el umbral.",
+        "% La banda: en cada tasa de falsos positivos, los percentiles 2.5 y 97.5 de la tasa de verdaderos",
+        f"% positivos sobre {conf.get('remuestreos')} remuestreos bootstrap de los términos (semilla {conf.get('semilla')}).",
         "\\begin{tikzpicture}",
         "\\begin{axis}[dudamel/eje, width=0.62\\linewidth, height=0.62\\linewidth, xmin=0, xmax=1, ymin=0, ymax=1,",
         "  xlabel={Tasa de falsos positivos}, ylabel={Tasa de verdaderos positivos}, legend pos=south east]",
+        *banda,
         "  \\addplot[dudamel/roc] table[x=fpr, y=tpr, col sep=comma] {\\dudameldir/datos/roc.csv};",
         f"  \\addlegendentry{{{leyenda}}}",
         "  \\addplot[dudamel/azar] coordinates {(0,0) (1,1)};",
@@ -203,8 +242,8 @@ def _tabla_metricas(r: dict, gt: dict) -> str:
     ]
     cuerpo = "\n".join(f"{tex(a)} & {tex(b)} \\\\" for a, b in filas)
     return "\n".join([
-        f"% Métricas con el umbral configurado ({r['umbral_configurado']}). Entre corchetes, intervalo bootstrap "
-        f"percentil al {int(conf.get('nivel', 0.95) * 100)} % ({conf.get('remuestreos')} remuestreos, semilla {conf.get('semilla')}).",
+        (f"% Métricas con el umbral configurado ({r['umbral_configurado']}). Entre corchetes, intervalo bootstrap "
+         f"percentil al {int(conf.get('nivel', 0.95) * 100)} % ({conf.get('remuestreos')} remuestreos, semilla {conf.get('semilla')})."),
         "\\begin{tabular}{@{}ll@{}}",
         "\\toprule",
         "Medida & Valor \\\\",
@@ -226,6 +265,27 @@ def _tabla_confusion(gt: dict) -> str:
         "\\midrule",
         f"Ambiguo & {c['vp']} & {c['fn']} \\\\",
         f"No ambiguo & {c['fp']} & {c['vn']} \\\\",
+        "\\bottomrule",
+        "\\end{tabular}",
+        "",
+    ])
+
+
+def _tabla_acuerdo(gt: dict) -> str:
+    """Kappa de Cohen entre cada par de personas anotadoras de una misma entrevista (ADR 0029)."""
+    filas = [f"{tex(a['entrevista_id'])} & {tex(a['a'])} & {tex(a['b'])} & {a['n']} & {_celda(a['acuerdo_observado'])} & "
+             f"{_celda(a['kappa'])} \\\\" for a in gt.get("acuerdo") or []]
+    if not filas:
+        filas = ["\\multicolumn{6}{@{}l}{--- (hace falta que dos personas etiqueten la misma entrevista)} \\\\"]
+    return "\n".join([
+        "% Acuerdo entre personas anotadoras: kappa de Cohen sobre los términos que las dos contestaron con sí o no",
+        "% («no sé» no entra). El ground truth usa solo los términos en los que coinciden todas; los desacuerdos",
+        f"% ({len(gt.get('desacuerdos') or [])}) y los términos solo con «no sé» ({gt.get('solo_no_se', 0)}) quedan fuera.",
+        "\\begin{tabular}{@{}lllrrr@{}}",
+        "\\toprule",
+        "Entrevista & Persona A & Persona B & Términos & Acuerdo observado & $\\kappa$ \\\\",
+        "\\midrule",
+        *filas,
         "\\bottomrule",
         "\\end{tabular}",
         "",
@@ -307,22 +367,20 @@ def _main(c: dict, gt: dict | None, hay_figura: set[str]) -> str:
     tablas = [("rejilla", "Sensibilidad del umbral.")]
     if gt:
         tablas = [("metricas", "Métricas con el umbral configurado."), ("confusion", "Matriz de confusión."),
-                  ("por_tipo", "Por tipo de ambigüedad."), *tablas]
+                  ("por_tipo", "Por tipo de ambigüedad."), ("acuerdo", "Acuerdo entre personas anotadoras."), *tablas]
     partes = [
-        "\\documentclass[11pt]{article}",
-        "\\usepackage[utf8]{inputenc}",
-        "\\usepackage[T1]{fontenc}",
-        "\\usepackage[spanish,es-noshorthands,es-tabla]{babel}",
-        "\\usepackage[margin=2.5cm]{geometry}",
-        "\\input{estilo-dudamel}",
+        *preambulo(),
         "\\begin{document}",
         f"\\section*{{Calibración del umbral --- corrida {tex(c['calibracion_id'])}}}",
-        f"Fecha: {tex(c['fecha'])}. Versión de Dudamel: {tex(c.get('version_app'))}. "
-        f"Umbral configurado: {r['umbral_configurado']}. Entrevistas: {len(r['entrevistas'])}. "
-        f"Términos con similitud: {r['n_valores']}. "
-        f"Embeddings: {tex(', '.join(r['modelos_embeddings']) or '---')}.",
+        (f"Fecha: {tex(c['fecha'])}. Versión de Dudamel: {tex(c.get('version_app'))}. "
+         f"Umbral configurado: {r['umbral_configurado']}. Entrevistas: {len(r['entrevistas'])}. "
+         f"Términos con similitud: {r['n_valores']}. "
+         f"Embeddings: {tex(', '.join(r['modelos_embeddings']) or '---')}."),
         "",
     ]
+    if r.get("avisos"):
+        partes += ["\\paragraph{Avisos.}", "\\begin{itemize}", *[f"  \\item {tex(a)}" for a in r["avisos"]],
+                   "\\end{itemize}", ""]
     for nombre, pie in figuras:
         partes += ["\\begin{figure}[htbp]", "\\centering", f"\\input{{\\dudameldir/figuras/{nombre}}}",
                    f"\\caption{{{pie}}}", f"\\label{{fig:dudamel-{nombre}}}", "\\end{figure}", ""]
@@ -336,7 +394,7 @@ def _main(c: dict, gt: dict | None, hay_figura: set[str]) -> str:
 LEEME = """# Paquete de la corrida {id} para Overleaf
 
 1. En Overleaf: **New Project → Upload Project** y sube este .zip. `main.tex` compila tal
-   cual con pdfLaTeX y muestra todas las figuras y tablas.
+   cual con pdfLaTeX o con XeLaTeX y muestra todas las figuras y tablas.
 2. Para usarlo dentro de tu tesis, sube la carpeta (por ejemplo como `dudamel-{id}/`) y en
    el preámbulo pon:
 
@@ -389,11 +447,16 @@ def paquete_overleaf(corrida: dict) -> bytes:
             "tablas/metricas.tex": _tabla_metricas(r, gt),
             "tablas/confusion.tex": _tabla_confusion(gt),
             "tablas/por_tipo.tex": _tabla_por_tipo(gt),
+            "tablas/acuerdo.tex": _tabla_acuerdo(gt),
         })
         # sin las dos clases no hay curva ROC, y sin ningún valor definido no hay qué trazar
         if gt["roc"]:
             archivos["datos/roc.csv"] = _csv([[_num(p["fpr"], 4), _num(p["tpr"], 4)] for p in gt["roc"]], ["fpr", "tpr"])
-            archivos["figuras/roc.tex"] = _figura_roc(gt)
+            banda = [b for b in gt.get("roc_banda") or [] if b["bajo"] is not None]
+            if banda:  # las corridas anteriores a la v2.4.0 no la tienen
+                archivos["datos/roc_banda.csv"] = _csv([[_num(b["fpr"], 4), _num(b["bajo"], 4), _num(b["alto"], 4)]
+                                                        for b in banda], ["fpr", "bajo", "alto"])
+            archivos["figuras/roc.tex"] = _figura_roc(gt, bool(banda))
         if any(f.get(k) is not None for f in gt["por_umbral"] for k in ("precision", "exhaustividad", "f1")):
             archivos["figuras/metricas.tex"] = _figura_metricas(r)
     archivos["main.tex"] = _main(corrida, gt, {n[len("figuras/"):-4] for n in archivos if n.startswith("figuras/")})

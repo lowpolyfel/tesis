@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api.main import create_app
+from app.calibracion import calidad as cal
 from app.calibracion import pruebas_modelos as pm
 from app.calibracion.latex_modelos import paquete_overleaf
 from tests.fakes import LLMFalso, como_usuario
@@ -101,26 +102,52 @@ def test_correr_revisar_y_exportar_una_prueba(cliente):
     assert m1["por_clase"]["polisemia"]["n"] == 2 and m1["por_clase"]["regionalismo"]["n"] == 2
     assert any("error" in a for a in p["resumen"]["avisos"]) and any("Solo 4" in a for a in p["resumen"]["avisos"])
 
-    for item in ("B01", "B03", "B33", "B40"):
-        assert c.put(f"/pruebas-modelos/{pid}/revision", json={"modelo": "M1", "item": item, "bueno": True, "revisor": "Tesista"}).status_code == 200
-        c.put(f"/pruebas-modelos/{pid}/revision", json={"modelo": "M2", "item": item, "bueno": False, "revisor": "Tesista"})
-    r = c.put(f"/pruebas-modelos/{pid}/revision", json={"modelo": "M2", "item": "B40", "bueno": None, "revisor": "Tesista",
-                                                        "a_ciegas": False})
-    res = r.json()["resumen"]
-    assert res["modelos"][0]["aprobacion"]["valor"] == 1 and res["modelos"][1]["revisados"] == 3
-    assert res["pares"][0] == {"a": "M1", "b": "M2", "comunes": 3, "solo_a": 3, "solo_b": 0, "p": 0.25}
-    assert r.json()["revisiones"]["a_ciegas"] is False
-    assert c.put(f"/pruebas-modelos/{pid}/revision", json={"modelo": "M9", "item": "B01", "bueno": True,
-                                                           "revisor": "x"}).status_code == 422
+    # la revisión ✓/✗ de la v2.3 ya no se escribe
+    assert c.put(f"/pruebas-modelos/{pid}/revision", json={"modelo": "M1", "item": "B01", "bueno": True,
+                                                           "revisor": "T"}).status_code in (404, 405)
+    # revisión de calidad: a ciegas por omisión, con semilla y orden guardados; los errores no se revisan
+    rev = c.post(f"/pruebas-modelos/{pid}/revision-calidad", json={"revisor": "Tesista"}).json()
+    assert rev["a_ciegas"] is True and isinstance(rev["semilla"], int) and len(rev["orden"]) == 8
+    assert {o["modelo"] for o in rev["orden"]} == {"M1", "M2"} and sorted(rev["letras"]) == ["M1", "M2", "M3"]
+    for o in rev["orden"]:
+        r = c.put(f"/pruebas-modelos/{pid}/revision-calidad/marca", json={
+            **o, "fidelidad": o["modelo"] == "M1", "delimitacion": True, "intencion": o["item"] != "B03",
+            "cobertura": [0, 1, 7]})
+        assert r.status_code == 200, r.text
+    assert r.json() == {**r.json(), "revisadas": 8, "total": 8}
+    assert c.put(f"/pruebas-modelos/{pid}/revision-calidad/marca", json={
+        "modelo": "M3", "item": "B01", "fidelidad": True, "delimitacion": True, "intencion": True}).status_code == 422
+    res = c.get(f"/pruebas-modelos/{pid}").json()["resumen"]
+    q1, q2 = res["modelos"][0]["calidad"], res["modelos"][1]["calidad"]
+    assert q1["criterios"]["fidelidad"]["valor"] == 1 and q2["criterios"]["fidelidad"]["valor"] == 0
+    assert q1["criterios"]["intencion"]["valor"] == 0.75 and q1["revisadas"] == 4
+    assert q1["cobertura"]["cubiertas"] == 8 and q1["cobertura"]["esperadas"] == 8  # el índice 7 no existe: no cuenta
+    par = res["pares"][0]
+    assert par["deteccion"] == {"n": 4, "solo_a": 4, "solo_b": 0, "p": 0.125}
+    # M1 dio 2 intenciones y M2 una: la calidad no se compara entre ellos (se excluyen y se cuentan)
+    assert par["calidad"]["fidelidad"]["n"] == 0 and par["excluidos_por_intenciones"] == 4
+    assert "aprobacion" not in res["modelos"][0] and res["aprobacion_legado"] is None
+    fn = res["modelos"][1]["falsos_negativos"]
+    assert len(fn["items"]) == 4 and fn["sin_clasificar"] == 4
+    assert res["modelos"][2]["falsos_negativos"]["items"][0]["sugerido"] == "formato"
+    assert c.put(f"/pruebas-modelos/{pid}/modos", json={"modelo": "M2", "item": "B01", "modo": "documento_hecho"}).status_code == 200
+    assert c.put(f"/pruebas-modelos/{pid}/modos", json={"modelo": "M1", "item": "B01", "modo": "otro"}).status_code == 422
+    assert c.put(f"/pruebas-modelos/{pid}/modos", json={"modelo": "M2", "item": "B03", "modo": "inventado"}).status_code == 422
+    res = c.get(f"/pruebas-modelos/{pid}").json()["resumen"]
+    assert res["modelos"][1]["falsos_negativos"]["por_modo"]["documento_hecho"] == 1
 
     listado = c.get("/pruebas-modelos").json()
-    assert listado[0]["prueba_id"] == pid and listado[0]["modelos"][0]["aprobacion"] == 1
+    assert listado[0]["prueba_id"] == pid and listado[0]["modelos"][0]["revisadas"] == 4
+    assert listado[0]["codigo"].startswith(f"{pid}-v2-") and listado[0]["uid"]
 
     z = c.get(f"/pruebas-modelos/{pid}/overleaf.zip")
     assert z.status_code == 200 and z.headers["content-type"] == "application/zip"
     nombres = zipfile.ZipFile(io.BytesIO(z.content)).namelist()
-    assert {"main.tex", "estilo-dudamel.tex", "figuras/modelos.tex", "tablas/modelos.tex", "tablas/pares.tex",
-            "tablas/banco.tex", "tablas/respuestas.tex", "datos/modelos.csv", "prueba.json"} <= set(nombres)
+    assert {"main.tex", "estilo-dudamel.tex", "figuras/modelos.tex", "figuras/calidad.tex", "figuras/confusion.tex",
+            "figuras/cobertura.tex", "figuras/modos.tex", "figuras/latencia.tex", "figuras/subenumeracion.tex",
+            "tablas/modelos.tex", "tablas/pares.tex", "tablas/calidad.tex", "tablas/banco.tex", "tablas/respuestas.tex",
+            "datos/modelos.csv", "apendice/rubrica.tex", "rubrica.md", "prueba.json"} <= set(nombres)
+    assert z.headers["content-disposition"].endswith(f'{c.get(f"/pruebas-modelos/{pid}").json()["codigo"]}.zip"')
 
     # reanudar solo los que fallaron: el modelo roto vuelve a correr sus 4 términos
     r = c.post(f"/pruebas-modelos/{pid}/reanudar", params={"errores": True})
@@ -129,6 +156,13 @@ def test_correr_revisar_y_exportar_una_prueba(cliente):
 
     assert c.delete(f"/pruebas-modelos/{pid}").status_code == 204
     assert c.get(f"/pruebas-modelos/{pid}").status_code == 404
+    assert c.srv.repo.obtener_doc(cal.COLECCION_CALIDAD, pid) is None
+    # el número no se reutiliza: queda una lápida y la prueba nueva toma el siguiente
+    assert c.srv.repo.obtener_doc(pm.COLECCION_PRUEBAS, pid)["borrada"] is True
+    assert pid not in [x["prueba_id"] for x in c.get("/pruebas-modelos").json()]
+    nueva = c.post("/pruebas-modelos", json={"modelos": [{"proveedor": "ollama", "modelo": "bueno"}], "items": ["B01"]})
+    assert int(nueva.json()["prueba_id"][1:]) > int(pid[1:])
+    _esperar(c, nueva.json()["prueba_id"])
 
 
 def test_validaciones_al_crear(cliente):
@@ -151,11 +185,10 @@ def test_con_controles_hay_precision_falsas_alarmas_y_parejas(cliente):
     # el que dice «ambiguo» a todo ya no sale perfecto: exhaustividad 1, pero falsas alarmas 1
     assert alarmista["deteccion"]["valor"] == 1 and alarmista["falsas_alarmas"]["valor"] == 1
     assert alarmista["precision"]["valor"] == 0.6 and alarmista["confusion"] == {"vp": 3, "fn": 0, "fp": 2, "vn": 0}
-    assert alarmista["parejas"] == {"n": 2, "discrimina": 0}
+    assert {k: alarmista["parejas"][k] for k in ("n", "discrimina")} == {"n": 2, "discrimina": 0}
     assert callado["deteccion"]["valor"] == 0 and callado["falsas_alarmas"]["valor"] == 0
     assert callado["precision"]["valor"] is None
-    assert alarmista["por_clase"]["inequivoco"] == {"n": 2, "ambiguo": False, "deteccion": alarmista["falsas_alarmas"],
-                                                    "aprobacion": pm.wilson(0, 0)}
+    assert alarmista["por_clase"]["inequivoco"] == {"n": 2, "ambiguo": False, "deteccion": alarmista["falsas_alarmas"]}
     z = zipfile.ZipFile(io.BytesIO(c.get(f"/pruebas-modelos/{p['prueba_id']}/overleaf.zip").content))
     assert "tablas/confusion.tex" in z.namelist() and "Falsas alarmas" in z.read("figuras/modelos.tex").decode()
     assert "0/2" in z.read("tablas/confusion.tex").decode()
@@ -173,22 +206,61 @@ def test_una_prueba_del_banco_v1_se_sigue_midiendo_con_su_banco(cliente):
     assert p["banco"]["version"] == "v1" and m["falsas_alarmas"] is None and m["precision"] is None
     assert any("Sin controles inequívocos" in a for a in p["resumen"]["avisos"]) and p["resumen"]["banco"]["coincide"]
     z = zipfile.ZipFile(io.BytesIO(c.get(f"/pruebas-modelos/{p['prueba_id']}/overleaf.zip").content))
-    assert "tablas/confusion.tex" not in z.namelist() and "Falsas alarmas" not in z.read("figuras/modelos.tex").decode()
+    assert "Falsas alarmas" not in z.read("figuras/modelos.tex").decode()
+    assert "& --- & --- & ---" in z.read("tablas/confusion.tex").decode()  # sin controles: ni FP ni VN
     assert c.get("/bancos/ambiguedad", params={"version": "v1"}).json()["version"] == "v1"
     assert c.get("/bancos/ambiguedad", params={"version": "v9"}).status_code == 404
 
 
-def test_rehacer_la_revision_borra_las_marcas(cliente):
+def test_rehacer_borra_solo_la_revision_nueva_y_la_vieja_queda_con_su_criterio(cliente):
     c = cliente
     pid = c.post("/pruebas-modelos", json={"modelos": [{"proveedor": "ollama", "modelo": "bueno"}],
-                                           "items": ["B01"]}).json()["prueba_id"]
+                                           "items": ["B01", "B02"]}).json()["prueba_id"]
     _esperar(c, pid)
-    c.put(f"/pruebas-modelos/{pid}/revision", json={"modelo": "M1", "item": "B01", "bueno": True, "revisor": "T",
-                                                    "a_ciegas": False})
-    assert any("viendo el nombre" in a for a in c.get(f"/pruebas-modelos/{pid}").json()["resumen"]["avisos"])
-    assert c.delete(f"/pruebas-modelos/{pid}/revision").status_code == 204
+    legado = {"prueba_id": pid, "usuario_id": "U00", "revisor": "T", "a_ciegas": False,
+              "marcas": {"M1": {"B01": {"bueno": True, "nota": None, "fecha": "x"}, "B02": {"bueno": False, "nota": None, "fecha": "x"}}}}
+    c.srv.repo.guardar_doc(pm.COLECCION_REVISIONES, pid, legado)  # una revisión hecha con la v2.3
+    c.post(f"/pruebas-modelos/{pid}/revision-calidad", json={"revisor": "T", "a_ciegas": False})
+    c.put(f"/pruebas-modelos/{pid}/revision-calidad/marca", json={"modelo": "M1", "item": "B01", "fidelidad": True,
+                                                                  "delimitacion": True, "intencion": True})
     p = c.get(f"/pruebas-modelos/{pid}").json()
-    assert p["revisiones"] is None and p["resumen"]["modelos"][0]["revisados"] == 0
+    leg = p["resumen"]["aprobacion_legado"]
+    assert leg["por_modelo"]["M1"]["valor"] == 0.5 and "v2.3" in leg["criterio"]
+    assert any("criterio viejo" in a for a in p["resumen"]["avisos"])
+    assert any("nombres de los modelos a la vista" in a for a in p["resumen"]["avisos"])
+    assert c.post(f"/pruebas-modelos/{pid}/revision-calidad", json={"revisor": "T"}).status_code == 409
+    assert c.delete(f"/pruebas-modelos/{pid}/revision-calidad").status_code == 204
+    p = c.get(f"/pruebas-modelos/{pid}").json()
+    assert p["revision_calidad"] is None and p["revisiones"] == legado  # la vieja no se toca ni se traduce
+    assert p["resumen"]["modelos"][0]["calidad"]["revisadas"] == 0
+    z = zipfile.ZipFile(io.BytesIO(c.get(f"/pruebas-modelos/{pid}/overleaf.zip").content))
+    assert "tablas/aprobacion_legado.tex" in z.namelist() and "figuras/calidad.tex" not in z.namelist()
+    assert "Figura omitida: calidad" in z.read("main.tex").decode()
+
+
+def test_una_serie_mide_la_estabilidad(cliente, monkeypatch):
+    c = cliente
+    r = c.post("/pruebas-modelos", json={"modelos": [{"proveedor": "ollama", "modelo": "bueno"}], "items": ["B01", "B02"],
+                                         "repeticiones": 2})
+    assert r.status_code == 201 and len(r.json()["serie_creada"]) == 2
+    primera, segunda = r.json()["serie_creada"]
+    for pid in (primera, segunda):
+        _esperar(c, pid)
+    p2 = c.get(f"/pruebas-modelos/{segunda}").json()
+    assert p2["serie"] == primera and p2["corrida"] == 2 and p2["uid"] != c.get(f"/pruebas-modelos/{primera}").json()["uid"]
+    # una corrida más que, esta vez, no detecta nada: la detección varía y el rango lo dice
+    monkeypatch.setattr(pm, "crear_cliente_de", lambda e, s: LLMFalso({"clasificador_intencion_v1": _respuesta(1)}, "x"))
+    r = c.post(f"/pruebas-modelos/{primera}/repetir", json={"veces": 1})
+    assert r.status_code == 201 and r.json()["serie"] == primera
+    _esperar(c, r.json()["creadas"][0])
+    e = c.get(f"/pruebas-modelos/series/{primera}").json()
+    assert [x["corrida"] for x in e["corridas"]] == [1, 2, 3] and e["misma_configuracion"]
+    m = e["modelos"][0]
+    assert m["detecciones"] == [2, 2, 0] and (m["minimo"], m["maximo"], m["rango"]) == (0, 2, 2)
+    assert any("cambió entre corridas" in a for a in e["avisos"])
+    z = zipfile.ZipFile(io.BytesIO(c.get(f"/pruebas-modelos/{primera}/overleaf.zip").content))
+    assert {"figuras/estabilidad.tex", "tablas/estabilidad.tex", "datos/estabilidad.csv"} <= set(z.namelist())
+    assert c.get("/pruebas-modelos/series/P99").status_code == 404
 
 
 def test_una_prueba_sin_hilo_queda_interrumpida(cliente):

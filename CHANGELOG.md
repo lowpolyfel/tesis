@@ -1,5 +1,41 @@
 # Cambios
 
+## 2.4.0 — 2026-10-18
+
+El aparato de evaluación, rehecho para documentar (ADR 0029). No cambia los agentes, el grafo de la
+entrevista ni las etapas del pipeline.
+
+- **Calidad en lugar de aprobación.** La revisión humana ya no es un ✓/✗ que mezclaba detección y
+  redacción. Son tres criterios binarios por salida: fidelidad, delimitación e intención. En los
+  términos ambiguos se marca además la cobertura de las lecturas esperadas, a mano y sin embeddings.
+  La rúbrica, con un ejemplo de qué pasa y qué no pasa por criterio, está en
+  `docs/rubrica-revision.md`, en la pantalla y en el paquete.
+- **A ciegas y con teclado.** La revisión oculta proveedor y modelo por omisión, y baraja los ítems
+  y, dentro de cada ítem, los modelos. Guarda la semilla y el orden, para que la revisión sea
+  reconstruible. Se usa con `1 2 3`, `4 5 6`, `Enter`, `Backspace` y `?`, y se retoma donde quedó.
+- **Métricas que separan modelos.**
+  - McNemar exacta sobre la detección y sobre cada criterio, en este caso solo con el mismo número
+    de intenciones; los ítems excluidos se cuentan.
+  - Subenumeración: con tres lecturas esperadas, ¿cuántas intenciones dio el modelo?
+  - Modos de falla de los falsos negativos, con «documento contra el hecho que registra» precargado.
+  - Estabilidad entre N corridas idénticas, con su rango.
+- **Ids que no se reutilizan.** Borrar deja una lápida, cada prueba tiene `uid` y un código con su
+  banco (`P05-v2-84c2d8`), y `python -m app.calibracion.verificar_ids` reporta las colisiones entre
+  la base local y Mongo. Lo mismo vale para las corridas de calibración.
+- **Ground truth de las entrevistas.** El etiquetado es por persona, a ciegas de la similitud y de la
+  decisión, con orden barajado, teclado (`S` sí, `N` no, `X` no sé) y solo los términos que llegaron
+  a la divergencia. Con dos personas se usan los términos en que coinciden y se calcula la kappa de
+  Cohen. Con etiquetas, la calibración da precisión, exhaustividad, F1, la ROC con su banda bootstrap
+  y los intervalos, sin cambiar la configuración. Sigue siendo de solo lectura.
+- **Paquetes para Overleaf.** Los dos compilan con pdfLaTeX y con XeLaTeX, verificado con TeX Live
+  en las pruebas. La prueba de modelos suma ocho figuras: confusión, detección, calidad, cobertura,
+  parejas, latencia, modos y subenumeración, y estabilidad si la prueba es parte de una serie.
+  La calibración suma la ROC con banda y el acuerdo entre personas. Cada pieza lee de un CSV, explica
+  qué mide y pone `---` con un aviso cuando falta algo.
+- **Las corridas viejas no se migran.** La aprobación de la v2.3 se conserva tal cual y se reporta
+  aparte, con su criterio. Las pruebas sin uid se identifican por su código. Las corridas de
+  calibración se siguen reproduciendo igual. Detalle en ADR 0029, «Consecuencias».
+
 ## 2.3.1 — 2026-10-18
 
 La prueba de modelos, con controles negativos y revisión a ciegas (ADR 0028).

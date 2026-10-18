@@ -1,7 +1,7 @@
 # 0028. Controles negativos en el banco y revisión a ciegas con orden barajado
 
 - **Fecha:** 2026-10-18
-- **Estado:** Aceptada (completa ADR 0027)
+- **Estado:** Aceptada (completa ADR 0027). La revisión ✓/✗ y su «aprobación» los reemplaza ADR 0029 (calidad con tres criterios, a ciegas por omisión).
 
 ## Contexto
 

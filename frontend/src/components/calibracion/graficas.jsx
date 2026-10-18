@@ -264,10 +264,11 @@ export function GraficaMetricas({ porUmbral, umbral, confianza, parametros }) {
 }
 
 /* 3. Curva ROC: cuánto separa la similitud los casos, sin elegir umbral */
-export function GraficaRoc({ roc, auc, ic }) {
+export function GraficaRoc({ roc, auc, ic, banda = [] }) {
+  const conBanda = banda.filter((b) => b.bajo != null);
   const id = useId();
   return (
-    <Marco titulo={`Curva ROC · AUC ${fmt(auc)}${ic?.bajo != null ? ` [${fmt(ic.bajo)}, ${fmt(ic.alto)}]` : ""}`} nombre="roc" alto={360}
+    <Marco titulo={`Curva ROC · AUC ${fmt(auc)}${ic?.bajo != null ? ` [${fmt(ic.bajo)}, ${fmt(ic.alto)}]` : ""}${conBanda.length > 1 ? " · banda bootstrap al 95 %" : ""}`} nombre="roc" alto={360}
       descripcion="Tasa de ambiguos que van a debate contra tasa de no ambiguos que van a debate al mover el umbral; la diagonal es el azar."
       x={{ min: 0, max: 1, marcas: [0, 0.25, 0.5, 0.75, 1], titulo: "Tasa de falsos positivos (no ambiguos a debate)" }}
       y={{ min: 0, max: 1, marcas: [0, 0.25, 0.5, 0.75, 1], titulo: "Tasa de verdaderos positivos" }}>
@@ -276,8 +277,15 @@ export function GraficaRoc({ roc, auc, ic }) {
           <line x1={sx(0)} y1={sy(0)} x2={sx(1)} y2={sy(1)} stroke="var(--viz-gris)" strokeDasharray="2 4" />
           <text x={sx(0.62)} y={sy(0.55)} transform={`rotate(-27 ${sx(0.62)} ${sy(0.55)})`}>azar</text>
           <clipPath id={`${id}area`}><rect x={sx(0)} y={sy(1)} width={sx(1) - sx(0)} height={sy(0) - sy(1)} /></clipPath>
-          <polygon clipPath={`url(#${id}area)`} points={`${sx(0)},${sy(0)} ${roc.map((p) => `${sx(p.fpr)},${sy(p.tpr)}`).join(" ")} ${sx(1)},${sy(0)}`}
-            fill="var(--viz-azul)" opacity=".1" />
+          {conBanda.length > 1 ? (
+            <polygon points={[...conBanda.map((b) => `${sx(b.fpr)},${sy(b.alto)}`), ...[...conBanda].reverse().map((b) => `${sx(b.fpr)},${sy(b.bajo)}`)].join(" ")}
+              fill="var(--viz-azul)" opacity=".16">
+              <title>Banda bootstrap al 95 %: en cada tasa de falsos positivos, los percentiles 2.5 y 97.5 de la tasa de verdaderos positivos</title>
+            </polygon>
+          ) : (
+            <polygon clipPath={`url(#${id}area)`} points={`${sx(0)},${sy(0)} ${roc.map((p) => `${sx(p.fpr)},${sy(p.tpr)}`).join(" ")} ${sx(1)},${sy(0)}`}
+              fill="var(--viz-azul)" opacity=".1" />
+          )}
           <polyline points={roc.map((p) => `${sx(p.fpr)},${sy(p.tpr)}`).join(" ")} fill="none" stroke="var(--viz-azul)" strokeWidth="2" strokeLinejoin="round" />
           {roc.map((p, i) => (
             <g key={i}>
@@ -322,13 +330,14 @@ export function GraficaDebates({ rejilla, umbral, n, parametros }) {
   );
 }
 
-/* 5. Prueba de modelos (ADR 0027): por modelo, la exhaustividad (naranja: ambiguos marcados como
- * ambiguos), las falsas alarmas (azul: inequívocos marcados como ambiguos; solo con controles) y
- * la aprobación de la persona revisora (aqua), cada una con su intervalo de Wilson al 95 %. */
+/* 5. Prueba de modelos (ADR 0027–0029): por modelo, la exhaustividad (naranja: ambiguos marcados
+ * como ambiguos), las falsas alarmas (azul: inequívocos marcados como ambiguos) y la precisión
+ * (gris); las dos últimas solo con controles. Cada una con su intervalo de Wilson al 95 %. La
+ * calidad de la revisión humana va en su propia tabla: es otra pregunta. */
 const SERIES_MODELOS = [
   { clave: "deteccion", texto: "Exhaustividad", color: "var(--viz-naranja)", dy: -10 },
   { clave: "falsas_alarmas", texto: "Falsas alarmas", color: "var(--viz-azul)", marca: "rombo", dy: 0 },
-  { clave: "aprobacion", texto: "Aprobación (revisión)", color: "var(--viz-aqua)", marca: "cuadro", dy: 10 },
+  { clave: "precision", texto: "Precisión", color: "var(--viz-gris)", marca: "cuadro", dy: 10 },
 ];
 
 export function GraficaModelos({ modelos, nombres }) {
@@ -338,9 +347,9 @@ export function GraficaModelos({ modelos, nombres }) {
   const izquierda = Math.min(230, Math.max(96, 16 + 6.4 * Math.max(...modelos.map((m) => corto(nombres(m)).length))));
   const pct = (x) => (x == null ? "—" : `${Math.round(x * 100)} %`);
   return (
-    <Marco titulo="Exhaustividad, falsas alarmas y aprobación por modelo" nombre="modelos" alto={74 + modelos.length * 56}
+    <Marco titulo="Exhaustividad, falsas alarmas y precisión por modelo" nombre="modelos" alto={74 + modelos.length * 56}
       leyenda={series.length > 1 ? series : []}
-      descripcion="Por modelo, la proporción de ambiguos que marcó como ambiguos, la de inequívocos que marcó como ambiguos y la que la persona revisora aprobó, con su intervalo de confianza al 95 %."
+      descripcion="Por modelo, la proporción de ambiguos que marcó como ambiguos, la de inequívocos que marcó como ambiguos y la precisión, con su intervalo de confianza al 95 %."
       x={{ min: 0, max: 1, marcas: [0, 0.25, 0.5, 0.75, 1], formato: pct, titulo: "Proporción · intervalo de Wilson al 95 %" }}
       y={{ min: modelos.length - 0.5, max: -0.5 }} izquierda={izquierda}>
       {({ sx, sy, ancho }) => (

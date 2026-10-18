@@ -34,6 +34,7 @@ import logging
 import math
 import statistics
 import threading
+import uuid
 from datetime import UTC, datetime
 from functools import cache
 from pathlib import Path
@@ -44,6 +45,17 @@ from app.fases.memoria import SIN_ACUERDOS
 from app.llm import FalloEstructurado
 from app.llm.proveedores import POR_ID, crear_cliente_de
 
+from .calidad import (  # noqa: F401 — mcnemar y wilson se reexportan para quien ya las usaba de aquí
+    LETRAS,
+    aprobacion_legado,
+    calidad_de,
+    falsos_negativos,
+    mcnemar,
+    pares,
+    subenumeracion,
+    wilson,
+)
+
 log = logging.getLogger(__name__)
 
 COLECCION_PRUEBAS = "pruebas_modelos"
@@ -52,7 +64,6 @@ PREFIJO = "P"
 BANCOS = Path(__file__).with_name("banco")
 PROMPT = "clasificador_intencion_v1"
 SIN_LEL = "(sin LEL: la prueba usa solo la cita y el contexto)"
-Z = 1.959963984540054  # normal al 97.5 %: intervalos al 95 %
 TERMINALES = ("terminada", "cancelada", "interrumpida", "error")
 
 
@@ -97,30 +108,6 @@ def etiqueta_modelo(m: dict) -> str:
     return f"{m['proveedor']} · {m['modelo']}"
 
 
-# ---------------------------------------------------------------- estadística
-
-def wilson(exitos: int, n: int) -> dict:
-    """Proporción con su intervalo de Wilson al 95 % (se porta bien con n chica y con 0 o n)."""
-    if not n:
-        return {"valor": None, "bajo": None, "alto": None, "exitos": exitos, "n": 0}
-    p = exitos / n
-    den = 1 + Z * Z / n
-    centro = (p + Z * Z / (2 * n)) / den
-    medio = Z * math.sqrt(p * (1 - p) / n + Z * Z / (4 * n * n)) / den
-    return {"valor": p, "bajo": max(0.0, centro - medio), "alto": min(1.0, centro + medio), "exitos": exitos, "n": n}
-
-
-def mcnemar(b: int, c: int) -> float | None:
-    """p bilateral de la prueba exacta de McNemar: b y c son los pares discordantes
-    (✓ en uno y ✗ en el otro). Sin discordantes no hay nada que probar."""
-    n = b + c
-    if not n:
-        return None
-    k = min(b, c)
-    cola = sum(math.comb(n, i) for i in range(k + 1)) / 2 ** n
-    return min(1.0, 2 * cola)
-
-
 # ---------------------------------------------------------------- resumen
 
 def _percentil(xs: list[float], q: float) -> float | None:
@@ -132,8 +119,11 @@ def _percentil(xs: list[float], q: float) -> float | None:
     return xs[a] + (xs[b] - xs[a]) * (i - a)
 
 
-def resumen(prueba: dict, revisiones: dict | None) -> dict:
-    """Medidas por modelo y comparación por pares. `revisiones`: el doc de `revisiones_modelos` o None.
+def resumen(prueba: dict, legado: dict | None = None, revision: dict | None = None, modos: dict | None = None) -> dict:
+    """Medidas por modelo y comparación por pares. `legado`: la revisión ✓/✗ de la v2.3
+    (`revisiones_modelos`), que se reporta aparte con su criterio viejo; `revision`: la revisión
+    de calidad (`revisiones_calidad`, ADR 0029); `modos`: los modos de falla de los falsos negativos
+    (`modos_falla`).
 
     Positivo = el modelo marcó el término como ambiguo (2 o más intenciones); la verdad es la del
     banco. Con controles negativos (banco v2) hay matriz de confusión completa:
@@ -142,42 +132,44 @@ def resumen(prueba: dict, revisiones: dict | None) -> dict:
     - tasa de falsas alarmas: inequívocos marcados como ambiguos sobre los inequívocos que
       respondieron (un error no es ni alarma ni contención: se reporta aparte);
     - precisión: ambiguos marcados sobre todo lo marcado.
+    La calidad (tres criterios), la cobertura, la subenumeración y los modos de falla salen de
+    `calidad.py`. Una métrica que no se puede calcular queda en null y un aviso dice qué falta.
     """
     b = banco_de(prueba)
     terminos = {t["id"]: t for t in b["terminos"]}
     items = prueba["items"]
     positivos = [i for i in items if es_ambiguo(terminos[i])]
     negativos = [i for i in items if not es_ambiguo(terminos[i])]
-    marcas = (revisiones or {}).get("marcas", {})
+    calidad = calidad_de(prueba, revision, terminos, es_ambiguo)
+    sub = subenumeracion(prueba, terminos, es_ambiguo)
+    fn = falsos_negativos(prueba, modos, terminos, es_ambiguo)
+    letras = (revision or {}).get("letras") or {m["id"]: LETRAS[k] for k, m in enumerate(prueba["modelos"])}
     modelos = []
     for m in prueba["modelos"]:
         res = prueba["resultados"].get(m["id"], {})
-        rev = marcas.get(m["id"], {})
         hechos = [i for i in items if i in res]
         ok = [i for i in hechos if res[i]["ok"]]
         marcados = {i for i in ok if res[i]["ambiguo"]}
         vp = sum(i in marcados for i in positivos)
         neg_ok = [i for i in negativos if i in ok]
         fp = sum(i in marcados for i in neg_ok)
-        revisados = [i for i in items if rev.get(i, {}).get("bueno") is not None]
-        buenos = [i for i in revisados if rev[i]["bueno"]]
         ms = [res[i]["ms"] for i in ok if res[i].get("ms") is not None]
         por_clase = {}
         for clase in b["clases"]:
             de_clase = [i for i in items if terminos[i]["clase"] == clase]
             if not de_clase:
                 continue
-            rv = [i for i in de_clase if i in revisados]
             base = de_clase if clase != "inequivoco" else [i for i in de_clase if i in ok]
             # «marcó ambiguo»: en una clase ambigua es la exhaustividad; en la inequívoca, las falsas alarmas
             por_clase[clase] = {"n": len(de_clase), "ambiguo": clase != "inequivoco",
-                                "deteccion": wilson(sum(i in marcados for i in base), len(base)),
-                                "aprobacion": wilson(sum(i in buenos for i in rv), len(rv))}
+                                "deteccion": wilson(sum(i in marcados for i in base), len(base))}
         parejas = [(t["pareja"], t["id"]) for t in terminos.values()
                    if t.get("pareja") and t["id"] in items and t["pareja"] in items]
         parejas_ok = [(a, n) for a, n in parejas if a in ok and n in ok]
+        discrimina = sum(1 for a, n in parejas_ok if a in marcados and n not in marcados)
         modelos.append({
-            "id": m["id"], "proveedor": m["proveedor"], "modelo": m["modelo"], "etiqueta": etiqueta_modelo(m),
+            "id": m["id"], "letra": letras.get(m["id"]), "proveedor": m["proveedor"], "modelo": m["modelo"],
+            "etiqueta": etiqueta_modelo(m),
             "n": len(items), "n_ambiguos": len(positivos), "n_inequivocos": len(negativos),
             "hechos": len(hechos), "respondidos": len(ok), "errores": len(hechos) - len(ok),
             "errores_inequivocos": sum(1 for i in negativos if i in res and not res[i]["ok"]),
@@ -186,74 +178,123 @@ def resumen(prueba: dict, revisiones: dict | None) -> dict:
             "deteccion": wilson(vp, len(positivos)),
             "falsas_alarmas": wilson(fp, len(neg_ok)) if negativos else None,
             "precision": wilson(vp, vp + fp) if negativos else None,
-            "parejas": {"n": len(parejas_ok), "discrimina": sum(1 for a, n in parejas_ok if a in marcados and n not in marcados)}
+            "parejas": {"n": len(parejas_ok), "discrimina": discrimina, "proporcion": wilson(discrimina, len(parejas_ok))}
             if parejas else None,
-            "aprobacion": wilson(len(buenos), len(revisados)),
-            "revisados": len(revisados),
+            "calidad": calidad[m["id"]],
+            "subenumeracion": sub[m["id"]],
+            "falsos_negativos": fn[m["id"]],
             "intenciones_media": statistics.fmean([len(res[i]["intenciones"]) for i in marcados]) if marcados else None,
-            "latencia_ms": {"mediana": _percentil(ms, 0.5), "p90": _percentil(ms, 0.9)},
+            "latencia_ms": {"mediana": _percentil(ms, 0.5), "p90": _percentil(ms, 0.9), "n": len(ms)},
             "por_clase": por_clase,
         })
-    pares = []
-    for a_i, a in enumerate(prueba["modelos"]):
-        for b_ in prueba["modelos"][a_i + 1:]:
-            ra, rb = marcas.get(a["id"], {}), marcas.get(b_["id"], {})
-            comunes = [i for i in items if ra.get(i, {}).get("bueno") is not None and rb.get(i, {}).get("bueno") is not None]
-            solo_a = sum(1 for i in comunes if ra[i]["bueno"] and not rb[i]["bueno"])
-            solo_b = sum(1 for i in comunes if rb[i]["bueno"] and not ra[i]["bueno"])
-            pares.append({"a": a["id"], "b": b_["id"], "comunes": len(comunes), "solo_a": solo_a, "solo_b": solo_b,
-                          "p": mcnemar(solo_a, solo_b)})
     avisos = []
     if len(items) < 20:
         avisos.append(f"Solo {len(items)} términos: los intervalos son anchos; para citar, corre el banco completo.")
     if not negativos:
-        avisos.append("Sin controles inequívocos: la detección es solo la exhaustividad. Un modelo que marcara todo como "
-                      "ambiguo saldría perfecto; no hay precisión ni falsas alarmas. Usa el banco v2 o posterior.")
+        avisos.append("Sin controles inequívocos: la detección es solo la exhaustividad; precisión y falsas alarmas "
+                      "quedan en «---». Para calcularlas, corre la prueba con el banco v2 o posterior.")
     elif len(negativos) < 20:
         avisos.append(f"Solo {len(negativos)} controles inequívocos: la tasa de falsas alarmas y la precisión tienen "
                       "intervalos muy anchos.")
-    # sin nombres de modelos: la pantalla puede estar revisando a ciegas
-    respondidas, revisadas = sum(m["respondidos"] for m in modelos), sum(m["revisados"] for m in modelos)
-    if revisadas < respondidas:
-        avisos.append(f"Faltan revisiones ({revisadas} de {respondidas} respuestas revisadas): la aprobación solo "
-                      "cuenta los revisados.")
     if any(m["errores"] for m in modelos):
         avisos.append("Hay términos con error (el modelo no respondió o no dio un JSON válido tras el reintento): en los "
                       "ambiguos cuentan como no detectados; en los inequívocos se dejan fuera de las falsas alarmas.")
-    if revisiones and revisiones.get("a_ciegas") is False:
-        avisos.append("La revisión se hizo viendo el nombre de los modelos: la aprobación es la medida más blanda. "
-                      "Para endurecerla, rehaz la revisión con los nombres ocultos (el orden se baraja).")
-    return {"modelos": modelos, "pares": pares, "avisos": avisos,
+    # sin nombres de modelos: la pantalla puede estar revisando a ciegas
+    revisadas = sum(m["calidad"]["revisadas"] for m in modelos)
+    revisables_ = sum(m["calidad"]["revisables"] for m in modelos)
+    if not revision:
+        avisos.append("Calidad y cobertura en «---»: falta la revisión de calidad (fidelidad, delimitación e intención).")
+    elif revisadas < revisables_:
+        avisos.append(f"Revisión de calidad incompleta ({revisadas} de {revisables_} salidas): la calidad y la cobertura "
+                      "solo cuentan las revisadas.")
+    if revision and revision.get("a_ciegas") is False:
+        avisos.append("La revisión de calidad se hizo con los nombres de los modelos a la vista.")
+    sin_clasificar = sum(m["falsos_negativos"]["sin_clasificar"] for m in modelos)
+    if sin_clasificar:
+        avisos.append(f"{sin_clasificar} falsos negativos sin modo de falla asignado.")
+    legado_ = aprobacion_legado(prueba, legado)
+    if legado_:
+        avisos.append("Esta prueba tiene una revisión con el criterio viejo (un ✓/✗ por salida, v2.3): se muestra aparte "
+                      "como «aprobación (criterio v2.3)» y no se traduce a los criterios nuevos.")
+    return {"modelos": modelos, "pares": pares(prueba, revision, terminos, es_ambiguo), "avisos": avisos,
+            "aprobacion_legado": legado_,
             "banco": {"version": b["version"], "huella": b["huella"],
                       "coincide": b["huella"] == prueba.get("banco", {}).get("huella", b["huella"])}}
 
 
-def resumen_corto(prueba: dict, revisiones: dict | None) -> dict:
+def codigo_de(prueba: dict) -> str:
+    """El código citable: id, versión y huella corta del banco (P05-v2-84c2d8). Las pruebas
+    anteriores a la v2.4.0 no lo guardaban: se deriva igual."""
+    if prueba.get("codigo"):
+        return prueba["codigo"]
+    b = prueba.get("banco") or {}
+    return f"{prueba['prueba_id']}-{b.get('version', 'v1')}-{(b.get('huella') or '')[:6]}"
+
+
+def resumen_corto(prueba: dict, legado: dict | None = None, revision: dict | None = None,
+                  modos: dict | None = None) -> dict:
     """Lo que muestra el listado."""
-    r = resumen(prueba, revisiones)
-    return {k: prueba.get(k) for k in ("prueba_id", "nota", "creado", "terminado", "estado", "avance")} | {
+    r = resumen(prueba, legado, revision, modos)
+    return {k: prueba.get(k) for k in ("prueba_id", "nota", "creado", "terminado", "estado", "avance", "uid")} | {
+        "codigo": codigo_de(prueba), "serie": prueba.get("serie") or prueba["prueba_id"], "corrida": prueba.get("corrida", 1),
         "n_items": len(prueba["items"]),
         "banco": prueba.get("banco", {}).get("version"),
-        "modelos": [{"id": m["id"], "etiqueta": m["etiqueta"], "deteccion": m["deteccion"]["valor"],
+        "modelos": [{"id": m["id"], "letra": m["letra"], "etiqueta": m["etiqueta"], "deteccion": m["deteccion"]["valor"],
                      "falsas_alarmas": (m["falsas_alarmas"] or {}).get("valor"),
-                     "aprobacion": m["aprobacion"]["valor"], "revisados": m["revisados"]} for m in r["modelos"]]}
+                     "revisadas": m["calidad"]["revisadas"], "revisables": m["calidad"]["revisables"]}
+                    for m in r["modelos"]]}
 
 
 # ---------------------------------------------------------------- creación
 
 def nueva_prueba(pid: str, *, usuario_id: str, modelos: list[dict], items: list[str], nota: str | None,
-                 version: str, settings, banco_version: str | None = None) -> dict:
+                 version: str, settings, banco_version: str | None = None, serie: str | None = None,
+                 corrida: int = 1) -> dict:
+    """Una prueba en proceso. `uid` la hace única aunque dos bases distintas repitan el número;
+    `codigo` la cita con la versión y la huella de su banco; `serie` agrupa las corridas idénticas
+    (para la estabilidad) y `corrida` es su número dentro de la serie."""
     b = banco(banco_version)
-    return {
-        "prueba_id": pid, "usuario_id": usuario_id, "nota": nota, "creado": ahora(), "terminado": None,
-        "estado": "en_proceso", "version_app": version,
+    p = {
+        "prueba_id": pid, "uid": str(uuid.uuid4()), "usuario_id": usuario_id, "nota": nota, "creado": ahora(),
+        "terminado": None, "estado": "en_proceso", "version_app": version,
         "banco": {"nombre": b["banco"], "version": b["version"], "huella": b["huella"]},
         "configuracion": {"prompt": PROMPT, "temperatura": settings.llm_temperature, "semilla": settings.llm_seed,
                           "significado_max_palabras": settings.significado_max_palabras},
         "items": items,
         "modelos": [{"id": f"M{k + 1}", "proveedor": m["proveedor"], "modelo": m["modelo"]} for k, m in enumerate(modelos)],
         "resultados": {}, "avance": {"hechos": 0, "total": len(items) * len(modelos)}, "error": None,
+        "serie": serie or pid, "corrida": corrida,
     }
+    p["codigo"] = codigo_de(p)
+    return p
+
+
+def lapida(prueba: dict) -> dict:
+    """Lo que queda de una prueba borrada: su número no vuelve a usarse (crear_doc toma el
+    siguiente al mayor que existe) y queda constancia de qué era."""
+    return {"prueba_id": prueba["prueba_id"], "usuario_id": prueba["usuario_id"], "borrada": True,
+            "borrada_en": ahora(), "uid": prueba.get("uid"), "codigo": codigo_de(prueba), "banco": prueba.get("banco"),
+            "creado": prueba.get("creado")}
+
+
+def colisiones(*fuentes: tuple[str, list[dict]]) -> list[dict]:
+    """Ids de prueba que aparecen en más de una fuente (por ejemplo, la base JSON local y Mongo)
+    con contenido distinto (otro uid u otro banco)::
+
+        [{prueba_id, fuentes: [{fuente, uid, codigo, banco}]}]
+    """
+    por_id: dict[str, list[dict]] = {}
+    for nombre, docs in fuentes:
+        for d in docs:
+            por_id.setdefault(d["prueba_id"], []).append(
+                {"fuente": nombre, "uid": d.get("uid"), "codigo": codigo_de(d), "borrada": bool(d.get("borrada")),
+                 "banco": (d.get("banco") or {}).get("version"), "huella": (d.get("banco") or {}).get("huella")})
+    salida = []
+    for pid, vistos in sorted(por_id.items()):
+        firmas = {(v["uid"], v["banco"], v["huella"]) for v in vistos}
+        if len(vistos) > 1 and len(firmas) > 1:
+            salida.append({"prueba_id": pid, "fuentes": vistos})
+    return salida
 
 
 def resolver(srv, usuario_id: str, modelo: dict) -> dict:
@@ -318,6 +359,25 @@ class Ejecutor:
         self._activas[prueba["prueba_id"]] = cancelar
         threading.Thread(target=self._correr, args=(srv, prueba, elecciones, cancelar), daemon=True,
                          name=f"prueba-{prueba['prueba_id']}").start()
+
+    def lanzar_serie(self, srv, pruebas: list[dict], elecciones: dict[str, dict]) -> None:
+        """Corre varias pruebas una tras otra en un solo hilo (una serie de corridas idénticas): en
+        paralelo competirían por el mismo Ollama y la latencia no sería comparable."""
+        eventos = {}
+        for p in pruebas:
+            eventos[p["prueba_id"]] = threading.Event()
+            self._activas[p["prueba_id"]] = eventos[p["prueba_id"]]
+
+        def todas() -> None:
+            for p in pruebas:
+                if eventos[p["prueba_id"]].is_set():  # cancelada antes de empezar
+                    p.update(estado="cancelada", terminado=ahora())
+                    self._guardar(srv, p)
+                    self._activas.pop(p["prueba_id"], None)
+                    continue
+                self._correr(srv, p, elecciones, eventos[p["prueba_id"]])
+
+        threading.Thread(target=todas, daemon=True, name=f"serie-{pruebas[0]['prueba_id']}").start()
 
     def _guardar(self, srv, prueba: dict) -> None:
         with self._candado:

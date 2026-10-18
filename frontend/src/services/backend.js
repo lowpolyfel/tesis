@@ -243,7 +243,8 @@ export const urlOverleaf = (calibracionId) => `${BASE_URL}/calibraciones/${id(ca
 export const bancoAmbiguedad = (version) => get("/bancos/ambiguedad", version ? { version } : undefined);
 /** Los modelos que la cuenta puede probar → { proveedores: [{id, nombre, modelos: [{id, nombre}], sugeridos, error}] } */
 export const modelosParaProbar = () => get("/pruebas-modelos/modelos");
-export const crearPruebaModelos = ({ modelos, items, nota, banco }) => post("/pruebas-modelos", { modelos, items, nota: nota || null, banco: banco || null });
+export const crearPruebaModelos = ({ modelos, items, nota, banco, repeticiones = 1 }) =>
+  post("/pruebas-modelos", { modelos, items, nota: nota || null, banco: banco || null, repeticiones });
 export const pruebasModelos = () => get("/pruebas-modelos");
 /** La prueba con sus respuestas, `revisiones` y `resumen` ({modelos, pares, avisos}) */
 export const pruebaModelos = (pruebaId) => get(`/pruebas-modelos/${id(pruebaId)}`);
@@ -251,8 +252,30 @@ export const borrarPruebaModelos = (pruebaId) => borrar(`/pruebas-modelos/${id(p
 export const cancelarPruebaModelos = (pruebaId) => post(`/pruebas-modelos/${id(pruebaId)}/cancelar`);
 export const reanudarPruebaModelos = (pruebaId, errores = false) =>
   post(`/pruebas-modelos/${id(pruebaId)}/reanudar${errores ? "?errores=true" : ""}`);
-/** Marca ✓/✗ (bueno: true|false) o la quita (null) → { revisiones, resumen } */
-export const revisarPruebaModelos = (pruebaId, marca) => put(`/pruebas-modelos/${id(pruebaId)}/revision`, marca);
-/** Borra todas las marcas para rehacer la revisión (p. ej. a ciegas); las respuestas se conservan */
-export const rehacerRevisionModelos = (pruebaId) => borrar(`/pruebas-modelos/${id(pruebaId)}/revision`);
+/* Revisión de calidad (ADR 0029): a ciegas por omisión, con semilla y orden guardados; se retoma donde quedó */
+export const rubricaRevision = () => get("/rubricas/revision");
+export const revisionCalidad = (pruebaId) => get(`/pruebas-modelos/${id(pruebaId)}/revision-calidad`);
+export const empezarRevisionCalidad = (pruebaId, { revisor, a_ciegas }) =>
+  post(`/pruebas-modelos/${id(pruebaId)}/revision-calidad`, { revisor, a_ciegas });
+/** { modelo, item, fidelidad, delimitacion, intencion, cobertura: [índices], nota } → { marca, revisadas, total } */
+export const marcarCalidad = (pruebaId, marca) => put(`/pruebas-modelos/${id(pruebaId)}/revision-calidad/marca`, marca);
+export const rehacerRevisionCalidad = (pruebaId) => borrar(`/pruebas-modelos/${id(pruebaId)}/revision-calidad`);
+/** El modo de falla de un falso negativo (null lo quita) */
+export const asignarModoFalla = (pruebaId, { modelo, item, modo, nota }) =>
+  put(`/pruebas-modelos/${id(pruebaId)}/modos`, { modelo, item, modo, nota: nota || null });
+/* Estabilidad: corridas idénticas de una serie */
+export const repetirPruebaModelos = (pruebaId, veces) => post(`/pruebas-modelos/${id(pruebaId)}/repetir`, { veces });
+export const serieModelos = (serie) => get(`/pruebas-modelos/series/${id(serie)}`);
 export const urlOverleafModelos = (pruebaId) => `${BASE_URL}/pruebas-modelos/${id(pruebaId)}/overleaf.zip`;
+
+/* ---- Etiquetado de términos de entrevista por persona (ADR 0029) ---- */
+/** Quién etiquetó una entrevista, cuánto lleva cada quien y la kappa entre cada par */
+export const anotacionesEntrevista = (entrevistaId) => get(`/entrevistas/${id(entrevistaId)}/anotaciones`);
+/** Empieza o retoma el etiquetado de una persona (a ciegas por omisión) */
+export const empezarAnotacion = (entrevistaId, { anotador, a_ciegas = true }) =>
+  post(`/entrevistas/${id(entrevistaId)}/anotaciones`, { anotador, a_ciegas });
+/** Los términos en su orden barajado, con citas y sin similitud ni decisión, y lo ya contestado */
+export const anotacion = (anotacionId) => get(`/anotaciones/${id(anotacionId)}`);
+/** respuesta: "si" | "no" | "no_se" | null */
+export const responderAnotacion = (anotacionId, termino, respuesta) => put(`/anotaciones/${id(anotacionId)}/respuesta`, { termino, respuesta });
+export const borrarAnotacion = (anotacionId) => borrar(`/anotaciones/${id(anotacionId)}`);
