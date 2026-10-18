@@ -62,6 +62,8 @@ ESTILO = r"""%% Estilo de las figuras y tablas de Dudamel (calibración, ADR 002
   dudamel/azar/.style={dudamelGris, densely dotted, line width=0.8pt},
   dudamel/deteccion/.style={dudamelNaranja, only marks, mark=*, mark size=2.4pt, mark options={fill=dudamelNaranja, draw=white, line width=0.4pt},
     error bars/x dir=both, error bars/x explicit, error bars/error bar style={dudamelNaranja, line width=0.9pt}},
+  dudamel/falsasalarmas/.style={dudamelAzul, only marks, mark=diamond*, mark size=2.8pt, mark options={fill=dudamelAzul, draw=white, line width=0.4pt},
+    error bars/x dir=both, error bars/x explicit, error bars/error bar style={dudamelAzul, line width=0.9pt}},
   dudamel/aprobacion/.style={dudamelAqua, only marks, mark=square*, mark size=2.2pt, mark options={fill=dudamelAqua, draw=white, line width=0.4pt},
     error bars/x dir=both, error bars/x explicit, error bars/error bar style={dudamelAqua, line width=0.9pt}},
 }

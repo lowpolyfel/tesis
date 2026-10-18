@@ -28,7 +28,7 @@ const GRUPOS = [
   {
     titulo: "Experimentación",
     items: [
-      { a: "/calibracion", texto: "Calibración", que: "El umbral sobre las entrevistas y la prueba de modelos (Ollama, Gemini…) con un banco de 50 términos ambiguos y revisión humana.", mood: "extractor" },
+      { a: "/calibracion", texto: "Calibración", que: "El umbral sobre las entrevistas y la prueba de modelos (Ollama, Gemini…) con un banco de términos ambiguos y de control, y revisión humana a ciegas.", mood: "extractor" },
       { a: "/evaluacion", texto: "Evaluación", que: "Corridas contra el corpus y comparación con un solo agente.", mood: "listening" },
       { a: "/catalogos/regionales", texto: "Catálogos", que: "Las expresiones regionales y vagas que el sistema reconoce.", mood: "thinking" },
     ],

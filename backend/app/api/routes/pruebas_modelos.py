@@ -1,13 +1,15 @@
 """Prueba de modelos con el banco de términos ambiguos (ADR 0027).
 
-- `GET /bancos/ambiguedad`: el banco (50 términos con su cita, dominio y lecturas esperadas).
+- `GET /bancos/ambiguedad?version=`: un banco (el más nuevo si no se pide versión), con su cita,
+  dominio y lecturas esperadas por término; `versiones` dice cuáles hay.
 - `GET /pruebas-modelos/modelos`: los modelos que esta cuenta puede probar (proveedores con
   clave guardada, y Ollama).
 - `POST /pruebas-modelos`: crea una prueba y la corre en segundo plano.
 - `GET /pruebas-modelos`, `GET|DELETE /pruebas-modelos/{id}`: listar, ver (con resumen y
   revisiones) y borrar.
 - `POST /pruebas-modelos/{id}/cancelar` y `/reanudar`.
-- `PUT /pruebas-modelos/{id}/revision`: la marca ✓/✗ de la persona en un término de un modelo.
+- `PUT /pruebas-modelos/{id}/revision`: la marca ✓/✗ de la persona en un término de un modelo;
+  `DELETE` la borra entera, para rehacerla (por ejemplo, a ciegas).
 - `GET /pruebas-modelos/{id}/overleaf.zip`: el paquete para LaTeX.
 
 Cada prueba es de la cuenta que la creó.
@@ -33,7 +35,6 @@ from app.calibracion.pruebas_modelos import (
     al_dia,
     banco,
     nueva_prueba,
-    por_id,
     resolver,
     resumen,
     resumen_corto,
@@ -57,6 +58,7 @@ class EntradaPrueba(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     modelos: list[ModeloElegido] = Field(min_length=1, max_length=8)
     items: list[str] | None = Field(None, description="ids del banco (B01…); vacío o null = todos")
+    banco: str | None = Field(None, pattern=r"^v\d+$", description="versión del banco; null = la más nueva")
     nota: str | None = Field(None, max_length=500)
 
 
@@ -71,8 +73,11 @@ class Marca(BaseModel):
 
 
 @router.get("/bancos/ambiguedad")
-def ver_banco() -> dict:
-    return banco()
+def ver_banco(version: str | None = None) -> dict:
+    try:
+        return banco(version)
+    except KeyError as e:
+        raise HTTPException(404, f"No existe el banco {version}") from e
 
 
 @router.get("/pruebas-modelos/modelos")
@@ -120,14 +125,18 @@ def _elecciones(srv, usuario_id: str, prueba: dict) -> dict[str, dict]:
 def crear(entrada: EntradaPrueba, srv: ServicioDep, usuario: UsuarioDep, request: Request) -> dict:
     """Crea la prueba y la corre en segundo plano (fuera de la cola de análisis). 422 si un
     proveedor necesita clave y la cuenta no la tiene, o si un término no está en el banco."""
-    todos = [t["id"] for t in banco()["terminos"]]
+    try:
+        b = banco(entrada.banco)
+    except KeyError as e:
+        raise HTTPException(422, f"No existe el banco {entrada.banco}") from e
+    todos = [t["id"] for t in b["terminos"]]
     items = list(dict.fromkeys(entrada.items or todos))
-    if faltan := [i for i in items if i not in por_id()]:
+    if faltan := [i for i in items if i not in todos]:
         raise HTTPException(422, f"No están en el banco: {', '.join(faltan)}")
     items.sort(key=todos.index)
     modelos = list({(m.proveedor, m.modelo): m.model_dump() for m in entrada.modelos}.values())
     borrador = nueva_prueba("P0", usuario_id=usuario.usuario_id, modelos=modelos, items=items, nota=entrada.nota,
-                            version=request.app.version, settings=srv.deps.settings)
+                            version=request.app.version, settings=srv.deps.settings, banco_version=b["version"])
     elecciones = _elecciones(srv, usuario.usuario_id, borrador)
     prueba = srv.repo.crear_doc(COLECCION_PRUEBAS, PREFIJO, lambda pid: {**borrador, "prueba_id": pid})
     respuesta = copy.deepcopy(prueba)  # el hilo de la prueba sigue escribiendo en `prueba`
@@ -198,6 +207,14 @@ def revisar(marca: Marca, p: PruebaDep, srv: ServicioDep) -> dict:
         doc.update(revisor=marca.revisor, a_ciegas=doc.get("a_ciegas", True) and marca.a_ciegas, actualizada=ahora())
         srv.repo.guardar_doc(COLECCION_REVISIONES, p["prueba_id"], doc)
     return {"revisiones": doc, "resumen": resumen(p, doc)}
+
+
+@router.delete("/pruebas-modelos/{prueba_id}/revision", status_code=204)
+def rehacer_revision(p: PruebaDep, srv: ServicioDep) -> Response:
+    """Borra todas las marcas de la prueba para revisarla de nuevo (las respuestas se conservan)."""
+    with _REVISIONES:
+        srv.repo.borrar_doc(COLECCION_REVISIONES, p["prueba_id"])
+    return Response(status_code=204)
 
 
 @router.get("/pruebas-modelos/{prueba_id}/overleaf.zip")

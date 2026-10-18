@@ -1,7 +1,7 @@
 # 0027. Prueba de modelos con un banco de términos ambiguos y revisión humana
 
 - **Fecha:** 2026-10-18
-- **Estado:** Aceptada (complementa ADR 0026: la pantalla de Calibración tiene ahora dos pestañas)
+- **Estado:** Aceptada (complementa ADR 0026: la pantalla de Calibración tiene ahora dos pestañas). El banco v1 no tiene controles negativos: ADR 0028 agrega el banco v2 con precisión y falsas alarmas.
 
 ## Contexto
 

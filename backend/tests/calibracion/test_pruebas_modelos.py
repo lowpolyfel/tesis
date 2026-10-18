@@ -16,15 +16,31 @@ from tests.fakes import LLMFalso, como_usuario
 from tests.fases.escenario import montar
 
 
-def test_el_banco_tiene_50_terminos_ambiguos_bien_formados():
-    b = pm.banco()
+def test_el_banco_v1_tiene_50_terminos_ambiguos_bien_formados():
+    b = pm.banco("v1")
     ids = [t["id"] for t in b["terminos"]]
     assert len(ids) == 50 and ids == [f"B{i:02d}" for i in range(1, 51)]
     assert len({t["termino"].lower() for t in b["terminos"]}) == 50
     for t in b["terminos"]:
-        assert t["clase"] in b["clases"] and len(t["lecturas"]) >= 2
+        assert t["clase"] in b["clases"] and len(t["lecturas"]) >= 2 and pm.es_ambiguo(t)
         assert t["termino"].split()[-1].lower()[:4] in t["cita"].lower(), t["id"]  # el término aparece en su cita
     assert len(b["huella"]) == 64
+
+
+def test_el_banco_v2_suma_controles_inequivocos_sin_tocar_los_50_ambiguos():
+    v1, v2 = pm.banco("v1"), pm.banco()
+    assert v2["version"] == "v2" and v2["versiones"] == ["v1", "v2"] and v1["huella"] != v2["huella"]
+    terminos = {t["id"]: t for t in v2["terminos"]}
+    assert [{k: v for k, v in t.items() if k != "ambiguo"} for t in v2["terminos"][:50]] == v1["terminos"]
+    negativos = [t for t in v2["terminos"] if not pm.es_ambiguo(t)]
+    assert len(v2["terminos"]) == 73 and len(negativos) == 23  # con n < 20 la tasa de falsas alarmas no sirve
+    assert len({t["termino"].lower() for t in v2["terminos"]}) == 73
+    for t in negativos:
+        assert t["clase"] == "inequivoco" and len(t["lecturas"]) == 1
+        assert t["termino"].split()[-1].lower()[:4] in t["cita"].lower(), t["id"]
+        if t["pareja"]:  # su pareja es un ambiguo del mismo dominio
+            assert pm.es_ambiguo(terminos[t["pareja"]]) and terminos[t["pareja"]]["dominio"] == t["dominio"], t["id"]
+    assert terminos["B63"]["termino"] == "caja registradora" and terminos["B63"]["pareja"] == "B16"
 
 
 def test_wilson_y_mcnemar():
@@ -67,7 +83,7 @@ def _esperar(c, prueba_id, segundos=10):
 
 def test_correr_revisar_y_exportar_una_prueba(cliente):
     c = cliente
-    assert len(c.get("/bancos/ambiguedad").json()["terminos"]) == 50
+    assert len(c.get("/bancos/ambiguedad").json()["terminos"]) == 73  # el más nuevo: v2
     r = c.post("/pruebas-modelos", json={"modelos": [{"proveedor": "ollama", "modelo": "bueno"},
                                                       {"proveedor": "ollama", "modelo": "flojo"},
                                                       {"proveedor": "ollama", "modelo": "roto"}],
@@ -122,6 +138,57 @@ def test_validaciones_al_crear(cliente):
     r = c.post("/pruebas-modelos", json={"modelos": [{"proveedor": "google", "modelo": "gemini-x"}]})
     assert r.status_code == 422 and "clave" in r.json()["detail"]
     assert c.post("/pruebas-modelos", json={"modelos": []}).status_code == 422
+
+
+def test_con_controles_hay_precision_falsas_alarmas_y_parejas(cliente):
+    c = cliente
+    r = c.post("/pruebas-modelos", json={"modelos": [{"proveedor": "ollama", "modelo": "bueno"},
+                                                      {"proveedor": "ollama", "modelo": "flojo"}],
+                                         "items": ["B16", "B63", "B01", "B61", "B33"]})
+    assert r.status_code == 201 and r.json()["banco"]["version"] == "v2"
+    p = _esperar(c, r.json()["prueba_id"])
+    alarmista, callado = p["resumen"]["modelos"]
+    # el que dice «ambiguo» a todo ya no sale perfecto: exhaustividad 1, pero falsas alarmas 1
+    assert alarmista["deteccion"]["valor"] == 1 and alarmista["falsas_alarmas"]["valor"] == 1
+    assert alarmista["precision"]["valor"] == 0.6 and alarmista["confusion"] == {"vp": 3, "fn": 0, "fp": 2, "vn": 0}
+    assert alarmista["parejas"] == {"n": 2, "discrimina": 0}
+    assert callado["deteccion"]["valor"] == 0 and callado["falsas_alarmas"]["valor"] == 0
+    assert callado["precision"]["valor"] is None
+    assert alarmista["por_clase"]["inequivoco"] == {"n": 2, "ambiguo": False, "deteccion": alarmista["falsas_alarmas"],
+                                                    "aprobacion": pm.wilson(0, 0)}
+    z = zipfile.ZipFile(io.BytesIO(c.get(f"/pruebas-modelos/{p['prueba_id']}/overleaf.zip").content))
+    assert "tablas/confusion.tex" in z.namelist() and "Falsas alarmas" in z.read("figuras/modelos.tex").decode()
+    assert "0/2" in z.read("tablas/confusion.tex").decode()
+
+
+def test_una_prueba_del_banco_v1_se_sigue_midiendo_con_su_banco(cliente):
+    c = cliente
+    r = c.post("/pruebas-modelos", json={"modelos": [{"proveedor": "ollama", "modelo": "bueno"}], "banco": "v1",
+                                         "items": ["B01", "B63"]})
+    assert r.status_code == 422  # B63 no existe en v1
+    r = c.post("/pruebas-modelos", json={"modelos": [{"proveedor": "ollama", "modelo": "bueno"}], "banco": "v1",
+                                         "items": ["B01", "B02"]})
+    p = _esperar(c, r.json()["prueba_id"])
+    m = p["resumen"]["modelos"][0]
+    assert p["banco"]["version"] == "v1" and m["falsas_alarmas"] is None and m["precision"] is None
+    assert any("Sin controles inequívocos" in a for a in p["resumen"]["avisos"]) and p["resumen"]["banco"]["coincide"]
+    z = zipfile.ZipFile(io.BytesIO(c.get(f"/pruebas-modelos/{p['prueba_id']}/overleaf.zip").content))
+    assert "tablas/confusion.tex" not in z.namelist() and "Falsas alarmas" not in z.read("figuras/modelos.tex").decode()
+    assert c.get("/bancos/ambiguedad", params={"version": "v1"}).json()["version"] == "v1"
+    assert c.get("/bancos/ambiguedad", params={"version": "v9"}).status_code == 404
+
+
+def test_rehacer_la_revision_borra_las_marcas(cliente):
+    c = cliente
+    pid = c.post("/pruebas-modelos", json={"modelos": [{"proveedor": "ollama", "modelo": "bueno"}],
+                                           "items": ["B01"]}).json()["prueba_id"]
+    _esperar(c, pid)
+    c.put(f"/pruebas-modelos/{pid}/revision", json={"modelo": "M1", "item": "B01", "bueno": True, "revisor": "T",
+                                                    "a_ciegas": False})
+    assert any("viendo el nombre" in a for a in c.get(f"/pruebas-modelos/{pid}").json()["resumen"]["avisos"])
+    assert c.delete(f"/pruebas-modelos/{pid}/revision").status_code == 204
+    p = c.get(f"/pruebas-modelos/{pid}").json()
+    assert p["revisiones"] is None and p["resumen"]["modelos"][0]["revisados"] == 0
 
 
 def test_una_prueba_sin_hilo_queda_interrumpida(cliente):
