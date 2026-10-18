@@ -2,7 +2,7 @@
 
 Núcleo del sistema en Python 3.12: agentes (Revisor, Extractor, Clasificador, Crítico,
 Modelador), mecanismo de divergencia, filtros deterministas y orquestación con
-LangGraph, expuestos por FastAPI (versión 2.2.0). Incluye una sandbox desechable en `/sandbox`.
+LangGraph, expuestos por FastAPI (versión 2.3.0). Incluye una sandbox desechable en `/sandbox`.
 
 La versión 2 (ADR 0024) parte de una **entrevista**: los agentes proponen el LEL con la
 intención de cada término, una persona lo valida (y el sistema aprende de sus
@@ -119,6 +119,7 @@ trabajador, ADR 0008):
 | Modelos por cuenta | `GET/PUT /cuenta/modelos` (proveedor y modelo por agente, claves cifradas), `POST /cuenta/modelos/probar`, `POST /cuenta/modelos/listar` (ADR 0021) |
 | Exploratorio | `POST/GET /proyectos/{id}/comparaciones`, `GET /comparaciones/{id}` (ADR 0012) |
 | Calibración (ADR 0026) | `GET /proyectos/{id}/calibracion/entrevistas`, `GET/PUT /entrevistas/{id}/etiquetas`, `POST/GET /proyectos/{id}/calibraciones`, `GET/DELETE /calibraciones/{id}`, `GET /calibraciones/{id}/overleaf.zip` |
+| Prueba de modelos (ADR 0027) | `GET /bancos/ambiguedad`, `GET /pruebas-modelos/modelos`, `POST/GET /pruebas-modelos`, `GET/DELETE /pruebas-modelos/{id}`, `POST /pruebas-modelos/{id}/cancelar`, `POST /pruebas-modelos/{id}/reanudar`, `PUT /pruebas-modelos/{id}/revision`, `GET /pruebas-modelos/{id}/overleaf.zip` |
 | Experimentación | `GET /calibracion`, `GET /proyectos/{id}/calibracion` (v1, ADR 0013), `GET /corpus`, `GET /corpus/{nombre}`, `POST/GET /evaluaciones`, `GET /evaluaciones/{id}` |
 | Configuración | `GET /configuracion`, `GET /catalogos`, `GET /salud`, `GET /conexion` |
 | Preparación | `GET /preparacion` (base, Ollama y modelos del análisis: descargados y en memoria), `POST /preparacion/cargar` (precarga uno de esos modelos) |
@@ -172,7 +173,7 @@ paralelo.
 - `app/artefactos/`: especificación RF/RNF, modelo de metas y Big Picture, sin LLM (ADR 0011, 0017), y el
   mapa conceptual, que organiza el Modelador sobre un protocolo previo en código (ADR 0020).
 - `app/comparacion/`: comparación entre requisitos, **exploratoria** (ADR 0012).
-- `app/calibracion/`: sensibilidad del umbral y contraste con el ground truth: sobre las entrevistas, con ROC, AUC, intervalos bootstrap, corridas guardadas y el paquete para Overleaf (ADR 0026); sobre las trazas v1 (ADR 0013).
+- `app/calibracion/`: sensibilidad del umbral y contraste con el ground truth: sobre las entrevistas, con ROC, AUC, intervalos bootstrap, corridas guardadas y el paquete para Overleaf (ADR 0026); sobre las trazas v1 (ADR 0013). La prueba de modelos con el banco de 50 términos ambiguos (`banco/`), con revisión humana, intervalos de Wilson, McNemar y su paquete para Overleaf (ADR 0027).
 - `app/evaluacion/`: corpus y evaluación contra un solo agente (ADR 0014).
 - `app/api/`: FastAPI y `static/sandbox.html`.
 - `tests/`: replican la estructura de `app/`.

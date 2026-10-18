@@ -236,3 +236,20 @@ export const guardarCorridaCalibracion = (proyectoId, nota, rejilla = {}) => {
 export const corridaCalibracion = (calibracionId) => get(`/calibraciones/${id(calibracionId)}`);
 export const borrarCorridaCalibracion = (calibracionId) => borrar(`/calibraciones/${id(calibracionId)}`);
 export const urlOverleaf = (calibracionId) => `${BASE_URL}/calibraciones/${id(calibracionId)}/overleaf.zip`;
+
+/* ---- Prueba de modelos con el banco de términos ambiguos (ADR 0027) ---- */
+/** { banco, version, titulo, descripcion, clases, criterio, huella, terminos: [{id, termino, clase, dominio, contexto, cita, lecturas}] } */
+export const bancoAmbiguedad = () => get("/bancos/ambiguedad");
+/** Los modelos que la cuenta puede probar → { proveedores: [{id, nombre, modelos: [{id, nombre}], sugeridos, error}] } */
+export const modelosParaProbar = () => get("/pruebas-modelos/modelos");
+export const crearPruebaModelos = ({ modelos, items, nota }) => post("/pruebas-modelos", { modelos, items, nota: nota || null });
+export const pruebasModelos = () => get("/pruebas-modelos");
+/** La prueba con sus respuestas, `revisiones` y `resumen` ({modelos, pares, avisos}) */
+export const pruebaModelos = (pruebaId) => get(`/pruebas-modelos/${id(pruebaId)}`);
+export const borrarPruebaModelos = (pruebaId) => borrar(`/pruebas-modelos/${id(pruebaId)}`);
+export const cancelarPruebaModelos = (pruebaId) => post(`/pruebas-modelos/${id(pruebaId)}/cancelar`);
+export const reanudarPruebaModelos = (pruebaId, errores = false) =>
+  post(`/pruebas-modelos/${id(pruebaId)}/reanudar${errores ? "?errores=true" : ""}`);
+/** Marca ✓/✗ (bueno: true|false) o la quita (null) → { revisiones, resumen } */
+export const revisarPruebaModelos = (pruebaId, marca) => put(`/pruebas-modelos/${id(pruebaId)}/revision`, marca);
+export const urlOverleafModelos = (pruebaId) => `${BASE_URL}/pruebas-modelos/${id(pruebaId)}/overleaf.zip`;
