@@ -1,5 +1,26 @@
 # Cambios
 
+## 2.2.0 — 2026-10-18
+
+La calibración, sobre las entrevistas y lista para la tesis (ADR 0026).
+
+- **Ground truth de las entrevistas.** En cada entrevista se marca qué términos son ambiguos y
+  de qué tipo, a ciegas por omisión (sin ver la similitud del sistema), con anotador y fecha.
+- **Medidas más sólidas.**
+  - Curva ROC y AUC: cuánto separa la similitud lo ambiguo de lo que no lo es, sin elegir umbral.
+  - Intervalos bootstrap al 95 % con semilla fija, para el AUC y para la precisión, la
+    exhaustividad y el F1.
+  - Matriz de confusión y desglose por tipo de ambigüedad.
+  - Avisos de muestra chica, de clases desbalanceadas y de etiquetas hechas viendo al sistema.
+- **Corridas guardadas.** Cada corrida congela los resultados con su fecha, la configuración, la
+  versión y una huella de las similitudes y etiquetas de cada entrevista: es la evidencia citable.
+- **Paquete para Overleaf.** Figuras en pgfplots, tablas en booktabs, datos CSV y la corrida en
+  JSON, con un `main.tex` que compila.
+- **Gráficas consistentes.** Un solo marco y una paleta validada para daltonismo. El color
+  significa lo mismo en todas (naranja = ambiguo / a debate, azul = no ambiguo / directo) y el
+  texto mide lo mismo en todas. Cada gráfica se descarga en SVG.
+- La pantalla deja de usar las trazas de requisitos v1. Sus rutas en la API se conservan.
+
 ## 2.1.0 — 2026-10-15
 
 La escena con cuatro esferas como máximo y una interfaz sin lag (ADR 0025).

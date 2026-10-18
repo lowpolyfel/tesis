@@ -1,226 +1,256 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { useEffect, useState } from "react";
 import { useApi } from "../hooks/useApi";
-import { calibracionDeProyecto, calibracionGeneral, obtenerConfiguracion } from "../services/backend";
+import {
+  borrarCorridaCalibracion, calibracionEntrevistas, corridaCalibracion, corridasCalibracion, guardarCorridaCalibracion,
+  obtenerConfiguracion, urlOverleaf,
+} from "../services/backend";
 import ElegirProyecto, { useProyectoElegido } from "../components/ElegirProyecto";
-import { INFO_VIA } from "../constants/estados";
-import { tipo as infoTipo } from "../constants/agentes";
+import Etiquetar from "../components/calibracion/Etiquetar";
+import { GraficaDebates, GraficaDistribucion, GraficaMetricas, GraficaRoc } from "../components/calibracion/graficas";
+import { TIPOS } from "../constants/agentes";
+import { Aviso, Cargando, Cifra, Confirmar, Plegable, Vacio } from "../components/ui";
 
 /*
- * Calibración del umbral como ANÁLISIS DE SENSIBILIDAD (ADR 0013). Solo lectura:
- * qué habría decidido la regla «similitud ≥ umbral» con otros umbrales sobre las
- * similitudes iniciales ya calculadas. La configuración no se toca desde aquí
- * (se cambia en backend/.env y cada traza guarda la suya). Si la evaluación dejó
- * etiquetas para el proyecto, se contrasta con el ground truth. Si la similitud
- * no separa los casos, es un hallazgo: el umbral no se ajusta para que salgan bien.
+ * Calibración del umbral sobre las entrevistas (ADR 0026; antes, sobre los requisitos, ADR 0013).
+ * Solo lectura respecto de la configuración: qué habría decidido «similitud ≥ umbral» con otros
+ * umbrales y cuánto separa la similitud los términos que la persona anotadora marcó como
+ * ambiguos (ROC, AUC e intervalos bootstrap). El umbral no se elige aquí ni se ajusta para que
+ * los casos salgan bien: si la similitud no los separa, es un hallazgo.
+ *
+ * En orden: el ground truth de cada entrevista (etiquetar), los resultados en vivo, y las
+ * corridas guardadas: la evidencia citable, con su paquete para Overleaf.
  */
-const DECISION = { aceptado_directo: "aceptado directo", en_debate: "debate" };
-const TONO_DECISION = { aceptado_directo: "#57f7a7", en_debate: "#ffc457" };
-const pct = (x) => (x == null ? "—" : `${Math.round(x * 100)}%`);
+const fmt = (x, d = 3) => (x == null ? "—" : Number(x).toFixed(d));
+const ic = (m) => (m?.bajo == null ? "" : ` [${fmt(m.bajo)}, ${fmt(m.alto)}]`);
+const NOMBRE_TIPO = (t) => (t === "no_ambiguo" ? "No ambiguo" : TIPOS[t]?.etiqueta ?? t);
 
 export default function Calibracion() {
-  const { proyectoId, proyecto, proyectos, elegir } = useProyectoElegido();
-  const [params, setParams] = useSearchParams();
-  const todos = params.get("alcance") === "todos";
+  const { proyectoId, proyectos, elegir } = useProyectoElegido();
   const { datos: cfg } = useApi(obtenerConfiguracion);
   const [rejilla, setRejilla] = useState({});
   const [borrador, setBorrador] = useState(null);
-  const [umbral, setUmbral] = useState(null);
+  const [vista, setVista] = useState(null); // una corrida guardada a la vista (si no, en vivo)
 
   useEffect(() => {
     if (cfg && !borrador) setBorrador({ desde: cfg.calibracion.desde, hasta: cfg.calibracion.hasta, paso: cfg.calibracion.paso });
   }, [cfg, borrador]);
+  useEffect(() => setVista(null), [proyectoId]);
 
-  const { datos: c, error, cargando } = useApi(
-    () => (todos ? calibracionGeneral(rejilla) : proyectoId ? calibracionDeProyecto(proyectoId, rejilla) : Promise.resolve(null)),
-    [todos, proyectoId, JSON.stringify(rejilla)],
+  const { datos: vivo, error, cargando, recargar } = useApi(
+    () => (proyectoId ? calibracionEntrevistas(proyectoId, rejilla) : Promise.resolve(null)),
+    [proyectoId, JSON.stringify(rejilla)],
   );
-
-  // El umbral que se inspecciona empieza en el configurado
-  useEffect(() => { if (c) setUmbral((u) => (u != null && c.rejilla.some((f) => f.umbral === u) ? u : c.umbral_configurado)); }, [c]);
-
-  const setAlcance = (v) => setParams((prev) => {
-    const p = new URLSearchParams(prev);
-    if (v) p.set("alcance", v); else p.delete("alcance");
-    return p;
-  }, { replace: true });
-
-  const fila = c?.rejilla.find((f) => f.umbral === umbral) ?? c?.rejilla.find((f) => f.configurado);
+  const corridas = useApi(() => (proyectoId ? corridasCalibracion(proyectoId) : Promise.resolve([])), [proyectoId]);
+  const c = vista?.resultado ?? vivo;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
       <header className="space-y-3">
-        <p className="mono text-[10px] text-[var(--bone-faint)]">Análisis de sensibilidad del umbral</p>
+        <p className="mono text-[10px] text-[var(--bone-faint)]">Análisis de sensibilidad del umbral · entrevistas</p>
         <h1>Calibración.</h1>
         {c && <p className="max-w-3xl text-sm text-[var(--bone-dim)]">{c.nota}</p>}
-        <div className="flex flex-wrap items-center gap-3">
-          {!todos && <ElegirProyecto proyectoId={proyectoId} proyectos={proyectos} onCambio={elegir} />}
-          <label className="mono flex cursor-pointer items-center gap-2 text-[10px] text-[var(--bone-dim)]">
-            <input type="checkbox" checked={todos} onChange={(e) => setAlcance(e.target.checked ? "todos" : "")} />
-            todos los proyectos juntos (sin los de evaluación)
-          </label>
-        </div>
+        <ElegirProyecto proyectoId={proyectoId} proyectos={proyectos.filter((p) => p.tipo !== "evaluacion")} onCambio={elegir} />
       </header>
 
-      {cfg && <Configuracion cfg={cfg} />}
+      {vista && (
+        <div className="tarjeta flex flex-wrap items-center gap-3 border-[color-mix(in_oklab,var(--c1)_45%,var(--line))] p-4">
+          <p className="text-[14px]">Estás viendo la corrida guardada <b className="font-medium">{vista.calibracion_id}</b> del {vista.fecha.slice(0, 10)}{vista.nota ? ` · ${vista.nota}` : ""}.</p>
+          <button className="pill ghost sm ml-auto" onClick={() => setVista(null)}>Volver a los datos en vivo</button>
+        </div>
+      )}
 
-      {borrador && (
-        <form
-          className="mono flex flex-wrap items-end gap-4 text-[10px] text-[var(--bone-faint)]"
-          onSubmit={(e) => { e.preventDefault(); setRejilla({ ...borrador }); }}
-        >
+      {c && <Configuracion c={c} />}
+      {!vista && borrador && (
+        <form className="mono flex flex-wrap items-end gap-4 text-[10px] text-[var(--bone-faint)]" onSubmit={(e) => { e.preventDefault(); setRejilla({ ...borrador }); }}>
           {["desde", "hasta", "paso"].map((k) => (
             <label key={k} className="block">
               <span className="mb-1 block">{k}</span>
-              <input
-                type="number" step="0.01" min={k === "paso" ? 0.001 : 0} max="1"
-                value={borrador[k]}
-                onChange={(e) => setBorrador((b) => ({ ...b, [k]: e.target.value }))}
-                className="linea w-20 py-1 text-[13px] text-[var(--bone)]"
-              />
+              <input type="number" step="0.01" min={k === "paso" ? 0.001 : 0} max="1" value={borrador[k]}
+                onChange={(e) => setBorrador((b) => ({ ...b, [k]: e.target.value }))} className="linea w-20 py-1 text-[13px] text-[var(--bone)]" />
             </label>
           ))}
-          <button className="pill ghost">Recalcular rejilla</button>
+          <button className="pill ghost sm">Recalcular la rejilla</button>
         </form>
       )}
 
-      {error && <p className="text-sm text-[var(--danger)]">{error.message}</p>}
-      {cargando && !c && <p className="text-sm text-[var(--bone-dim)]">Calculando…</p>}
-
-      {c && c.n_valores === 0 && (
-        <p className="text-sm text-[var(--bone-dim)]">
-          {todos ? "Ningún proyecto" : proyecto?.nombre ?? "Este proyecto"} tiene todavía similitudes iniciales: aparecen cuando el Clasificador propone dos o más interpretaciones de un término.
-        </p>
+      {error && !vista && <Aviso error={error} />}
+      {!c && cargando && <Cargando>Calculando la calibración…</Cargando>}
+      {c && c.avisos.length > 0 && (
+        <ul className="space-y-1.5">
+          {c.avisos.map((a) => <li key={a} className="text-[13px] text-[#ffc457]">⚠ {a}</li>)}
+        </ul>
       )}
 
-      {c && c.n_valores > 0 && (
-        <>
-          {c.avisos.length > 0 && (
-            <ul className="space-y-1 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              {c.avisos.map((a) => <li key={a}>{a}</li>)}
-            </ul>
-          )}
+      {!vista && vivo && <GroundTruth c={vivo} onCambio={recargar} />}
+      {c && c.n_valores > 0 && <Resultados c={c} />}
+      {c && c.n_valores === 0 && (
+        <Vacio>Ninguna entrevista terminada de este proyecto tiene términos que hayan llegado al mecanismo de divergencia. Procesa una entrevista con términos ambiguos y vuelve aquí.</Vacio>
+      )}
 
-          <section className="space-y-3">
-            <div className="flex flex-wrap items-baseline gap-3">
-              <h2>Distribución de la similitud inicial</h2>
-              <p className="mono text-[9.5px] text-[var(--bone-faint)]">
-                {c.n_valores} términos · media {c.distribucion.media?.toFixed(2)} · mediana {c.distribucion.mediana?.toFixed(2)} · rango {c.distribucion.min?.toFixed(2)}–{c.distribucion.max?.toFixed(2)} · {c.modelos_embeddings.join(", ")}
-              </p>
-            </div>
-            <Distribucion c={c} umbral={fila?.umbral} />
-          </section>
-
-          <section className="space-y-3">
-            <h2>¿Qué habría pasado con otro umbral?</h2>
-            <Rejilla c={c} umbral={fila?.umbral} onUmbral={setUmbral} />
-            {fila && <Cambios fila={fila} />}
-          </section>
-
-          {c.con_ground_truth ? <GroundTruth g={c.con_ground_truth} umbral={fila?.umbral} onUmbral={setUmbral} /> : todos ? (
-            <p className="text-sm text-[var(--bone-dim)]">
-              Juntos no hay contraste con el ground truth: cada <Link className="underline" to="/evaluacion">evaluación contra el corpus</Link> deja sus etiquetas en su propio proyecto de evaluación, y esta vista los deja fuera. Para ver la precisión y la exhaustividad por umbral, elige ese proyecto.
-            </p>
-          ) : (
-            <p className="text-sm text-[var(--bone-dim)]">
-              Sin etiquetas de referencia para este proyecto. Solo los proyectos que crea una <Link className="underline" to="/evaluacion">evaluación contra el corpus</Link> las tienen; en el suyo aparece la precisión y la exhaustividad por umbral.
-            </p>
-          )}
-
-          <Valores valores={c.valores} umbral={fila?.umbral} />
-        </>
+      {proyectoId && (
+        <Corridas proyectoId={proyectoId} corridas={corridas} rejilla={rejilla} hayDatos={vivo?.n_valores > 0}
+          vista={vista} onVer={setVista} />
       )}
     </div>
   );
 }
 
-function Configuracion({ cfg }) {
+function Configuracion({ c }) {
   return (
-    <section className="rounded-2xl border border-[var(--line)] p-4 text-sm">
-      <p className="mono mb-2 text-[9.5px] text-[var(--bone-faint)]">Configuración vigente · {cfg.nota}</p>
-      <dl className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-4">
-        {[
-          ["Umbral", cfg.umbral], ["Máx. rondas", cfg.max_rondas], ["Embeddings", cfg.modelo_embeddings], ["Temperatura · semilla", `${cfg.temperatura} · ${cfg.semilla}`],
-          ["Extractor", cfg.modelos.extractor], ["Clasificador", cfg.modelos.clasificador], ["Crítico", cfg.modelos.critico], ["Modelador", cfg.modelos.modelador],
-        ].map(([k, v]) => (
-          <div key={k} className="min-w-0">
-            <dt className="mono text-[9px] text-[var(--bone-faint)]">{k}</dt>
-            <dd className="truncate font-mono text-[12.5px]" title={String(v)}>{v ?? "—"}</dd>
-          </div>
+    <p className="mono flex flex-wrap gap-x-5 gap-y-1 text-[10px] text-[var(--bone-faint)]">
+      <span>umbral configurado <b className="font-normal text-[var(--bone)]">{c.umbral_configurado}</b></span>
+      <span>rondas máx. <b className="font-normal text-[var(--bone)]">{c.max_rondas}</b></span>
+      <span>rejilla {c.parametros.desde}–{c.parametros.hasta} · paso {c.parametros.paso}</span>
+      <span>embeddings <b className="font-normal text-[var(--bone)]">{c.modelos_embeddings.join(", ") || "—"}</b></span>
+      {c.modelos_clasificador.length > 0 && <span>clasificador <b className="font-normal text-[var(--bone)]">{c.modelos_clasificador.join(", ")}</b></span>}
+    </p>
+  );
+}
+
+/* El ground truth: cada entrevista, cuántos términos tiene etiquetados y el panel para etiquetar */
+function GroundTruth({ c, onCambio }) {
+  const [abierta, setAbierta] = useState(null);
+  return (
+    <section className="space-y-4">
+      <div>
+        <h2>Ground truth</h2>
+        <p className="mt-1 max-w-3xl text-[13.5px] text-[var(--bone-dim)]">
+          Marca en cada entrevista qué términos son ambiguos. Hazlo a ciegas (sin ver la similitud del sistema) y, de
+          preferencia, que lo revise otra persona: es la referencia contra la que se mide el umbral.
+        </p>
+      </div>
+      {!c.entrevistas.length && <Vacio>Este proyecto no tiene entrevistas terminadas.</Vacio>}
+      <ul className="space-y-3">
+        {c.entrevistas.map((e) => (
+          <li key={e.entrevista_id} className="tarjeta space-y-3 p-4">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <span className="mono text-[10px] text-[var(--bone-faint)]">{e.entrevista_id}</span>
+              <span className="text-[15px]">{e.titulo}</span>
+              <span className="text-[12.5px] text-[var(--bone-dim)]">
+                {e.n_valores} con similitud · {e.n_etiquetas ? `${e.n_etiquetas} etiquetados por ${e.anotador}${e.a_ciegas ? " (a ciegas)" : " (viendo al sistema)"}` : "sin etiquetar"}
+              </span>
+              <button className={`pill sm ml-auto ${e.n_etiquetas ? "ghost" : ""}`} onClick={() => setAbierta(abierta === e.entrevista_id ? null : e.entrevista_id)}>
+                {abierta === e.entrevista_id ? "Ocultar" : e.n_etiquetas ? "Revisar etiquetas" : "Etiquetar"}
+              </button>
+            </div>
+            {abierta === e.entrevista_id && <Etiquetar entrevistaId={e.entrevista_id} onGuardado={onCambio} onCerrar={() => setAbierta(null)} />}
+          </li>
         ))}
-      </dl>
+      </ul>
     </section>
   );
 }
 
-/* Histograma de similitudes con la línea del umbral configurado y la del inspeccionado */
-function Distribucion({ c, umbral }) {
-  const W = 720, H = 180, M = { l: 28, r: 12, t: 10, b: 26 };
-  const bins = c.distribucion.bins;
-  if (!bins.length) return null;
-  const x0 = Math.min(bins[0].desde, c.umbral_configurado, umbral ?? 1);
-  const x1 = Math.max(bins.at(-1).hasta, c.umbral_configurado, umbral ?? 0);
-  const maxN = Math.max(1, ...bins.map((b) => b.n));
-  const x = (v) => M.l + ((v - x0) / (x1 - x0 || 1)) * (W - M.l - M.r);
-  const y = (n) => H - M.b - (n / maxN) * (H - M.t - M.b);
-  const ticks = Array.from({ length: 11 }, (_, i) => i / 10).filter((t) => t >= x0 - 1e-9 && t <= x1 + 1e-9);
+function Resultados({ c }) {
+  const gt = c.con_ground_truth;
+  const m = gt?.confianza?.medidas ?? {};
+  const conf = gt?.configurado;
+  return (
+    <section className="space-y-6">
+      <h2>Resultados</h2>
+      {gt && (
+        <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
+          <Cifra valor={`${gt.n_emparejados}`} nombre={`términos etiquetados (${gt.n_ambiguos} ambiguos)`} />
+          <Cifra valor={fmt(gt.auc)} nombre={`AUC${ic(m.auc)}`} />
+          <Cifra valor={fmt(conf?.f1)} nombre={`F1 con ${c.umbral_configurado}${ic(m.f1)}`} />
+          <Cifra valor={gt.separacion.separa == null ? "—" : gt.separacion.separa ? "sí" : "no"} nombre="¿algún umbral separa los casos?" />
+        </div>
+      )}
+      {gt && (
+        <p className="text-[12px] text-[var(--bone-faint)]">
+          Entre corchetes, intervalos bootstrap percentil al {Math.round(gt.confianza.nivel * 100)} % ({gt.confianza.remuestreos} remuestreos, semilla {gt.confianza.semilla}).
+          Positivo = «va a debate» (similitud &lt; umbral); la verdad es «ambiguo».
+        </p>
+      )}
+
+      <GraficaDistribucion valores={c.valores} umbral={c.umbral_configurado} />
+      {gt && (
+        <div className="grid gap-6 xl:grid-cols-2">
+          {gt.por_umbral.some((f) => f.f1 != null || f.precision != null || f.exhaustividad != null) &&
+            <GraficaMetricas porUmbral={gt.por_umbral} umbral={c.umbral_configurado} confianza={gt.confianza} parametros={c.parametros} />}
+          {gt.roc.length > 0 && <GraficaRoc roc={gt.roc} auc={gt.auc} ic={m.auc} />}
+        </div>
+      )}
+      <GraficaDebates rejilla={c.rejilla} umbral={c.umbral_configurado} n={c.n_valores} parametros={c.parametros} />
+
+      {gt && (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="tarjeta space-y-2 p-4">
+            <p className="etiqueta">Matriz de confusión · umbral {c.umbral_configurado}</p>
+            <table className="tabla-viz">
+              <thead><tr><th /><th>A debate</th><th>Aceptado directo</th></tr></thead>
+              <tbody>
+                <tr><td>Ambiguo</td><td>{conf.vp} <span className="text-[var(--bone-faint)]">VP</span></td><td>{conf.fn} <span className="text-[var(--bone-faint)]">FN</span></td></tr>
+                <tr><td>No ambiguo</td><td>{conf.fp} <span className="text-[var(--bone-faint)]">FP</span></td><td>{conf.vn} <span className="text-[var(--bone-faint)]">VN</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div className="tarjeta space-y-2 p-4">
+            <p className="etiqueta">Por tipo de ambigüedad · umbral {c.umbral_configurado}</p>
+            <table className="tabla-viz">
+              <thead><tr><th>Tipo</th><th>Términos</th><th>A debate</th><th>Proporción</th></tr></thead>
+              <tbody>
+                {gt.por_tipo.map((t) => (
+                  <tr key={t.tipo}><td>{NOMBRE_TIPO(t.tipo)}</td><td>{t.n}</td><td>{t.a_debate}</td><td>{fmt(t.proporcion, 2)}</td></tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="text-[11.5px] text-[var(--bone-faint)]">En los no ambiguos, ir a debate es un falso positivo.</p>
+          </div>
+        </div>
+      )}
+
+      <Plegable titulo="Tabla por umbral" nota={`${c.rejilla.length} umbrales`} alAbrir>
+        <TablaRejilla c={c} />
+      </Plegable>
+      <Plegable titulo="Valores" nota={`${c.n_valores} términos`} alAbrir>
+        <TablaValores c={c} />
+      </Plegable>
+      {gt && (gt.etiquetas_sin_similitud.length > 0 || gt.valores_sin_etiqueta.length > 0) && (
+        <p className="text-[12.5px] text-[var(--bone-faint)]">
+          {gt.etiquetas_sin_similitud.length} etiquetas sin similitud (el sistema no generó dos intenciones para ese término: ningún umbral puede corregirlo)
+          · {gt.valores_sin_etiqueta.length} similitudes sin etiqueta en entrevistas etiquetadas.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function TablaRejilla({ c }) {
+  const met = Object.fromEntries((c.con_ground_truth?.por_umbral ?? []).map((f) => [f.umbral, f]));
   return (
     <div className="overflow-x-auto">
-      <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full min-w-[480px]" role="img" aria-label="Histograma de la similitud inicial">
-        {bins.map((b) => (
-          <rect key={b.desde} x={x(b.desde) + 1} y={y(b.n)} width={Math.max(1, x(b.hasta) - x(b.desde) - 2)} height={H - M.b - y(b.n)} fill="var(--c1)" fillOpacity={b.n ? 0.7 : 0}>
-            <title>{`${b.desde.toFixed(2)}–${b.hasta.toFixed(2)}: ${b.n}`}</title>
-          </rect>
-        ))}
-        <line x1={M.l} x2={W - M.r} y1={H - M.b} y2={H - M.b} stroke="rgba(239,233,222,.25)" />
-        {ticks.map((t) => (
-          <text key={t} x={x(t)} y={H - 8} fontSize="10" textAnchor="middle" fill="rgba(239,233,222,.45)" style={{ fontFamily: "var(--mono)" }}>{t.toFixed(1)}</text>
-        ))}
-        <text x={4} y={M.t + 8} fontSize="10" fill="rgba(239,233,222,.45)" style={{ fontFamily: "var(--mono)" }}>{maxN}</text>
-        <line x1={x(c.umbral_configurado)} x2={x(c.umbral_configurado)} y1={M.t} y2={H - M.b} stroke="#efe9de" strokeDasharray="4 4" />
-        <text x={x(c.umbral_configurado) + 4} y={M.t + 10} fontSize="10" fill="#efe9de">configurado {c.umbral_configurado}</text>
-        {umbral != null && umbral !== c.umbral_configurado && (
-          <>
-            <line x1={x(umbral)} x2={x(umbral)} y1={M.t} y2={H - M.b} stroke="#ffc457" />
-            <text x={x(umbral) + 4} y={M.t + 24} fontSize="10" fill="#ffc457">{umbral}</text>
-          </>
-        )}
-      </svg>
+      <table className="tabla-viz min-w-[560px]">
+        <thead><tr><th>Umbral</th><th>Directos</th><th>A debate</th><th>Cambian</th><th>Precisión</th><th>Exhaustividad</th><th>F1</th></tr></thead>
+        <tbody>
+          {c.rejilla.map((f) => {
+            const g = met[f.umbral] ?? {};
+            return (
+              <tr key={f.umbral} className={f.configurado ? "es-configurado" : ""}>
+                <td>{f.umbral}{f.configurado ? " ←" : ""}</td><td>{f.directos}</td><td>{f.debates}</td><td>{f.cambian.length}</td>
+                <td>{fmt(g.precision)}</td><td>{fmt(g.exhaustividad)}</td><td>{fmt(g.f1)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
 
-function Rejilla({ c, umbral, onUmbral }) {
-  const total = c.n_valores;
+function TablaValores({ c }) {
+  const via = { aceptado_directo: "directo", consenso: "consenso", arbitraje: "arbitraje" };
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[460px] text-left text-sm">
-        <thead className="mono text-[9px] text-[var(--bone-faint)]">
-          <tr>
-            <th className="py-1.5 font-normal">Umbral</th>
-            <th className="py-1.5 font-normal">Aceptados directo</th>
-            <th className="py-1.5 font-normal">Van a debate</th>
-            <th className="w-2/5 py-1.5 font-normal" />
-            <th className="py-1.5 text-right font-normal">Cambian vs. lo real</th>
-          </tr>
-        </thead>
+      <table className="tabla-viz min-w-[640px]">
+        <thead><tr><th>Entrevista</th><th>Término</th><th>Similitud</th><th>Ground truth</th><th>Decisión</th><th>Vía final</th><th>Tipo (sistema)</th></tr></thead>
         <tbody>
-          {c.rejilla.map((f) => (
-            <tr
-              key={f.umbral}
-              onClick={() => onUmbral(f.umbral)}
-              className={`cursor-pointer border-t border-[var(--line)] ${f.umbral === umbral ? "bg-white/[0.05]" : "hover:bg-white/[0.03]"}`}
-            >
-              <td className="py-1.5 font-mono">{f.umbral.toFixed(2)}{f.configurado && <span className="mono ml-2 text-[9px] text-[var(--bone-faint)]">configurado</span>}</td>
-              <td className="py-1.5 font-mono">{f.directos}</td>
-              <td className="py-1.5 font-mono">{f.debates}</td>
-              <td className="py-1.5">
-                <div className="flex h-1.5 overflow-hidden rounded-full bg-white/[0.04]">
-                  <span style={{ width: `${(100 * f.directos) / total}%`, background: TONO_DECISION.aceptado_directo }} />
-                  <span style={{ width: `${(100 * f.debates) / total}%`, background: TONO_DECISION.en_debate }} />
-                </div>
-              </td>
-              <td className="py-1.5 text-right font-mono">{f.cambian.length || "—"}</td>
+          {[...c.valores].sort((a, b) => a.similitud - b.similitud).map((v) => (
+            <tr key={`${v.entrevista_id}:${v.termino}`}>
+              <td className="mono text-[10px]">{v.entrevista_id}</td><td>{v.termino}</td><td>{fmt(v.similitud)}</td>
+              <td>{v.ambiguo == null ? "—" : v.ambiguo ? "ambiguo" : "no ambiguo"}</td>
+              <td>{v.decision_real === "en_debate" ? "debate" : "directo"}</td><td>{via[v.via] ?? "—"}</td>
+              <td className="text-[var(--bone-dim)]">{TIPOS[v.tipo_ambiguedad]?.etiqueta ?? v.tipo_ambiguedad}</td>
             </tr>
           ))}
         </tbody>
@@ -229,119 +259,80 @@ function Rejilla({ c, umbral, onUmbral }) {
   );
 }
 
-function Cambios({ fila }) {
-  if (!fila.cambian.length) {
-    return <p className="mono text-[10px] text-[var(--bone-faint)]">Con {fila.umbral.toFixed(2)} ningún término cambia de camino respecto de lo que pasó.</p>;
-  }
-  return (
-    <div className="rounded-2xl border border-[var(--line)] p-4">
-      <p className="mono mb-2 text-[9.5px] text-[var(--bone-faint)]">Con umbral {fila.umbral.toFixed(2)} cambiarían {fila.cambian.length} términos (no predice cómo habría terminado el debate)</p>
-      <ul className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
-        {fila.cambian.map((x) => (
-          <li key={`${x.req_id}-${x.termino}`} className="flex flex-wrap items-baseline gap-2">
-            <Link className="mono text-[10px] text-[var(--bone-faint)] hover:text-[var(--c1)]" to={`/requisitos/${x.req_id}`}>{x.req_id}</Link>
-            <span className="italic">«{x.termino}»</span>
-            <span className="font-mono text-[11px] text-[var(--bone-dim)]">{x.similitud.toFixed(2)}</span>
-            <span className="text-[12px]" style={{ color: TONO_DECISION[x.decision_real] }}>{DECISION[x.decision_real]}</span>
-            <span className="text-[var(--bone-faint)]">→</span>
-            <span className="text-[12px]" style={{ color: TONO_DECISION[x.decision_con_umbral] }}>{DECISION[x.decision_con_umbral]}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
+/* Las corridas guardadas: la evidencia citable de la tesis, con su paquete para Overleaf */
+function Corridas({ proyectoId, corridas, rejilla, hayDatos, vista, onVer }) {
+  const [nota, setNota] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState(null);
+  const [borrando, setBorrando] = useState(null);
+  const lista = corridas.datos ?? [];
 
-function GroundTruth({ g, umbral, onUmbral }) {
-  const fila = g.por_umbral.find((f) => f.umbral === umbral) ?? g.por_umbral.find((f) => f.configurado);
-  const s = g.separacion;
+  const guardar = async () => {
+    setGuardando(true);
+    setError(null);
+    try { await guardarCorridaCalibracion(proyectoId, nota.trim(), rejilla); setNota(""); corridas.recargar(); } catch (e) { setError(e); } finally { setGuardando(false); }
+  };
+  const descargar = async (cid) => {
+    setError(null);
+    try {
+      const r = await fetch(urlOverleaf(cid), { credentials: "include" });
+      if (!r.ok) throw new Error(`No se pudo descargar el paquete (HTTP ${r.status}).`);
+      const url = URL.createObjectURL(await r.blob());
+      Object.assign(document.createElement("a"), { href: url, download: `dudamel-calibracion-${cid}.zip` }).click();
+      URL.revokeObjectURL(url);
+    } catch (e) { setError(e); }
+  };
+  const ver = async (cid) => {
+    setError(null);
+    try { onVer(await corridaCalibracion(cid)); scrollTo({ top: 0 }); } catch (e) { setError(e); }
+  };
+
   return (
     <section className="space-y-4">
-      <h2>Contra el ground truth</h2>
-      <p className="mono text-[9.5px] text-[var(--bone-faint)]">
-        {g.n_etiquetas} etiquetas · {g.n_emparejados} con similitud · {g.n_ambiguos} ambiguos · {g.n_no_ambiguos} no ambiguos
-        {g.n_invalidas > 0 && ` · ${g.n_invalidas} etiquetas inválidas`} · fuentes: {g.fuentes.map((f) => `${f.proyecto_id}${f.evaluacion_id ? ` (${f.evaluacion_id})` : ""}`).join(", ")}
-      </p>
-      <p className={`rounded-lg px-3 py-2 text-sm ${s.separa === false ? "border border-amber-300 bg-amber-50 text-amber-800" : "border border-[var(--line)]"}`}>
-        {s.separa == null
-          ? "Faltan casos de alguna clase para saber si la similitud separa ambiguos de no ambiguos."
-          : s.separa
-            ? `La similitud separa los casos: el ambiguo más alto (${s.max_ambiguos?.toFixed(2)}) queda por debajo del no ambiguo más bajo (${s.min_no_ambiguos?.toFixed(2)}).`
-            : `Hallazgo: la similitud NO separa los casos. Hay ambiguos con similitud de hasta ${s.max_ambiguos?.toFixed(2)} y no ambiguos desde ${s.min_no_ambiguos?.toFixed(2)}; ningún umbral los acierta todos.`}
-      </p>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[520px] text-left text-sm">
-          <thead className="mono text-[9px] text-[var(--bone-faint)]">
-            <tr>{["Umbral", "VP", "FP", "VN", "FN", "Precisión", "Exhaustividad", "F1"].map((h) => <th key={h} className="py-1.5 font-normal">{h}</th>)}</tr>
-          </thead>
-          <tbody>
-            {g.por_umbral.map((f) => (
-              <tr key={f.umbral} onClick={() => onUmbral(f.umbral)} className={`cursor-pointer border-t border-[var(--line)] font-mono ${f.umbral === fila?.umbral ? "bg-white/[0.05]" : "hover:bg-white/[0.03]"}`}>
-                <td className="py-1.5">{f.umbral.toFixed(2)}{f.configurado && <span className="mono ml-2 text-[9px] text-[var(--bone-faint)]">conf.</span>}</td>
-                <td>{f.vp}</td><td>{f.fp}</td><td>{f.vn}</td><td>{f.fn}</td>
-                <td>{pct(f.precision)}</td><td>{pct(f.exhaustividad)}</td><td>{f.f1?.toFixed(2) ?? "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="text-[12px] text-[var(--bone-faint)]">Positivo = «va a debate» (similitud &lt; umbral); un término etiquetado ambiguo que se aceptaría directo es un falso negativo.</p>
-      {fila?.mal_separados.length > 0 && (
-        <div>
-          <p className="mono mb-1 text-[9.5px] text-[var(--bone-faint)]">Mal separados con {fila.umbral.toFixed(2)}</p>
-          <ul className="space-y-1 text-sm">
-            {fila.mal_separados.map((m) => (
-              <li key={`${m.req_id}-${m.termino}`} className="flex flex-wrap items-baseline gap-2">
-                <Link className="mono text-[10px] text-[var(--bone-faint)] hover:text-[var(--c1)]" to={`/requisitos/${m.req_id}`}>{m.req_id}</Link>
-                <span className="italic">«{m.termino}»</span>
-                <span className="font-mono text-[11px]">{m.similitud.toFixed(2)}</span>
-                <span className="text-[12px] text-[var(--bone-dim)]">{m.ambiguo ? "ambiguo" : "no ambiguo"} → {DECISION[m.decision_con_umbral]}</span>
-                <span className="mono text-[9px] text-amber-600">{m.tipo_error === "falso_positivo" ? "falso positivo" : "falso negativo"}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {(g.etiquetas_sin_similitud.length > 0 || g.valores_sin_etiqueta.length > 0) && (
-        <p className="text-[12px] text-[var(--bone-faint)]">
-          {g.etiquetas_sin_similitud.length} etiquetas sin similitud (el sistema no generó dos interpretaciones para ese término) · {g.valores_sin_etiqueta.length} similitudes sin etiqueta.
+      <div>
+        <h2>Corridas guardadas</h2>
+        <p className="mt-1 max-w-3xl text-[13.5px] text-[var(--bone-dim)]">
+          Una corrida congela los resultados de ahora con su fecha, la configuración, la versión de la app y una huella de las
+          similitudes y etiquetas de cada entrevista. Es lo que se cita en la tesis; su paquete trae las figuras (pgfplots),
+          las tablas (booktabs) y los datos para Overleaf.
         </p>
-      )}
-    </section>
-  );
-}
-
-/* Cada término con su similitud: se ve qué lado del umbral inspeccionado le toca */
-function Valores({ valores, umbral }) {
-  const [abierto, setAbierto] = useState(false);
-  const orden = useMemo(() => [...valores].sort((a, b) => a.similitud - b.similitud), [valores]);
-  return (
-    <section className="space-y-2">
-      <button className="flex flex-wrap items-baseline gap-3 text-left" onClick={() => setAbierto((x) => !x)}>
-        <h2>Valores</h2>
-        <span className="mono text-[9.5px] text-[var(--bone-faint)]">{valores.length} términos · {abierto ? "ocultar" : "ver todos"}</span>
-      </button>
-      {abierto && (
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <input value={nota} onChange={(e) => setNota(e.target.value)} maxLength={500} placeholder="Nota (p. ej. «corpus completo, nomic-embed-text»)"
+          className="campo w-96 max-w-full text-[13px]" />
+        <button className="pill sm" onClick={guardar} disabled={guardando || !hayDatos}>{guardando ? "Guardando…" : "Guardar corrida"}</button>
+      </div>
+      <Aviso error={error || corridas.error} />
+      {!lista.length && !corridas.cargando && <p className="text-[13px] text-[var(--bone-faint)]">Todavía no hay corridas guardadas en este proyecto.</p>}
+      {lista.length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[620px] text-left text-sm">
-            <thead className="mono text-[9px] text-[var(--bone-faint)]">
-              <tr>{["Requisito", "Término", "Tipo", "Similitud", "Umbral usado", "Decisión real", "Vía final"].map((h) => <th key={h} className="py-1.5 font-normal">{h}</th>)}</tr>
-            </thead>
+          <table className="tabla-viz min-w-[720px]">
+            <thead><tr><th>Corrida</th><th>Fecha</th><th>Nota</th><th>Términos</th><th>AUC</th><th>F1</th><th>¿Separa?</th><th /></tr></thead>
             <tbody>
-              {orden.map((v) => (
-                <tr key={`${v.req_id}-${v.termino}`} className="border-t border-[var(--line)]">
-                  <td className="py-1.5"><Link className="mono text-[10px] hover:text-[var(--c1)]" to={`/requisitos/${v.req_id}`}>{v.req_id}</Link> <span className="mono text-[9px] text-[var(--bone-faint)]">C{v.ciclo}</span></td>
-                  <td className="py-1.5 italic">«{v.termino}»</td>
-                  <td className="py-1.5 text-[12px]">{infoTipo(v.tipo_ambiguedad).etiqueta}</td>
-                  <td className={`py-1.5 font-mono ${umbral != null && v.similitud < umbral ? "text-amber-600" : ""}`}>{v.similitud.toFixed(3)}</td>
-                  <td className="py-1.5 font-mono text-[var(--bone-dim)]">{v.umbral_usado ?? "—"}</td>
-                  <td className="py-1.5 text-[12px]" style={{ color: TONO_DECISION[v.decision_real] }}>{DECISION[v.decision_real]}</td>
-                  <td className="py-1.5 text-[12px] text-[var(--bone-dim)]">{v.via ? INFO_VIA[v.via]?.etiqueta : "—"}</td>
+              {lista.map((k) => (
+                <tr key={k.calibracion_id} className={vista?.calibracion_id === k.calibracion_id ? "es-configurado" : ""}>
+                  <td className="mono text-[11px]">{k.calibracion_id}</td>
+                  <td>{k.fecha.replace("T", " ").slice(0, 16)}</td>
+                  <td className="max-w-[16rem] truncate text-[var(--bone-dim)]">{k.nota ?? "—"}</td>
+                  <td>{k.n_valores}{k.n_emparejados ? ` (${k.n_emparejados} etiq.)` : ""}</td>
+                  <td>{fmt(k.auc)}<span className="text-[var(--bone-faint)]">{ic(k.auc_ic)}</span></td>
+                  <td>{fmt(k.f1)}<span className="text-[var(--bone-faint)]">{ic(k.f1_ic)}</span></td>
+                  <td>{k.separa == null ? "—" : k.separa ? "sí" : "no"}</td>
+                  <td className="whitespace-nowrap text-right">
+                    <button className="pill ghost sm" onClick={() => ver(k.calibracion_id)}>Ver</button>{" "}
+                    <button className="pill sm" onClick={() => descargar(k.calibracion_id)}>Overleaf ↓</button>{" "}
+                    <button className="mono px-1 text-[10px] text-[var(--bone-faint)] hover:text-[var(--danger)]" onClick={() => setBorrando(k)}>borrar</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      )}
+      {borrando && (
+        <Confirmar pregunta={`¿Borrar la corrida ${borrando.calibracion_id}?`} detalle="Si ya la citaste en la tesis, descarga antes su paquete." accion="Borrar corrida"
+          onCancelar={() => setBorrando(null)}
+          onConfirmar={async () => { await borrarCorridaCalibracion(borrando.calibracion_id); if (vista?.calibracion_id === borrando.calibracion_id) onVer(null); setBorrando(null); corridas.recargar(); }} />
       )}
     </section>
   );

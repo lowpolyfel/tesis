@@ -28,7 +28,7 @@ const GRUPOS = [
   {
     titulo: "Experimentación",
     items: [
-      { a: "/calibracion", texto: "Calibración", que: "Qué pasaría con otro umbral de similitud (no cambia nada).", mood: "extractor" },
+      { a: "/calibracion", texto: "Calibración", que: "Cuánto separa la similitud los términos ambiguos de las entrevistas, con corridas para la tesis (no cambia el umbral).", mood: "extractor" },
       { a: "/evaluacion", texto: "Evaluación", que: "Corridas contra el corpus y comparación con un solo agente.", mood: "listening" },
       { a: "/catalogos/regionales", texto: "Catálogos", que: "Las expresiones regionales y vagas que el sistema reconoce.", mood: "thinking" },
     ],

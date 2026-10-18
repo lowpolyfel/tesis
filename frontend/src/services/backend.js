@@ -219,3 +219,20 @@ export const conservarFase = (proyectoId, fase) => post(`/proyectos/${id(proyect
 export const urlMermaidMapa = (proyectoId) => `${BASE_URL}/proyectos/${id(proyectoId)}/fases/mapa/mermaid`;
 export const urlEspecificacion = (proyectoId) => `${BASE_URL}/proyectos/${id(proyectoId)}/fases/requisitos/markdown`;
 export const especificacionMarkdown = (proyectoId) => get(`/proyectos/${id(proyectoId)}/fases/requisitos/markdown`);
+
+/* ---- Calibración sobre entrevistas (ADR 0026) ---- */
+/** El informe en vivo: rejilla, distribución y, con ground truth, ROC, AUC, intervalos y por tipo */
+export const calibracionEntrevistas = (proyectoId, rejilla = {}) => get(`/proyectos/${id(proyectoId)}/calibracion/entrevistas`, rejilla);
+/** Términos de la entrevista y su ground truth; con `sistema`, también la similitud y la decisión */
+export const etiquetasEntrevista = (entrevistaId, sistema = false) =>
+  get(`/entrevistas/${id(entrevistaId)}/etiquetas`, sistema ? { sistema: true } : undefined);
+export const guardarEtiquetas = (entrevistaId, { anotador, a_ciegas, etiquetas }) =>
+  put(`/entrevistas/${id(entrevistaId)}/etiquetas`, { anotador, a_ciegas, etiquetas });
+export const corridasCalibracion = (proyectoId) => get(`/proyectos/${id(proyectoId)}/calibraciones`);
+export const guardarCorridaCalibracion = (proyectoId, nota, rejilla = {}) => {
+  const q = new URLSearchParams(Object.entries(rejilla).filter(([, v]) => v != null && v !== "")).toString();
+  return post(`/proyectos/${id(proyectoId)}/calibraciones${q ? `?${q}` : ""}`, { nota: nota || null });
+};
+export const corridaCalibracion = (calibracionId) => get(`/calibraciones/${id(calibracionId)}`);
+export const borrarCorridaCalibracion = (calibracionId) => borrar(`/calibraciones/${id(calibracionId)}`);
+export const urlOverleaf = (calibracionId) => `${BASE_URL}/calibraciones/${id(calibracionId)}/overleaf.zip`;

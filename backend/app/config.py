@@ -141,6 +141,9 @@ class Settings(BaseSettings):
     calibracion_desde: float = Field(0.50, ge=0.0, le=1.0)
     calibracion_hasta: float = Field(0.95, ge=0.0, le=1.0)
     calibracion_paso: float = Field(0.05, gt=0.0, le=0.5)
+    # Calibración sobre entrevistas (ADR 0026): intervalos bootstrap reproducibles
+    calibracion_bootstrap: int = Field(2000, ge=100, le=20000)  # remuestreos
+    calibracion_semilla: int = 20261018  # semilla fija: la misma corrida da los mismos intervalos
 
     def model_post_init(self, contexto) -> None:
         self._fuente_mongo_uri = fuente_de("MONGO_URI")
