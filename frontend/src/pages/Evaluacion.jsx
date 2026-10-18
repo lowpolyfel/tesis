@@ -213,7 +213,6 @@ function Informe({ r }) {
       <p className="max-w-3xl text-sm text-[var(--bone-dim)]">{r.nota}</p>
       <p className="mono flex flex-wrap gap-x-4 text-[9.5px] text-[var(--bone-faint)]">
         <Link className="hover:text-[var(--bone)]" to={`/proyectos/${r.proyecto_id}/v1`}>proyecto {r.proyecto_id} →</Link>
-        <Link className="hover:text-[var(--bone)]" to={`/calibracion?proyecto=${r.proyecto_id}`}>calibración con estas etiquetas →</Link>
         <span>umbral {r.config.similarity_threshold} · {r.config.max_debate_rounds} rondas</span>
         {r.estado !== "terminada" && <span className="flex items-center gap-1"><span className="gira" /> sistema {r.progreso.listos_sistema}/{r.progreso.total} · línea base {r.progreso.listos_linea_base}/{r.progreso.total}</span>}
       </p>

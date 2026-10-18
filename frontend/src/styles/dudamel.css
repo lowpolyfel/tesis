@@ -201,3 +201,18 @@ mark.resaltado{background:color-mix(in oklab,#41efff 22%,transparent);color:var(
 .inspector-mapa{padding:12px;border-radius:14px;border:1px solid var(--line);background:var(--bg);color:var(--bone);
   box-shadow:0 14px 40px -18px rgba(0,0,0,.7)}
 .esferita.mini{width:14px;height:14px;font-size:0}
+
+/* ---- gráficas de la calibración (ADR 0026) ----
+   Paleta categórica validada (deuteranopía, protanopía, tritanopía) en cada tema; el texto va
+   siempre con las tintas del tema, nunca con el color de la serie. Naranja = ambiguo / a debate,
+   azul = no ambiguo / directo, aqua = F1. Los mismos colores tiene el paquete de Overleaf. */
+.viz{--viz-azul:#3987e5;--viz-naranja:#d95926;--viz-aqua:#199e70;--viz-gris:#8a8984;
+  --viz-reja:color-mix(in oklab,var(--bone) 9%,transparent);--viz-eje:color-mix(in oklab,var(--bone) 34%,transparent)}
+:root[data-tema="claro"] .viz{--viz-azul:#2a78d6;--viz-naranja:#eb6834;--viz-aqua:#1baf7a}
+.viz text{font-family:Inter,ui-sans-serif,system-ui,sans-serif;fill:var(--bone-dim);font-size:11px}
+.viz .viz-titulo{fill:var(--bone);font-size:12px}
+.tabla-viz{width:100%;border-collapse:collapse;font-size:13px}
+.tabla-viz th{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--bone-faint);font-weight:400;text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+.tabla-viz td{padding:6px 8px;border-bottom:1px solid color-mix(in oklab,var(--bone) 6%,transparent);font-variant-numeric:tabular-nums}
+.tabla-viz tr.es-configurado td{color:var(--bone);font-weight:500}

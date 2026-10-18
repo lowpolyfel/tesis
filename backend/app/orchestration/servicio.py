@@ -68,7 +68,8 @@ COLECCIONES_DEL_PROYECTO = ("documentos", "comparaciones", "evaluaciones", COLEC
                             "mapas_conceptuales",  # app/artefactos/mapa_conceptual.py
                             COLECCION_FICHAS,  # app/contexto/ficha.py
                             "lexico", "memoria",  # versión 2: el LEL interactivo y lo aprendido (ADR 0024)
-                            "fase_mapa", "fase_metas", "fase_requisitos")
+                            "fase_mapa", "fase_metas", "fase_requisitos",
+                            "etiquetas_entrevista", "calibraciones")  # calibración sobre entrevistas (ADR 0026)
 
 
 class Servicio:
