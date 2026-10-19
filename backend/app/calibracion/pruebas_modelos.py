@@ -55,6 +55,7 @@ from .calidad import (  # noqa: F401 — mcnemar y wilson se reexportan para qui
     subenumeracion,
     wilson,
 )
+from .intercambio import composicion
 
 log = logging.getLogger(__name__)
 
@@ -209,6 +210,14 @@ def resumen(prueba: dict, legado: dict | None = None, revision: dict | None = No
                       "solo cuentan las revisadas.")
     if revision and revision.get("a_ciegas") is False:
         avisos.append("La revisión de calidad se hizo con los nombres de los modelos a la vista.")
+    comp = composicion(revision)
+    if comp["ia"]:
+        avisos.append(f"{comp['ia']} de {revisadas} marcas de calidad las puso una IA ({', '.join(comp['quienes_ia'])}) "
+                      "con un archivo exportado: es una evaluación con un LLM como juez, no una revisión humana. "
+                      "Repórtala así y valídala contra marcas humanas (el acuerdo queda en cada importación).")
+    if comp["persona"]:
+        avisos.append(f"{comp['persona']} de {revisadas} marcas de calidad se contestaron fuera del sistema, en un "
+                      f"archivo a ciegas ({', '.join(comp['quienes_persona'])}).")
     sin_clasificar = sum(m["falsos_negativos"]["sin_clasificar"] for m in modelos)
     if sin_clasificar:
         avisos.append(f"{sin_clasificar} falsos negativos sin modo de falla asignado.")

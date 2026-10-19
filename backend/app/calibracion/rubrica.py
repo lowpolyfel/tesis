@@ -40,6 +40,28 @@ CLAVES = tuple(c["clave"] for c in CRITERIOS)
 REGLA_AGREGADO = ("Cada criterio se marca una vez por salida (un término de un modelo). Se cumple si lo cumplen "
                   "todas las intenciones de esa salida: basta una intención que falle para no marcarlo.")
 
+# Casos frecuentes: precisan cómo se aplican los mismos tres criterios (no cambian el criterio,
+# que sigue siendo calidad-v1). Salen de las decisiones de la primera revisión real y van también
+# en el archivo que se exporta para revisar fuera del sistema (ADR 0030), para que una segunda
+# persona o una IA los aplique igual.
+ACLARACIONES: tuple[tuple[str, str], ...] = (
+    ("fidelidad", ("Si la paráfrasis deja el término (o una forma suya) o copia la cita tal cual, no pasa: no dice "
+                   "qué sentido eligió. Cambiarlo por un sinónimo sí cuenta.")),
+    ("fidelidad", ("No juzga si el sentido es el correcto ni si es el más probable en la cita: solo si la paráfrasis "
+                   "dice lo mismo que la cita con ese sentido.")),
+    ("delimitacion", ("Una «o» que junta dos sentidos distintos no pasa («mantenimiento preventivo o correctivo»); una "
+                      "«o» que enumera quién o qué ocupa el mismo papel sí pasa («persona o empresa que surte "
+                      "mercancía»).")),
+    ("delimitacion", ("Un significado tan general que pierde lo que distingue al término no pasa («pago realizado por "
+                      "el cliente» para «abono», que es un pago parcial).")),
+    ("delimitacion", "Desarrollar unas siglas no es definir: «CURP: Clave Única de Registro de Población» es circular."),
+    ("delimitacion", "No cuenta cuántos sentidos dio el modelo: uno solo, bien acotado, pasa."),
+    ("intencion", ("El significado convertido en verbo no pasa («registrar el historial» para «documento que registra "
+                   "el historial»); tampoco una intención que no va con la cita.")),
+    ("cobertura", ("Lo impreciso de un significado se castiga en la delimitación y no otra vez aquí: si el sentido es "
+                   "el de la lectura esperada, se marca.")),
+)
+
 COBERTURA = {
     "nombre": "Cobertura de lecturas esperadas", "teclas": "4, 5, 6",
     "oracion": ("Solo en los términos ambiguos: de las lecturas esperadas que registra el banco, marca las que "
@@ -81,7 +103,13 @@ CLAVES_MODOS = tuple(m["clave"] for m in MODOS_FALLA)
 def publica() -> dict:
     """Lo que la pantalla muestra en su panel de ayuda."""
     return {"criterios": list(CRITERIOS), "regla_agregado": REGLA_AGREGADO, "cobertura": COBERTURA,
-            "etiqueta_entrevista": ETIQUETA_ENTREVISTA, "modos_falla": list(MODOS_FALLA), "markdown": markdown()}
+            "etiqueta_entrevista": ETIQUETA_ENTREVISTA, "modos_falla": list(MODOS_FALLA),
+            "aclaraciones": [{"criterio": c, "texto": t} for c, t in ACLARACIONES], "markdown": markdown()}
+
+
+def aclaraciones_md() -> list[str]:
+    nombres = {c["clave"]: c["nombre"] for c in CRITERIOS} | {"cobertura": "Cobertura"}
+    return [f"- **{nombres[c]}.** {t}" for c, t in ACLARACIONES]
 
 
 def markdown() -> str:
@@ -104,6 +132,7 @@ def markdown() -> str:
                    f"- **Pasa:** {c['pasa']}", f"- **No pasa:** {c['no_pasa']}", ""]
     lineas += [f"### {COBERTURA['nombre']} (teclas {COBERTURA['teclas']})", "", COBERTURA["oracion"], "",
                f"- **Pasa:** {COBERTURA['pasa']}", f"- **No pasa:** {COBERTURA['no_pasa']}", "",
+               "### Casos frecuentes", "", *aclaraciones_md(), "",
                "Teclas: `Enter` guarda y avanza, `Backspace` regresa, `?` abre esta rúbrica.", "",
                "## 2. Ambigüedad de un término de entrevista", "",
                ETIQUETA_ENTREVISTA["oracion"], "",

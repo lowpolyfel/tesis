@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { empezarRevisionCalidad, marcarCalidad, rehacerRevisionCalidad, revisionCalidad } from "../../services/backend";
-import { Aviso, Cargando, Confirmar } from "../ui";
+import { Aviso, Cargando, Confirmar, Plegable } from "../ui";
+import RevisionFuera from "./RevisionFuera";
 import Rubrica from "./Rubrica";
 
 /*
@@ -12,6 +13,8 @@ import Rubrica from "./Rubrica";
  * ítem, modelos) viene barajado del servidor con una semilla guardada. Cada salida se guarda al
  * avanzar, así que se puede dejar a medias y retomar donde quedó.
  * La detección (si marcó «ambiguo») no se revisa aquí: se mide sola contra el banco.
+ * Abajo, «Revisar fuera del sistema» exporta lo mismo a un archivo que contesta una persona o una
+ * IA, y lo importa (ADR 0030).
  */
 const CLAVE_ANOTADOR = "dudamel.anotador";
 const leer = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
@@ -31,8 +34,17 @@ export default function RevisionCalidad({ prueba, banco, onCambio }) {
   if (error) return <Aviso error={error} />;
   if (doc === undefined) return <Cargando>Cargando la revisión…</Cargando>;
   if (prueba.estado === "en_proceso") return <p className="text-[13.5px] text-[var(--bone-dim)]">La prueba sigue corriendo: la revisión se abre cuando termine.</p>;
-  if (!doc) return <Empezar prueba={prueba} onEmpezada={(d) => { setDoc(d); onCambio(); }} />;
-  return <Revisar prueba={prueba} banco={banco} doc={doc} setDoc={setDoc} onCambio={onCambio} onRehecha={() => { setDoc(null); onCambio(); }} />;
+  return (
+    <div className="space-y-6">
+      {doc
+        ? <Revisar prueba={prueba} banco={banco} doc={doc} setDoc={setDoc} onCambio={onCambio} onRehecha={() => { setDoc(null); onCambio(); }} />
+        : <Empezar prueba={prueba} onEmpezada={(d) => { setDoc(d); onCambio(); }} />}
+      <Plegable titulo="Revisar fuera del sistema" nota="exportar a una IA o a una persona e importar lo que conteste"
+        className="border-t border-[var(--line)] pt-2" alAbrir>
+        <RevisionFuera prueba={prueba} doc={doc} onImportado={() => { recargar(); onCambio(); }} />
+      </Plegable>
+    </div>
+  );
 }
 
 function Empezar({ prueba, onEmpezada }) {
@@ -144,7 +156,11 @@ function Revisar({ prueba, banco, doc, setDoc, onCambio, onRehecha }) {
               <h3 className="text-[19px] text-[var(--bone)]">{t.termino}</h3>
               <span className="text-[12.5px] text-[var(--bone-faint)]">{t.dominio}</span>
               {!doc.a_ciegas && <span className="mono ml-auto text-[10px] text-[var(--bone-dim)]">{nombres[actual.modelo]}</span>}
-              {marcada(actual) && <span className="mono text-[10px] text-[var(--bone-faint)]">ya revisada</span>}
+              {marcada(actual) && (
+                <span className="mono text-[10px] text-[var(--bone-faint)]">
+                  ya revisada{marcada(actual).origen ? ` · importada (${marcada(actual).origen.tipo === "ia" ? "IA" : "persona"}: ${marcada(actual).origen.quien})` : ""}
+                </span>
+              )}
             </header>
             <p className="text-[13.5px] text-[var(--bone-dim)]">«{t.cita}»</p>
 

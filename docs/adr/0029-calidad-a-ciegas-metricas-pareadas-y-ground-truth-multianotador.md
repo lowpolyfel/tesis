@@ -1,7 +1,7 @@
 # 0029. Calidad con criterios binarios a ciegas, métricas pareadas y ground truth por varias personas
 
 - **Fecha:** 2026-10-18
-- **Estado:** Aceptada (rehace la revisión de ADR 0027 y 0028 y completa la calibración de ADR 0026)
+- **Estado:** Aceptada (rehace la revisión de ADR 0027 y 0028 y completa la calibración de ADR 0026). La revisión fuera del sistema, por persona o IA, la agrega ADR 0030.
 
 ## Contexto
 

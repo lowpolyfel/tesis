@@ -36,6 +36,17 @@ Solo en los términos ambiguos: de las lecturas esperadas que registra el banco,
 - **Pasa:** «caja» (supermercado), lecturas «punto de cobro», «dinero o fondo», «empaque»: la salida da «el lugar donde se cobra» y «el dinero de la caja» → se marcan las dos primeras (2 de 3).
 - **No pasa:** Que la salida mencione «cobro» de pasada no cubre «el dinero o fondo de caja» si ninguna intención le da ese sentido. El cotejo es contra la lectura escrita en el banco, no contra palabras sueltas.
 
+### Casos frecuentes
+
+- **Fidelidad.** Si la paráfrasis deja el término (o una forma suya) o copia la cita tal cual, no pasa: no dice qué sentido eligió. Cambiarlo por un sinónimo sí cuenta.
+- **Fidelidad.** No juzga si el sentido es el correcto ni si es el más probable en la cita: solo si la paráfrasis dice lo mismo que la cita con ese sentido.
+- **Delimitación.** Una «o» que junta dos sentidos distintos no pasa («mantenimiento preventivo o correctivo»); una «o» que enumera quién o qué ocupa el mismo papel sí pasa («persona o empresa que surte mercancía»).
+- **Delimitación.** Un significado tan general que pierde lo que distingue al término no pasa («pago realizado por el cliente» para «abono», que es un pago parcial).
+- **Delimitación.** Desarrollar unas siglas no es definir: «CURP: Clave Única de Registro de Población» es circular.
+- **Delimitación.** No cuenta cuántos sentidos dio el modelo: uno solo, bien acotado, pasa.
+- **Intención.** El significado convertido en verbo no pasa («registrar el historial» para «documento que registra el historial»); tampoco una intención que no va con la cita.
+- **Cobertura.** Lo impreciso de un significado se castiga en la delimitación y no otra vez aquí: si el sentido es el de la lectura esperada, se marca.
+
 Teclas: `Enter` guarda y avanza, `Backspace` regresa, `?` abre esta rúbrica.
 
 ## 2. Ambigüedad de un término de entrevista

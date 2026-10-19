@@ -30,9 +30,18 @@ import io
 import json
 import zipfile
 
+from .intercambio import composicion
 from .latex import ESTILO, _csv, _num, preambulo, tex
 from .pruebas_modelos import banco_de, codigo_de, es_ambiguo, etiqueta_modelo
-from .rubrica import CLAVES, COBERTURA, CRITERIOS, MODOS_FALLA, REGLA_AGREGADO, markdown
+from .rubrica import (
+    ACLARACIONES,
+    CLAVES,
+    COBERTURA,
+    CRITERIOS,
+    MODOS_FALLA,
+    REGLA_AGREGADO,
+    markdown,
+)
 
 NOMBRE_CLASE = {"polisemia": "Polisemia", "regionalismo": "Regionalismo", "inequivoco": "Inequívoco"}
 NOMBRE_CRITERIO = {c["clave"]: c["nombre"] for c in CRITERIOS}
@@ -535,6 +544,7 @@ def _datos_respuestas(prueba: dict, revision: dict | None) -> str:
 
 
 def _apendice_rubrica() -> str:
+    nombres = {c["clave"]: c["nombre"] for c in CRITERIOS} | {"cobertura": "Cobertura"}
     partes = ["% Rúbrica de la revisión humana (generada desde backend/app/calibracion/rubrica.py).",
               "\\subsection*{Rúbrica de la revisión de calidad}", tex(REGLA_AGREGADO), "", "\\begin{description}"]
     for c in CRITERIOS:
@@ -542,13 +552,26 @@ def _apendice_rubrica() -> str:
                    f"    \\emph{{Pasa:}} {tex(c['pasa'])} \\emph{{No pasa:}} {tex(c['no_pasa'])}"]
     partes += [f"  \\item[{tex(COBERTURA['nombre'])}] {tex(COBERTURA['oracion'])}",
                f"    \\emph{{Pasa:}} {tex(COBERTURA['pasa'])} \\emph{{No pasa:}} {tex(COBERTURA['no_pasa'])}",
-               "\\end{description}", "\\subsection*{Modos de falla de los falsos negativos}", "\\begin{description}"]
+               "\\end{description}", "\\subsection*{Casos frecuentes}", "\\begin{itemize}",
+               *[f"  \\item \\textbf{{{tex(nombres[c])}.}} {tex(t)}" for c, t in ACLARACIONES],
+               "\\end{itemize}", "\\subsection*{Modos de falla de los falsos negativos}", "\\begin{description}"]
     partes += [f"  \\item[{tex(m['nombre'])}] {tex(m['descripcion'])}" for m in MODOS_FALLA]
     partes += ["\\end{description}", ""]
     return "\n".join(partes)
 
 
 # ---------------------------------------------------------------- paquete
+
+def _origenes(revision: dict | None) -> str:
+    """De dónde salieron las marcas, si no todas se pusieron en la pantalla (ADR 0030)."""
+    c = composicion(revision)
+    partes = [f"{c['pantalla']} en pantalla"] if c["pantalla"] else []
+    if c["persona"]:
+        partes.append(f"{c['persona']} por archivo ({tex(', '.join(c['quienes_persona']))})")
+    if c["ia"]:
+        partes.append(f"{c['ia']} de IA como juez ({tex(', '.join(c['quienes_ia']))})")
+    return f"; marcas: {', '.join(partes)}" if c["persona"] or c["ia"] else ""
+
 
 def _main(prueba: dict, r: dict, revision: dict | None, figuras: list[tuple[str, str]], tablas: list[tuple[str, str]],
           omitidas: list[str]) -> str:
@@ -562,7 +585,7 @@ def _main(prueba: dict, r: dict, revision: dict | None, figuras: list[tuple[str,
          f"Prompt: {tex(prueba['configuracion']['prompt'])}; temperatura {prueba['configuracion']['temperatura']}; "
          f"semilla {prueba['configuracion'].get('semilla')}. uid: \\texttt{{{tex(prueba.get('uid') or '---')}}}. "
          f"Revisión de calidad: {tex((revision or {}).get('revisor') or '---')}"
-         f"{' (a ciegas)' if (revision or {}).get('a_ciegas') else ''}."),
+         f"{' (a ciegas)' if (revision or {}).get('a_ciegas') else ''}{_origenes(revision)}."),
         "",
     ]
     if r["avisos"] or omitidas:
