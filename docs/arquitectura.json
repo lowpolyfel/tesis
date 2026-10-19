@@ -1,0 +1,205 @@
+{
+  "sistema": "Dudamel",
+  "version": "2.5.0",
+  "descripcion": "Sistema multiagente basado en LLM (marco KMoS-SSA) que lleva una entrevista de elicitación en español de México hasta los requisitos de software, pasando por un LEL interactivo con la intención de cada término.",
+  "estilo_arquitectonico": [
+    "Cliente-servidor (SPA React + API REST FastAPI)",
+    "Orquestación multiagente como máquina de estados extendida (LangGraph)",
+    "Humano en el ciclo: una persona experta valida cada fase",
+    "Persistencia documental (MongoDB con respaldo en archivos JSON)"
+  ],
+
+  "capas": [
+    {
+      "nombre": "Presentación",
+      "tecnologia": ["React", "Vite", "React Flow", "SSE"],
+      "carpeta": "frontend/src",
+      "componentes": [
+        { "nombre": "Pantallas de fases", "carpeta": "pages/fases", "funcion": "Entrevista, LEL, mapa, metas y requisitos" },
+        { "nombre": "Escena en vivo", "carpeta": "escena", "funcion": "Anima los mensajes entre agentes mientras se procesa una entrevista" },
+        { "nombre": "Calibración y prueba de modelos", "carpeta": "components/calibracion", "funcion": "Umbral, etiquetado, revisión de calidad, exportar e importar" },
+        { "nombre": "Servicios", "carpeta": "services", "funcion": "Todas las llamadas HTTP y SSE al backend" }
+      ]
+    },
+    {
+      "nombre": "API",
+      "tecnologia": ["FastAPI"],
+      "carpeta": "backend/app/api",
+      "funcion": "Endpoints REST con sesión obligatoria; un archivo por tema en routes/",
+      "grupos_de_endpoints": ["auth", "proyectos", "entrevistas", "lel", "fases", "contexto", "modelos", "preparacion", "calibracion", "pruebas_modelos"]
+    },
+    {
+      "nombre": "Orquestación",
+      "tecnologia": ["LangGraph", "SqliteSaver"],
+      "carpeta": "backend/app/orchestration",
+      "componentes": [
+        { "nombre": "Grafo de la entrevista", "archivo": "grafo_entrevista.py", "funcion": "Máquina de estados de la entrevista al LEL propuesto" },
+        { "nombre": "Cola", "archivo": "cola.py", "funcion": "Un solo trabajador con prioridades: una entrevista a la vez" },
+        { "nombre": "Servicio de entrevistas", "archivo": "servicio_entrevistas.py", "funcion": "Encola, ejecuta con los modelos de la cuenta y retoma lo pendiente al arrancar" },
+        { "nombre": "Dependencias", "archivo": "dependencias.py", "funcion": "Arma agentes, filtros, embeddings y repositorio desde la configuración" }
+      ]
+    },
+    {
+      "nombre": "Agentes",
+      "carpeta": "backend/app/agents",
+      "acceso_a_bd": false,
+      "nota": "Los agentes reciben solo texto en su prompt y devuelven JSON validado; no usan herramientas ni acceden a la base de datos."
+    },
+    {
+      "nombre": "Dominio (fases)",
+      "carpeta": "backend/app/fases",
+      "componentes": [
+        { "nombre": "LEL interactivo", "archivo": "lexico.py" },
+        { "nombre": "Memoria del proyecto", "archivo": "memoria.py", "funcion": "Acuerdos que salen de lo que corrige o confirma la persona" },
+        { "nombre": "Mapa conceptual", "archivo": "mapa.py" },
+        { "nombre": "Metas", "archivo": "metas.py" },
+        { "nombre": "Requisitos", "archivo": "requisitos.py" }
+      ]
+    },
+    {
+      "nombre": "Servicios de apoyo",
+      "componentes": [
+        { "nombre": "Divergencia", "carpeta": "backend/app/divergence", "es_agente": false, "funcion": "Embeddings + similitud coseno mínima entre paráfrasis contra un umbral" },
+        { "nombre": "NLP", "carpeta": "backend/app/nlp", "tecnologia": ["spaCy es_core_news_sm", "PhraseMatcher"], "funcion": "Lemas, entidades, catálogos de regionalismos y vaguedad, filtros deterministas" },
+        { "nombre": "Capa LLM", "carpeta": "backend/app/llm", "funcion": "Cliente por proveedor, modelo por agente y por cuenta, salida estructurada con reintento" },
+        { "nombre": "Calibración", "carpeta": "backend/app/calibracion", "solo_lectura": true, "funcion": "Umbral, ground truth, prueba de modelos, revisión de calidad y paquetes para Overleaf" }
+      ]
+    },
+    {
+      "nombre": "Persistencia",
+      "carpeta": "backend/app/db",
+      "principal": "MongoDB (base 'tesis')",
+      "respaldo": "Archivos JSON en data/resultados/<coleccion>/<id>.json",
+      "checkpoints": "SQLite en data/checkpoints.sqlite"
+    }
+  ],
+
+  "agentes": [
+    { "nombre": "Revisor", "nodo": "leida", "entrada": "Turnos de la entrevista", "salida": "Ficha: participantes, objetivo, problemas, necesidades y reglas, con turnos", "prompt": "revisor_entrevista_v1" },
+    { "nombre": "Extractor", "nodo": "extraida", "entrada": "Turnos de la entrevista", "salida": "Términos del dominio", "prompt": "extractor_entrevista_v1" },
+    { "nombre": "Clasificador", "nodo": ["interpretada", "en_debate"], "entrada": "Términos con sus citas, LEL validado y acuerdos", "salida": "Intención de cada término; varias candidatas si es ambiguo; refinamiento en el debate", "prompt": ["clasificador_intencion_v1", "clasificador_refinamiento_entrevista_v1"] },
+    { "nombre": "Crítico", "nodo": ["en_debate", "arbitrada"], "entrada": "Interpretaciones en divergencia", "salida": "Objeciones (R1 y R2 en código con spaCy, R3 con el LLM) y arbitraje al agotar las rondas", "prompt": ["critico_entrevista_v1", "critico_arbitraje_entrevista_v1"] },
+    { "nombre": "Modelador", "nodo": "modelada", "entrada": "Términos resueltos", "salida": "Entradas del LEL; después, mapa, metas y requisitos", "prompt": ["modelador_lexico_v1", "modelador_mapa_proposito_v1", "modelador_metas_v1", "modelador_requisitos_v1"] }
+  ],
+
+  "grafo_entrevista": {
+    "tecnologia": "LangGraph StateGraph",
+    "archivo": "backend/app/orchestration/grafo_entrevista.py",
+    "tipo": "Máquina de estados extendida",
+    "estado_compartido": {
+      "tipo": "TypedDict (JSON plano)",
+      "campos": ["entrevista_id", "proyecto_id", "estado", "corrida", "contexto", "acuerdos", "lel", "lel_texto", "conocidos", "descartados", "terminos", "ronda", "fallo"]
+    },
+    "nodos": [
+      { "id": "cargada", "responsable": "código", "hace": "Lee la ficha del proyecto, los acuerdos y el LEL vigente" },
+      { "id": "leida", "responsable": "Revisor", "hace": "Arma la ficha de la entrevista" },
+      { "id": "extraida", "responsable": "Extractor + spaCy + filtros", "hace": "Saca los términos y quita los ya conocidos o descartados" },
+      { "id": "interpretada", "responsable": "Clasificador + divergencia", "hace": "Propone intenciones y mide la similitud entre ellas" },
+      { "id": "en_debate", "responsable": "Crítico y Clasificador", "hace": "Una ronda de objeción y refinamiento" },
+      { "id": "arbitrada", "responsable": "Crítico", "hace": "Decide si se agotaron las rondas sin acuerdo" },
+      { "id": "modelada", "responsable": "Modelador", "hace": "Escribe las entradas del LEL como propuestas" },
+      { "id": "error", "responsable": "código", "hace": "Marca la entrevista con error" }
+    ],
+    "aristas": [
+      { "desde": "START", "hacia": "cargada" },
+      { "desde": "cargada", "hacia": ["leida", "error"], "regla": "o_error" },
+      { "desde": "leida", "hacia": ["extraida", "error"], "regla": "o_error" },
+      { "desde": "extraida", "hacia": ["interpretada", "error"], "regla": "o_error" },
+      { "desde": "interpretada", "hacia": ["en_debate", "modelada", "error"], "regla": "tras_interpretada" },
+      { "desde": "en_debate", "hacia": ["en_debate", "arbitrada", "modelada", "error"], "regla": "tras_ronda" },
+      { "desde": "arbitrada", "hacia": ["modelada", "error"], "regla": "o_error" },
+      { "desde": "modelada", "hacia": ["END", "error"], "regla": "o_error" },
+      { "desde": "error", "hacia": "END" }
+    ],
+    "reglas_de_ruteo": {
+      "decide": "código, no el LLM",
+      "o_error": "Si hay fallo en el estado → error; si no → el siguiente nodo",
+      "tras_interpretada": "Si algún término tiene similitud < umbral → en_debate; si no → modelada",
+      "tras_ronda": "Si ya no hay divergencia → modelada; si ronda < max_debate_rounds → en_debate; si no → arbitrada"
+    },
+    "parametros": { "umbral_similitud": 0.75, "max_rondas_debate": 2, "temperatura": 0.0, "semilla": 42 },
+    "manejo_de_errores": "Decorador @nodo: revisa cancelación, registra la falla en la bitácora y escribe 'fallo' en el estado sin detener el proceso",
+    "persistencia_del_avance": { "checkpointer": "SqliteSaver", "thread_id": "entrevista:<id>#<corrida>", "efecto": "Si el servidor se cae, retoma desde el último nodo terminado" }
+  },
+
+  "divergencia": {
+    "carpeta": "backend/app/divergence",
+    "modelo_embeddings": "nomic-embed-text (Ollama)",
+    "medida": "Similitud coseno mínima entre las paráfrasis de las intenciones",
+    "decision": "similitud >= umbral → aceptado directo; si no → debate",
+    "es_agente": false,
+    "usa_rag": false
+  },
+
+  "capa_llm": {
+    "carpeta": "backend/app/llm",
+    "proveedores": [
+      { "id": "ollama", "ubicacion": "local (localhost:11434)", "cliente": "langchain-ollama (ChatOllama, OllamaEmbeddings)" },
+      { "id": "google", "ubicacion": "nube", "cliente": "HTTP directo (formato compatible con OpenAI)" },
+      { "id": "openai", "ubicacion": "nube", "cliente": "HTTP directo" },
+      { "id": "anthropic", "ubicacion": "nube", "cliente": "HTTP directo" }
+    ],
+    "seleccion_de_modelo": {
+      "por_omision": ".env del servidor (EXTRACTOR_MODEL, CLASIFICADOR_MODEL, CRITICO_PROVIDER, CRITICO_MODEL, MODELADOR_MODEL, REVISOR_MODEL)",
+      "por_cuenta": "Colección perfiles_llm: proveedor y modelo por agente",
+      "claves_api": "Cifradas con Fernet; nunca se devuelven"
+    },
+    "salida_estructurada": "Esquema JSON en el prompt, validación con Pydantic, un reintento con el error, FalloEstructurado si vuelve a fallar",
+    "prompts": "Archivos versionados en backend/app/prompts/<agente>_v<N>.txt"
+  },
+
+  "flujo_por_fases": [
+    { "orden": 1, "fase": "entrevista", "produce": "Turnos y ficha", "lo_genera": "Grafo (Revisor)", "valida": "—" },
+    { "orden": 2, "fase": "lexico", "produce": "LEL con la intención de cada término", "lo_genera": "Grafo completo", "valida": "Persona experta, término por término" },
+    { "orden": 3, "fase": "mapa", "produce": "Mapa conceptual con propósito", "lo_genera": "Modelador", "valida": "Persona experta" },
+    { "orden": 4, "fase": "metas", "produce": "Metas de la organización, estratégicas y específicas", "lo_genera": "Modelador", "valida": "Persona experta" },
+    { "orden": 5, "fase": "requisitos", "produce": "Requisitos funcionales y no funcionales rastreables", "lo_genera": "Modelador", "valida": "Persona experta" }
+  ],
+  "regla_de_avance": "Cada fase se abre cuando la anterior quedó validada; si cambia lo validado atrás, la huella_origen deja de coincidir y la fase se marca como desactualizada.",
+
+  "persistencia": {
+    "colecciones": [
+      { "nombre": "proyectos", "id": "P01", "contenido": "Proyecto de una cuenta" },
+      { "nombre": "entrevistas", "id": "E01", "contenido": "Turnos, hablantes, ficha, estado, resumen" },
+      { "nombre": "bitacoras", "id": "E01", "contenido": "Mensajes entre agentes y transiciones de estado" },
+      { "nombre": "lexico", "id": "S01", "contenido": "Una entrada del LEL con citas, ambigüedad, estado e historial" },
+      { "nombre": "memoria", "id": "A01", "contenido": "Acuerdo del proyecto: significa / no significa / descartado" },
+      { "nombre": "fase_mapa", "id": "P01", "contenido": "Mapa conceptual del proyecto" },
+      { "nombre": "fase_metas", "id": "P01", "contenido": "Metas del proyecto" },
+      { "nombre": "fase_requisitos", "id": "P01", "contenido": "Requisitos del proyecto" },
+      { "nombre": "perfiles_llm", "id": "usuario", "contenido": "Modelo por agente y claves cifradas" },
+      { "nombre": "usuarios", "id": "usuario", "contenido": "Cuentas" },
+      { "nombre": "pruebas_modelos", "id": "P01", "contenido": "Pruebas de modelos con el banco de términos" },
+      { "nombre": "revisiones_calidad", "id": "P01", "contenido": "Revisión de calidad a ciegas, con el origen de cada marca" },
+      { "nombre": "etiquetas_anotadores", "id": "A01", "contenido": "Ground truth de las entrevistas por persona" }
+    ]
+  },
+
+  "servicios_externos": [
+    { "nombre": "Ollama", "uso": "Modelos locales y embeddings" },
+    { "nombre": "Google Gemini / OpenAI / Anthropic", "uso": "Modelos en la nube, opcionales por cuenta" },
+    { "nombre": "MongoDB", "uso": "Persistencia principal" },
+    { "nombre": "SMTP", "uso": "Código de verificación de cuentas" }
+  ],
+
+  "flujo_de_datos": [
+    "1. La persona sube la entrevista (texto, .txt o PDF) desde el frontend.",
+    "2. La API la parte en turnos, la guarda en 'entrevistas' y la pone en la cola.",
+    "3. El trabajador de la cola fija los modelos de la cuenta y ejecuta el grafo con su thread_id.",
+    "4. Cada nodo lee de la BD lo que necesita, lo pasa como texto al agente, valida su JSON y escribe el resultado.",
+    "5. Cada mensaje entre agentes queda en 'bitacoras' y se transmite al frontend por SSE.",
+    "6. El nodo 'modelada' deja las entradas del LEL como propuestas en 'lexico'.",
+    "7. La persona valida o corrige el LEL; lo que decide se guarda como acuerdo en 'memoria'.",
+    "8. El Modelador genera mapa, metas y requisitos; la persona valida cada fase.",
+    "9. La especificación de requisitos se descarga en Markdown."
+  ],
+
+  "principios_de_diseno": [
+    "El LLM produce el contenido; el código decide el flujo",
+    "Los agentes no acceden a la base de datos",
+    "Toda salida del LLM se valida antes de guardarse",
+    "Trazabilidad completa: modelo y versión de prompt en cada mensaje",
+    "Reproducibilidad: temperatura 0 y semilla fija",
+    "Las decisiones de diseño se documentan en docs/adr/"
+  ]
+}
