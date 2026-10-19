@@ -242,10 +242,13 @@ def test_los_paquetes_compilan(tmp_path, motor):
                  "M2": {i: (_r(1) if k % 5 else {"ok": False, "ms": 1, "intentos": 2, "error": "100% → ✓"})
                         for k, i in enumerate(items)}}, items)
     doc = cal.nueva_revision(p, revisor="T", a_ciegas=True, semilla=1)
-    for o in doc["orden"]:
+    for k, o in enumerate(doc["orden"]):
         t = terminos[o["item"]]
-        cal.marcar(doc, modelo=o["modelo"], item=o["item"], criterios={"fidelidad": True, "delimitacion": False,
-                   "intencion": True}, cobertura=[0], n_lecturas=len(t["lecturas"]), ambiguo=pm.es_ambiguo(t), nota=None)
+        marca = cal.marcar(doc, modelo=o["modelo"], item=o["item"], criterios={"fidelidad": True, "delimitacion": False,
+                           "intencion": True}, cobertura=[0], n_lecturas=len(t["lecturas"]), ambiguo=pm.es_ambiguo(t),
+                           nota=None)
+        if k % 2:  # la mitad importada de un archivo que contestó una IA (ADR 0030), con un nombre que hay que escapar
+            marca["origen"] = {"tipo": "ia", "quien": "google · gemini_3.5 & 100%", "importacion": 1}
     p2 = {**p, "prueba_id": "P02", "corrida": 2, "serie": "P01"}
     from app.calibracion.estabilidad import estabilidad
     _compila(paquete_modelos(p, pm.resumen(p, None, doc, None), None, doc, estabilidad([p, p2])), tmp_path / "m", motor)

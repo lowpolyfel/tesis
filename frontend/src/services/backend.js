@@ -260,6 +260,12 @@ export const empezarRevisionCalidad = (pruebaId, { revisor, a_ciegas }) =>
 /** { modelo, item, fidelidad, delimitacion, intencion, cobertura: [índices], nota } → { marca, revisadas, total } */
 export const marcarCalidad = (pruebaId, marca) => put(`/pruebas-modelos/${id(pruebaId)}/revision-calidad/marca`, marca);
 export const rehacerRevisionCalidad = (pruebaId) => borrar(`/pruebas-modelos/${id(pruebaId)}/revision-calidad`);
+/* Revisión fuera del sistema (ADR 0030): un archivo a ciegas que contesta una persona o una IA */
+export const urlExportarRevision = (pruebaId, { formato = "md", pendientes = false } = {}) =>
+  `${BASE_URL}/pruebas-modelos/${id(pruebaId)}/revision-calidad/exportar?formato=${formato}${pendientes ? "&pendientes=true" : ""}`;
+/** { contenido, tipo: "persona"|"ia", quien, sobrescribir } →
+ *  { aplicadas, conservadas, sin_contestar, errores: [{id, motivo}], modos_aplicados, modos_conservados, acuerdo, revisadas, total } */
+export const importarRevision = (pruebaId, cuerpo) => post(`/pruebas-modelos/${id(pruebaId)}/revision-calidad/importar`, cuerpo);
 /** El modo de falla de un falso negativo (null lo quita) */
 export const asignarModoFalla = (pruebaId, { modelo, item, modo, nota }) =>
   put(`/pruebas-modelos/${id(pruebaId)}/modos`, { modelo, item, modo, nota: nota || null });

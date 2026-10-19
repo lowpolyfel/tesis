@@ -11,6 +11,9 @@
 - `GET /pruebas-modelos/series/{serie}`: la estabilidad entre las corridas de una serie.
 - Revisión de calidad: `GET|POST|DELETE /pruebas-modelos/{id}/revision-calidad` y
   `PUT|DELETE /pruebas-modelos/{id}/revision-calidad/marca`.
+- Revisión fuera del sistema (ADR 0030): `GET /pruebas-modelos/{id}/revision-calidad/exportar`
+  (Markdown o JSON a ciegas, para que lo conteste una persona o una IA) y
+  `POST /pruebas-modelos/{id}/revision-calidad/importar` (las respuestas, con su origen).
 - `PUT /pruebas-modelos/{id}/modos`: el modo de falla de un falso negativo.
 - `GET /pruebas-modelos/{id}/overleaf.zip`: el paquete para LaTeX.
 
@@ -20,6 +23,7 @@ con su criterio viejo. Cada prueba es de la cuenta que la creó.
 from __future__ import annotations
 
 import copy
+import json
 import threading
 import uuid
 from typing import Annotated
@@ -29,6 +33,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.calibracion import calidad as cal
+from app.calibracion import intercambio
 from app.calibracion.estabilidad import estabilidad
 from app.calibracion.latex_modelos import paquete_overleaf
 from app.calibracion.pruebas_modelos import (
@@ -93,6 +98,14 @@ class MarcaCalidad(BaseModel):
     intencion: bool
     cobertura: list[int] = Field(default_factory=list, max_length=10, description="índices de las lecturas esperadas cubiertas")
     nota: str | None = Field(None, max_length=500)
+
+
+class Importacion(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    contenido: str = Field(min_length=2, max_length=3_000_000, description="el archivo contestado (Markdown o JSON)")
+    tipo: str = Field(pattern=r"^(persona|ia)$", description="quién lo contestó: una persona o una IA")
+    quien: str = Field(min_length=1, max_length=120, description="nombre de la persona, o proveedor y modelo de la IA")
+    sobrescribir: bool = Field(False, description="pisar lo ya marcado; por omisión se conserva y se mide el acuerdo")
 
 
 class Modo(BaseModel):
@@ -340,6 +353,57 @@ def rehacer_revision(p: PruebaDep, srv: ServicioDep) -> Response:
     with _CANDADO:
         srv.repo.borrar_doc(cal.COLECCION_CALIDAD, p["prueba_id"])
     return Response(status_code=204)
+
+
+def _terminos(p: dict) -> dict[str, dict]:
+    return {t["id"]: t for t in banco_de(p)["terminos"]}
+
+
+@router.get("/pruebas-modelos/{prueba_id}/revision-calidad/exportar")
+def exportar_revision(p: PruebaDep, srv: ServicioDep, formato: str = "md", pendientes: bool = False) -> Response:
+    """El archivo para revisar fuera del sistema, a ciegas: rúbrica, salidas con id opaco
+    (S015 = salida 15 del orden de la revisión), falsos negativos y la plantilla de respuestas.
+    No crea la revisión: si no hay, el orden sale de una semilla nueva que viaja en el archivo."""
+    if formato not in ("md", "json"):
+        raise HTTPException(422, "formato debe ser md o json")
+    if p["estado"] == "en_proceso":
+        raise HTTPException(409, "La prueba sigue corriendo: espera a que termine para exportar la revisión.")
+    with _CANDADO:
+        doc = _revision_al_dia(srv, p)
+    contenido = intercambio.exportar(p, doc, srv.repo.obtener_doc(cal.COLECCION_MODOS, p["prueba_id"]), _terminos(p),
+                                     es_ambiguo, codigo=codigo_de(p), solo_pendientes=pendientes)
+    nombre = f"revision-{codigo_de(p)}{'-pendientes' if pendientes else ''}.{formato}"
+    cuerpo = (intercambio.markdown(contenido) if formato == "md"
+              else json.dumps(contenido, ensure_ascii=False, indent=1))
+    return Response(cuerpo, media_type="text/markdown; charset=utf-8" if formato == "md" else "application/json",
+                    headers={"Content-Disposition": f'attachment; filename="{nombre}"'})
+
+
+@router.post("/pruebas-modelos/{prueba_id}/revision-calidad/importar")
+def importar_revision(entrada: Importacion, p: PruebaDep, srv: ServicioDep) -> dict:
+    """Aplica un archivo contestado. Cada marca guarda su origen (persona o IA, y quién); por
+    omisión no pisa lo ya marcado y mide el acuerdo con eso."""
+    if p["estado"] == "en_proceso":
+        raise HTTPException(409, "La prueba sigue corriendo: espera a que termine para importar.")
+    try:
+        datos = intercambio.leer(entrada.contenido)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+    with _CANDADO:
+        doc = _revision_al_dia(srv, p)
+        modos = srv.repo.obtener_doc(cal.COLECCION_MODOS, p["prueba_id"])
+        try:
+            doc, modos, informe = intercambio.importar(p, doc, modos, _terminos(p), es_ambiguo, datos,
+                                                       codigo=codigo_de(p), tipo=entrada.tipo, quien=entrada.quien,
+                                                       sobrescribir=entrada.sobrescribir)
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from e
+        if doc is not None:
+            srv.repo.guardar_doc(cal.COLECCION_CALIDAD, p["prueba_id"], doc)
+        if modos is not None:
+            srv.repo.guardar_doc(cal.COLECCION_MODOS, p["prueba_id"], modos)
+    return informe | {"revisadas": sum(len(v) for v in (doc or {}).get("marcas", {}).values()),
+                      "total": len((doc or {}).get("orden", []))}
 
 
 @router.put("/pruebas-modelos/{prueba_id}/modos")

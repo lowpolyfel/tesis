@@ -1,5 +1,33 @@
 # Cambios
 
+## 2.5.0 — 2026-10-19
+
+Revisar la calidad sin hacerlo salida por salida en la pantalla (ADR 0030). No cambia los agentes,
+el grafo de la entrevista, las etapas del pipeline ni las métricas.
+
+- **Exportar e importar la revisión.** En la pestaña «Revisión de calidad», «Revisar fuera del
+  sistema» descarga un archivo a ciegas (`.md` para pegarlo en el chat de una IA o dárselo a una
+  persona, o `.json`). Trae la rúbrica, cada salida con un id opaco (`S015` = la salida 15 de la
+  pantalla), los falsos negativos y una plantilla JSON. Lo contestado se importa pegándolo o
+  eligiendo el archivo, aunque la IA lo devuelva con texto alrededor.
+- **Cada marca dice de dónde vino.** Las marcas importadas guardan si las contestó una persona o
+  una IA, y quién. El resumen y el paquete para Overleaf avisan cuántas puso una IA y lo llaman una
+  evaluación con un LLM como juez.
+- **No pisa lo que ya marcaste y mide el acuerdo.** Por omisión conserva las marcas de la pantalla y
+  calcula la kappa por criterio entre esas marcas y lo importado, para saber si la IA aplica la
+  rúbrica como tú. Con «pisar» las reemplaza.
+- **Archivos que no corresponden se rechazan.** Hay que exportar de nuevo si el archivo es de otra
+  prueba, si su huella no coincide con el orden de la revisión o si la prueba cambió.
+- **Casos frecuentes en la rúbrica.** Es lo que se decidió en la primera revisión real:
+  - una paráfrasis que deja el término no es fiel;
+  - una «o» que junta dos sentidos no delimita, pero una que enumera sí;
+  - unas siglas desarrolladas son circulares;
+  - un significado demasiado general no delimita;
+  - lo impreciso no se castiga dos veces.
+
+  Van en la pantalla, en `docs/rubrica-revision.md`, en el apéndice del paquete y en el archivo
+  exportado. El criterio sigue siendo `calidad-v1`.
+
 ## 2.4.0 — 2026-10-18
 
 El aparato de evaluación, rehecho para documentar (ADR 0029). No cambia los agentes, el grafo de la
