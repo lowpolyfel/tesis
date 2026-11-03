@@ -1,10 +1,13 @@
 /*
  * Transporte con el backend (FastAPI). Todas las llamadas pasan por aquí.
- * VITE_API_URL permite apuntar a otro servidor; por omisión, localhost:8000.
+ * VITE_API_URL permite apuntar a otro servidor; por omisión, localhost:8000. Con
+ * `npm run publico` (modo «publico») la base es «/api» en el mismo origen: Vite reenvía
+ * /api al backend, así una sola URL pública (túnel) sirve la interfaz y la API.
  * La sesión viaja en una cookie HttpOnly del backend (credentials: "include"): un
  * 401 fuera de /auth avisa con el evento SIN_SESION y la app vuelve a «Entrar».
  */
-export const BASE_URL = (import.meta.env.VITE_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
+const BASE_OMISION = import.meta.env.MODE === "publico" ? "/api" : "http://localhost:8000";
+export const BASE_URL = (import.meta.env.VITE_API_URL ?? BASE_OMISION).replace(/\/$/, "");
 export const SIN_SESION = "dudamel:sin-sesion";
 
 /* El backend responde errores como { detail }; se convierten en Error con ese texto */
@@ -26,7 +29,7 @@ async function leer(r) {
 }
 
 async function pedir(metodo, ruta, { cuerpo, form, params } = {}) {
-  const url = new URL(BASE_URL + ruta);
+  const url = new URL(BASE_URL + ruta, window.location.origin); // BASE_URL puede ser relativa (/api)
   for (const [k, v] of Object.entries(params ?? {})) if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, v);
   const opciones = { method: metodo, headers: {}, credentials: "include" };
   if (form) opciones.body = form;
