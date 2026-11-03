@@ -1,87 +1,79 @@
-# Abrir Dudamel a un grupo de prueba (gratis, en Oracle Cloud)
+# Publicar Dudamel gratis (Render + Google AI Studio)
 
-Dudamel corre en una VM gratuita de Oracle Cloud (Always Free, ARM): backend, Ollama
-para los embeddings y la interfaz, igual que en tu PC. La VM no se apaga, tiene disco
-persistente (el SQLite de checkpoints y la clave de cifrado sobreviven reinicios) y Tailscale
-Funnel le da una URL fija con HTTPS sin abrir puertos.
+Un solo contenedor en el plan gratuito de Render, sin tarjeta y sin Ollama:
 
-La interfaz y la API salen por el **mismo origen**: el navegador llama a `/api/...` y Vite
-lo reenvía a uvicorn en `127.0.0.1:8000`. La cookie de sesión funciona sin tocar CORS y
-los eventos en vivo (SSE) pasan.
+- **Agentes y embeddings** por la API de Google AI Studio (`LLM_PROVEEDOR=google`,
+  `EMBEDDING_PROVEEDOR=google`). Una cuenta que ponga su propia clave en Configuración usa
+  la suya.
+- **Interfaz y API en el mismo origen** (`app.api.publico`): la interfaz compilada en `/` y
+  la API en `/api`. La cookie de sesión funciona sin tocar CORS.
+- **Datos y grafos pausados en MongoDB Atlas** (`CHECKPOINTS=mongo`): Render no tiene disco
+  persistente, así que nada importante vive en el contenedor.
+- **Correo por Brevo en el puerto 2525**: Render bloquea 25, 465 y 587.
 
-## 1. Crear la VM (≈20 min)
+Lo que hay que saber del plan gratuito: 512 MB de RAM y 0.1 de CPU (Dudamel usa unos
+260 MB en reposo); se duerme a los 15 minutos sin visitas y tarda alrededor de un minuto en
+despertar (la primera persona ve una pantalla de carga); 750 horas al mes.
 
-1. Crea la cuenta en <https://signup.oraclecloud.com>. Pide tarjeta solo para verificar
-   (no cobra mientras uses recursos Always Free). La **región de inicio** no se puede
-   cambiar después: elige Querétaro o Monterrey.
-2. Compute → Instances → Create instance:
-   - Image: **Canonical Ubuntu 24.04** (aarch64).
-   - Shape: **Ampere → VM.Standard.A1.Flex**, 2 OCPU y 12 GB (todo el cupo gratuito).
-   - Boot volume: 50 GB está bien.
-   - Sube o descarga la llave SSH.
-3. Si sale «Out of capacity for shape VM.Standard.A1.Flex», prueba otro *availability
-   domain* o vuelve a intentar en unas horas; es común en la cuenta gratuita.
-4. Entra: `ssh -i tu_llave ubuntu@<ip-publica>`.
+## 1. Cuentas (todas gratis, sin tarjeta)
 
-No hace falta abrir puertos en la *security list*: Tailscale sale hacia fuera.
+1. **Google AI Studio** → <https://aistudio.google.com/apikey> → *Create API key*. Esa es
+   `LLM_API_KEY`.
+2. **MongoDB Atlas** (si no tienes ya el cluster): un cluster M0. En *Network Access* agrega
+   `0.0.0.0/0` (Render no tiene IP fija). Copia la cadena `mongodb+srv://…` con la
+   contraseña codificada para URL. Esa es `MONGO_URI`.
+3. **Brevo** → <https://www.brevo.com>:
+   - *Senders & IP → Senders*: agrega tu correo como remitente y confírmalo con el enlace que
+     te llega. Ese es `SMTP_REMITENTE` (p. ej. `Dudamel <tu-correo@gmail.com>`).
+   - *SMTP & API → SMTP*: copia el **login** (`SMTP_USUARIO`) y genera una **SMTP key**
+     (`SMTP_CONTRASENA`; no es la API key).
+   - Plan gratuito: 300 correos al día. Como el remitente es un Gmail sin dominio propio,
+     avisa a los testers que revisen spam.
+4. **Render** → <https://render.com>, entra con GitHub.
 
-## 2. Instalar (≈15 min, un comando)
+## 2. Desplegar
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/lowpolyfel/tesis/publicar/scripts/servidor/instalar.sh -o instalar.sh
-bash instalar.sh
-```
+En Render: **New → Blueprint** → elige el repo `lowpolyfel/tesis`. Render lee `render.yaml`
+(rama `publicar`) y te pide los valores secretos:
 
-Instala Python 3.12, Node 22, Ollama (`nomic-embed-text` y `qwen2.5:3b` como respaldo),
-el backend y la interfaz, y los deja como servicios que arrancan solos
-(`dudamel-backend`, `dudamel-web`). Crea `~/tesis/.env` con una `CLAVE_CIFRADO` nueva y
-`SESION_COOKIE_SEGURA=true`.
+| Variable | Valor |
+|---|---|
+| `LLM_API_KEY` | la clave de AI Studio |
+| `MONGO_URI` | la cadena de Atlas |
+| `CLAVE_CIFRADO` | genera una y **no la cambies** después: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
+| `SMTP_USUARIO`, `SMTP_CONTRASENA`, `SMTP_REMITENTE` | los de Brevo |
 
-## 3. Completar el .env
+La primera compilación tarda unos minutos. La URL queda como `https://dudamel.onrender.com`
+(o con un sufijo si el nombre está tomado). Cada `git push` a `publicar` vuelve a desplegar.
 
-```bash
-nano ~/tesis/.env
-sudo systemctl restart dudamel-backend
-```
+## 3. Comprobar
 
-- **`MONGO_URI`**: tu cluster de Atlas (M0 gratis). En Atlas → Network Access agrega la IP
-  pública de la VM. Con Atlas, `MONGO_TIMEOUT_MS=10000`. Sin Mongo, el backend usa el
-  respaldo JSON en `data/resultados/`, que también persiste en el disco de la VM.
-- **`SMTP_*`** (obligatorio para gente de fuera): sin correo, el código de registro solo
-  sale en `journalctl` y nadie podría crear cuenta. Gmail: `smtp.gmail.com`, 587,
-  `starttls` y una contraseña de aplicación. Prueba:
-  `cd ~/tesis && backend/.venv/bin/python scripts/probar_correo.py otra@correo.com`.
+1. Abre la URL, crea una cuenta y confirma el código que llega por correo.
+2. En la escena de preparación, los modelos deben salir como Google y disponibles.
+3. Si algo falla: Render → el servicio → *Logs*.
 
-## 4. Publicar
+### El modelo
 
-```bash
-sudo tailscale up                 # abre el enlace que imprime e inicia sesión
-sudo tailscale funnel --bg 4173   # la primera vez te da un enlace para activar Funnel
-tailscale funnel status           # la URL: https://<vm>.<tailnet>.ts.net
-```
+`LLM_MODELO` pone el mismo modelo a todos los agentes. Google retira modelos cada pocos
+meses: si un análisis falla con «model not found», en la app ve a **Configuración**, pon la
+clave de Google y usa *Listar modelos* para ver los vigentes; luego cambia `LLM_MODELO` en
+Render (*Environment*) y guarda. Lo mismo con `EMBEDDING_MODEL` (`gemini-embedding-001`).
 
-Esa URL es la que compartes. Funnel queda configurado y vuelve solo si la VM se reinicia.
+## Límites que importan
 
-## Para los testers
+- **Cuota de Gemini.** Con la clave del servidor, todos los testers comparten la cuota
+  gratuita de esa clave (peticiones por minuto y por día). Si se acaba, que cada quien ponga
+  su propia clave de AI Studio en Configuración.
+- **Una cola, un trabajador.** Los análisis van de uno en uno; con varios testers a la vez,
+  esperan turno.
+- **El umbral de divergencia** (`SIMILARITY_THRESHOLD=0.75`) se calibró con
+  `nomic-embed-text`. Con `gemini-embedding-001` las similitudes cambian: los resultados de
+  esta prueba no son comparables con la calibración original. Si los vas a reportar,
+  recalibra con el módulo de calibración y ajusta el umbral.
 
-La VM tiene 2 núcleos sin GPU: los modelos locales sirven de respaldo pero son lentos, y la
-cola tiene un solo trabajador. Que cada persona, al crear su cuenta, vaya a
-**Configuración** y ponga una clave gratuita de Google AI Studio (Gemini) o Groq para sus
-agentes. Los embeddings siguen en Ollama de la VM y son ligeros.
+## Correrlo en otro lado
 
-## Mantenimiento
-
-- Actualizar tras un `git push`: `bash ~/tesis/scripts/servidor/actualizar.sh`
-- Registros: `journalctl -u dudamel-backend -f`
-- Oracle puede reclamar una VM Always Free si pasa 7 días casi sin uso (CPU, red y memoria
-  por debajo del 20 %). Durante la prueba no pasa; si quieres dejarla meses, cambia la
-  cuenta a *Pay As You Go* (sigue sin costo dentro del cupo gratuito).
-- Mientras Funnel está activo, cualquiera con la URL llega al backend (incluidas `/docs` y
-  `/sandbox`); los proyectos sí quedan protegidos por cuenta. Para cerrarlo:
-  `sudo tailscale funnel reset`.
-
-## Correrlo desde tu PC (alternativa)
-
-Con los mismos cambios también funciona en local: `uvicorn` en 8000, `npm run publico` en
-`frontend/` y `tailscale funnel 4173`. No uses los Quick Tunnels de Cloudflare
-(`trycloudflare.com`): no soportan SSE.
+- Local con el mismo contenedor: `docker build -t dudamel . && docker run -p 10000:10000 --env-file .env dudamel`
+- Sin Docker: `npm run build -- --mode publico` en `frontend/` y
+  `uvicorn app.api.publico:app --port 10000` en `backend/`.
+- En una VM con disco (Oracle, etc.): `scripts/servidor/instalar.sh`.

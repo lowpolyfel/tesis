@@ -35,11 +35,12 @@ _PERFIL: ContextVar[dict | None] = ContextVar("perfil_llm", default=None)
 def por_omision(s) -> dict[str, dict]:
     """Lo que usa cada agente según el .env (el perfil de quien no eligió nada)."""
     critico = {"proveedor": s.critico_provider, "modelo": s.critico_model}
-    return {"extractor": {"proveedor": "ollama", "modelo": s.extractor_model},
-            "clasificador": {"proveedor": "ollama", "modelo": s.clasificador_model},
+    p = s.llm_proveedor
+    return {"extractor": {"proveedor": p, "modelo": s.extractor_model},
+            "clasificador": {"proveedor": p, "modelo": s.clasificador_model},
             "critico": critico,
-            "modelador": {"proveedor": "ollama", "modelo": s.modelador_model},
-            "revisor": {"proveedor": "ollama", "modelo": s.revisor_model}}
+            "modelador": {"proveedor": p, "modelo": s.modelador_model},
+            "revisor": {"proveedor": p, "modelo": s.revisor_model}}
 
 
 class Cifrado:
@@ -150,7 +151,7 @@ class PerfilesLLM:
             return {"proveedor": e["proveedor"], "modelo": e["modelo"], "base_url": e.get("base_url"),
                     "tiene_clave": bool(e.get("api_key")), "propio": True}
         base = por_omision(self.s)[rol]
-        return {**base, "base_url": None, "tiene_clave": rol == "critico" and bool(self.s.critico_api_key),
+        return {**base, "base_url": None, "tiene_clave": bool(self.s.clave_servidor(base["proveedor"], rol)),
                 "propio": False}
 
     def elecciones(self, usuario_id: str | None) -> dict[str, dict]:

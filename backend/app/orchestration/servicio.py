@@ -58,6 +58,21 @@ def checkpointer_sqlite(ruta: Path):
     return SqliteSaver(sqlite3.connect(str(ruta), check_same_thread=False))
 
 
+def checkpointer_mongo(uri: str, db: str, timeout_ms: int):
+    """Checkpoints en MongoDB (colecciones `checkpoints` y `checkpoint_writes` de MONGO_DB):
+    para servidores sin disco persistente, donde el SQLite se perdería en cada reinicio."""
+    from langgraph.checkpoint.mongodb import MongoDBSaver
+    from pymongo import MongoClient
+
+    return MongoDBSaver(MongoClient(uri, serverSelectionTimeoutMS=max(timeout_ms, 10000)), db_name=db)
+
+
+def crear_checkpointer(s):
+    if s.checkpoints == "mongo":
+        return checkpointer_mongo(s.mongo_uri, s.mongo_db, s.mongo_timeout_ms)
+    return checkpointer_sqlite(s.ruta(s.checkpoint_path))
+
+
 def _pausa(snapshot) -> str | None:
     """Id del checkpoint de un snapshot del grafo (identifica una pausa concreta)."""
     return (snapshot.config or {}).get("configurable", {}).get("checkpoint_id")
@@ -78,7 +93,7 @@ class Servicio:
         self.deps = deps
         self.repo = deps.repo
         if checkpointer is None:
-            checkpointer = checkpointer_sqlite(deps.settings.ruta(deps.settings.checkpoint_path))
+            checkpointer = crear_checkpointer(deps.settings)
         self.checkpointer = checkpointer
         self._cancelados: set[str] = set()  # se detienen antes del nodo siguiente y se borran
         self.grafo = construir_grafo(deps, checkpointer, cancelado=lambda req_id: req_id in self._cancelados)

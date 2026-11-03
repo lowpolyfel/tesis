@@ -32,19 +32,21 @@ def _usos(s: Settings, elecciones: dict | None = None) -> list[dict]:
     """Un renglón por modelo distinto que usa el grafo, con los roles que lo usan y si tiene clave.
     `elecciones`: {rol: {proveedor, modelo, tiene_clave, propio}} de la cuenta (ADR 0021);
     sin ellas, lo del .env."""
-    base = {"extractor": ("ollama", s.extractor_model), "clasificador": ("ollama", s.clasificador_model),
-            "critico": (s.critico_provider, s.critico_model), "modelador": ("ollama", s.modelador_model)}
+    p = s.llm_proveedor
+    base = {"extractor": (p, s.extractor_model), "clasificador": (p, s.clasificador_model),
+            "critico": (s.critico_provider, s.critico_model), "modelador": (p, s.modelador_model)}
     modelos: dict[tuple, dict] = {}
     for rol, (proveedor, modelo) in base.items():
         e = (elecciones or {}).get(rol) or {"proveedor": proveedor, "modelo": modelo,
-                                            "tiene_clave": rol == "critico" and bool(s.critico_api_key), "propio": False}
+                                            "tiene_clave": bool(s.clave_servidor(proveedor, rol)), "propio": False}
         m = modelos.setdefault((e["proveedor"], e["modelo"], "generacion"), {
             "modelo": e["modelo"], "proveedor": e["proveedor"], "tipo": "generacion", "roles": [],
             "tiene_clave": e.get("tiene_clave", False), "propio": e.get("propio", False)})
         m["roles"].append(rol)
-    m = modelos.setdefault(("ollama", s.embedding_model, "embeddings"), {
-        "modelo": s.embedding_model, "proveedor": "ollama", "tipo": "embeddings", "roles": [],
-        "tiene_clave": False, "propio": False})
+    pe = s.embedding_proveedor
+    m = modelos.setdefault((pe, s.embedding_model, "embeddings"), {
+        "modelo": s.embedding_model, "proveedor": pe, "tipo": "embeddings", "roles": [],
+        "tiene_clave": bool(s.clave_servidor(pe)), "propio": False})
     m["roles"].append("embeddings")
     return list(modelos.values())
 
@@ -107,7 +109,8 @@ def estado_modelos(s: Settings, cliente: httpx.Client, elecciones: dict | None =
             m["disponible"] = bool(m["tiene_clave"]) or bool(p and not p.pide_clave)
             m["cargado"] = m["disponible"]
             m["error"] = (None if m["disponible"] else f"Falta la clave de {p.nombre if p else m['proveedor']}: "
-                          "agrégala en Configuración." if m["propio"] else "Falta CRITICO_API_KEY en el .env.")
+                          "agrégala en Configuración." if m["propio"] else
+                          "Falta la clave del servidor (LLM_API_KEY o CRITICO_API_KEY) en el .env.")
     for m in modelos:
         m.pop("tiene_clave"), m.pop("propio")
     return {"ollama": ollama, "modelos": modelos}

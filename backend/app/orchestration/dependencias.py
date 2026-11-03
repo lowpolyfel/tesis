@@ -14,7 +14,7 @@ from app.agents.modelador import Modelador
 from app.agents.revisor import Revisor
 from app.config import Settings, get_settings
 from app.db.repositorio import Repositorio, crear_repositorio
-from app.divergence import EmbeddingsOllama, ProveedorEmbeddings
+from app.divergence import ProveedorEmbeddings, crear_embeddings
 from app.llm import ClienteLLM, crear_cliente
 from app.llm.perfiles import ClienteDinamico
 from app.nlp import Analizador, Catalogos, Filtros
@@ -87,12 +87,12 @@ def crear_dependencias(settings: Settings | None = None) -> Dependencias:
         s,
         crear_repositorio(s),
         Analizador(s.spacy_model),
-        extractor=crear_cliente("ollama", s.extractor_model, s),
-        clasificador=crear_cliente("ollama", s.clasificador_model, s),
-        critico=crear_cliente(s.critico_provider, s.critico_model, s),
-        modelador=crear_cliente("ollama", s.modelador_model, s),
-        revisor=crear_cliente("ollama", s.revisor_model, s),
-        embeddings=EmbeddingsOllama(s.embedding_model, s.ollama_base_url, s.ollama_timeout_s),
-        comparador=crear_cliente("ollama", s.comparador_model, s),
-        agente_unico=crear_cliente("ollama", s.agente_unico_model, s),
+        extractor=crear_cliente(s.llm_proveedor, s.extractor_model, s),
+        clasificador=crear_cliente(s.llm_proveedor, s.clasificador_model, s),
+        critico=crear_cliente(s.critico_provider, s.critico_model, s, rol="critico"),
+        modelador=crear_cliente(s.llm_proveedor, s.modelador_model, s),
+        revisor=crear_cliente(s.llm_proveedor, s.revisor_model, s),
+        embeddings=crear_embeddings(s),
+        comparador=crear_cliente(s.llm_proveedor, s.comparador_model, s),
+        agente_unico=crear_cliente(s.llm_proveedor, s.agente_unico_model, s),
     )

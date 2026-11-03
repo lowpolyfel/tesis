@@ -53,8 +53,20 @@ class Settings(BaseSettings):
     modelador_model: str = "qwen2.5:7b"
     embedding_model: str = "nomic-embed-text"
 
-    # Crítico
-    critico_provider: Literal["ollama", "anthropic", "openai"] = "ollama"
+    # Servidor sin Ollama (todo por API): proveedor por omisión de los agentes que no son el
+    # Crítico (Extractor, Clasificador, Modelador, Revisor, Comparador, agente único) y de los
+    # embeddings. Un id del catálogo de app/llm/proveedores.py («google», «groq»…) usa LLM_API_KEY.
+    # Una cuenta que eligió su propio proveedor en Configuración sigue usando el suyo.
+    llm_proveedor: str = "ollama"
+    llm_api_key: str | None = None
+    # Atajo: un mismo modelo para todos los agentes (y el Crítico); vacío, cada *_MODEL manda
+    llm_modelo: str | None = None
+    embedding_proveedor: Literal["ollama", "google"] = "ollama"
+    # Dimensión de los embeddings de Gemini (vacía: la del modelo)
+    embedding_dimensiones: int | None = None
+
+    # Crítico: ollama, anthropic, openai o un id del catálogo («google», «groq»…)
+    critico_provider: str = "ollama"
     critico_model: str = "qwen2.5:7b"
     critico_api_key: str | None = None
     # Revisor del contexto (ADR 0022): ficha del contexto del proyecto y triaje de requisitos
@@ -88,6 +100,9 @@ class Settings(BaseSettings):
     # se edita un .env sin reiniciar, /conexion sigue diciendo de dónde salió la URI en uso
     _fuente_mongo_uri: str = PrivateAttr(default="default")
     checkpoint_path: str = "data/checkpoints.sqlite"
+    # sqlite (archivo en CHECKPOINT_PATH) | mongo (en MONGO_URI): en un servidor sin disco
+    # persistente, mongo conserva los grafos pausados aunque el proceso se reinicie
+    checkpoints: Literal["sqlite", "mongo"] = "sqlite"
     resultados_dir: str = "data/resultados"
     catalogos_dir: str = "data/catalogos"
 
@@ -153,6 +168,14 @@ class Settings(BaseSettings):
         return self._fuente_mongo_uri
 
     @model_validator(mode="after")
+    def _un_modelo_para_todos(self) -> "Settings":
+        if self.llm_modelo:
+            for campo in ("extractor_model", "clasificador_model", "modelador_model", "critico_model",
+                          "revisor_model", "comparador_model", "agente_unico_model"):
+                setattr(self, campo, self.llm_modelo)
+        return self
+
+    @model_validator(mode="after")
     def _rejilla_valida(self) -> "Settings":
         if self.calibracion_desde >= self.calibracion_hasta:
             raise ValueError(f"CALIBRACION_DESDE ({self.calibracion_desde}) debe ser menor que "
@@ -163,6 +186,15 @@ class Settings(BaseSettings):
         """Rutas relativas se resuelven contra la raíz del repositorio."""
         p = Path(relativa)
         return p if p.is_absolute() else RAIZ_REPO / p
+
+    def clave_servidor(self, proveedor: str, rol: str | None = None) -> str | None:
+        """La clave del .env para un proveedor: CRITICO_API_KEY para el Crítico (si la hay) y
+        LLM_API_KEY para el resto. Ollama no usa clave."""
+        if proveedor == "ollama":
+            return None
+        if rol == "critico" and self.critico_api_key:
+            return self.critico_api_key
+        return self.llm_api_key
 
     def resumen(self) -> dict:
         """Lo que se copia en cada traza: suficiente para repetir la corrida."""
@@ -175,6 +207,8 @@ class Settings(BaseSettings):
                 "critico": f"{self.critico_provider}:{self.critico_model}",
                 "modelador": self.modelador_model,
                 "embeddings": self.embedding_model,
+                **({"proveedor": self.llm_proveedor} if self.llm_proveedor != "ollama" else {}),
+                **({"proveedor_embeddings": self.embedding_proveedor} if self.embedding_proveedor != "ollama" else {}),
             },
             "llm_temperature": self.llm_temperature,
             "llm_seed": self.llm_seed,
