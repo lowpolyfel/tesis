@@ -1,59 +1,87 @@
-# Abrir Dudamel a un grupo de prueba (gratis, desde tu PC)
+# Abrir Dudamel a un grupo de prueba (gratis, en Oracle Cloud)
 
-Dudamel corre en tu máquina como siempre (backend, Ollama, Mongo/Atlas) y un túnel le da
-una URL pública con HTTPS. La interfaz y la API salen por el **mismo origen**: el navegador
-llama a `/api/...` y Vite lo reenvía a uvicorn en `localhost:8000`. Así la cookie de sesión
-funciona sin tocar CORS y los eventos en vivo (SSE) pasan.
+Dudamel corre en una VM gratuita de Oracle Cloud (Always Free, ARM): backend, Ollama
+para los embeddings y la interfaz, igual que en tu PC. La VM no se apaga, tiene disco
+persistente (el SQLite de checkpoints y la clave de cifrado sobreviven reinicios) y Tailscale
+Funnel le da una URL fija con HTTPS sin abrir puertos.
 
-Mientras la PC esté encendida, con los tres procesos corriendo, la URL funciona.
+La interfaz y la API salen por el **mismo origen**: el navegador llama a `/api/...` y Vite
+lo reenvía a uvicorn en `127.0.0.1:8000`. La cookie de sesión funciona sin tocar CORS y
+los eventos en vivo (SSE) pasan.
 
-## Antes de abrirla (una vez)
+## 1. Crear la VM (≈20 min)
 
-1. **Correo (obligatorio para gente de fuera).** Sin SMTP, el código de registro sale en tu
-   consola y nadie más lo ve. En el `.env` de la raíz pon `SMTP_HOST=smtp.gmail.com`,
-   `SMTP_USUARIO`, `SMTP_CONTRASENA` (contraseña de aplicación de Google) y
-   `SMTP_REMITENTE`. Pruébalo con `python scripts\probar_correo.py otra@correo.com`.
-2. **Cookie segura.** El túnel sirve por HTTPS: `SESION_COOKIE_SEGURA=true`.
-3. **Modelos.** Con la configuración por omisión todos los agentes usan Ollama en tu PC y
-   la cola tiene un solo trabajador: con varias personas a la vez, esperan turno. Pide a
-   cada quien que en **Configuración** ponga una clave gratuita de Google AI Studio (Gemini)
-   o Groq para sus agentes. Los embeddings (`nomic-embed-text`) siguen en tu Ollama, son
-   ligeros.
-4. **Tailscale.** Instálalo (<https://tailscale.com/download>) e inicia sesión. La primera
-   vez que corras `tailscale funnel`, te da un enlace para activar HTTPS y Funnel en tu
-   tailnet; ábrelo y acepta.
+1. Crea la cuenta en <https://signup.oraclecloud.com>. Pide tarjeta solo para verificar
+   (no cobra mientras uses recursos Always Free). La **región de inicio** no se puede
+   cambiar después: elige Querétaro o Monterrey.
+2. Compute → Instances → Create instance:
+   - Image: **Canonical Ubuntu 24.04** (aarch64).
+   - Shape: **Ampere → VM.Standard.A1.Flex**, 2 OCPU y 12 GB (todo el cupo gratuito).
+   - Boot volume: 50 GB está bien.
+   - Sube o descarga la llave SSH.
+3. Si sale «Out of capacity for shape VM.Standard.A1.Flex», prueba otro *availability
+   domain* o vuelve a intentar en unas horas; es común en la cuenta gratuita.
+4. Entra: `ssh -i tu_llave ubuntu@<ip-publica>`.
 
-## Cada vez que abras la prueba (tres terminales, PowerShell)
+No hace falta abrir puertos en la *security list*: Tailscale sale hacia fuera.
 
-```powershell
-# 1. Backend, desde backend/ (sin --reload)
-.venv\Scripts\Activate.ps1
-uvicorn app.api.main:app --host 127.0.0.1 --port 8000
+## 2. Instalar (≈15 min, un comando)
 
-# 2. Interfaz, desde frontend/: compila en modo «publico» y la sirve en 4173 con /api → 8000
-npm run publico
-
-# 3. Túnel
-tailscale funnel 4173
+```bash
+curl -fsSL https://raw.githubusercontent.com/lowpolyfel/tesis/publicar/scripts/servidor/instalar.sh -o instalar.sh
+bash instalar.sh
 ```
 
-`tailscale funnel` imprime la URL, del tipo `https://<tu-pc>.<tu-tailnet>.ts.net`. Esa es la
-que compartes; no cambia entre reinicios. Para dejar el túnel en segundo plano:
-`tailscale funnel --bg 4173`; para cerrarlo: `tailscale funnel reset`.
+Instala Python 3.12, Node 22, Ollama (`nomic-embed-text` y `qwen2.5:3b` como respaldo),
+el backend y la interfaz, y los deja como servicios que arrancan solos
+(`dudamel-backend`, `dudamel-web`). Crea `~/tesis/.env` con una `CLAVE_CIFRADO` nueva y
+`SESION_COOKIE_SEGURA=true`.
 
-## Alternativa: ngrok
+## 3. Completar el .env
 
-Si Tailscale no te deja activar Funnel, `ngrok http 4173` (cuenta gratuita) da un dominio
-fijo `*.ngrok-free.app`. Límites del plan gratuito: 1 GB de transferencia y 20 000
-peticiones al mes, y la primera visita de cada persona muestra un aviso de ngrok
-(«Visit Site»). El bundle de la interfaz pesa varios MB por carga, así que con 10 personas
-el GB se puede acabar en la semana; por eso Tailscale va primero.
+```bash
+nano ~/tesis/.env
+sudo systemctl restart dudamel-backend
+```
 
-No uses los Quick Tunnels de Cloudflare (`trycloudflare.com`): no soportan SSE y la escena
-en vivo dejaría de actualizarse.
+- **`MONGO_URI`**: tu cluster de Atlas (M0 gratis). En Atlas → Network Access agrega la IP
+  pública de la VM. Con Atlas, `MONGO_TIMEOUT_MS=10000`. Sin Mongo, el backend usa el
+  respaldo JSON en `data/resultados/`, que también persiste en el disco de la VM.
+- **`SMTP_*`** (obligatorio para gente de fuera): sin correo, el código de registro solo
+  sale en `journalctl` y nadie podría crear cuenta. Gmail: `smtp.gmail.com`, 587,
+  `starttls` y una contraseña de aplicación. Prueba:
+  `cd ~/tesis && backend/.venv/bin/python scripts/probar_correo.py otra@correo.com`.
 
-## Al terminar
+## 4. Publicar
 
-Cierra el túnel (`tailscale funnel reset`). Mientras está abierto, cualquiera con la URL
-llega a tu backend (incluidas `/docs` y `/sandbox`); los proyectos sí quedan protegidos por
-cuenta.
+```bash
+sudo tailscale up                 # abre el enlace que imprime e inicia sesión
+sudo tailscale funnel --bg 4173   # la primera vez te da un enlace para activar Funnel
+tailscale funnel status           # la URL: https://<vm>.<tailnet>.ts.net
+```
+
+Esa URL es la que compartes. Funnel queda configurado y vuelve solo si la VM se reinicia.
+
+## Para los testers
+
+La VM tiene 2 núcleos sin GPU: los modelos locales sirven de respaldo pero son lentos, y la
+cola tiene un solo trabajador. Que cada persona, al crear su cuenta, vaya a
+**Configuración** y ponga una clave gratuita de Google AI Studio (Gemini) o Groq para sus
+agentes. Los embeddings siguen en Ollama de la VM y son ligeros.
+
+## Mantenimiento
+
+- Actualizar tras un `git push`: `bash ~/tesis/scripts/servidor/actualizar.sh`
+- Registros: `journalctl -u dudamel-backend -f`
+- Oracle puede reclamar una VM Always Free si pasa 7 días casi sin uso (CPU, red y memoria
+  por debajo del 20 %). Durante la prueba no pasa; si quieres dejarla meses, cambia la
+  cuenta a *Pay As You Go* (sigue sin costo dentro del cupo gratuito).
+- Mientras Funnel está activo, cualquiera con la URL llega al backend (incluidas `/docs` y
+  `/sandbox`); los proyectos sí quedan protegidos por cuenta. Para cerrarlo:
+  `sudo tailscale funnel reset`.
+
+## Correrlo desde tu PC (alternativa)
+
+Con los mismos cambios también funciona en local: `uvicorn` en 8000, `npm run publico` en
+`frontend/` y `tailscale funnel 4173`. No uses los Quick Tunnels de Cloudflare
+(`trycloudflare.com`): no soportan SSE.
