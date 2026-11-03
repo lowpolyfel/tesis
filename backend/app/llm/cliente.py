@@ -78,7 +78,9 @@ class ClienteOpenAI(_ClienteChatGenerico):
     paquete, clase = "langchain_openai", "ChatOpenAI"
 
 
-def crear_cliente(proveedor: str, modelo: str, settings) -> ClienteLLM:
+def crear_cliente(proveedor: str, modelo: str, settings, rol: str | None = None) -> ClienteLLM:
+    """El cliente por omisión de un agente, según el .env. `rol` decide qué clave del .env
+    usa (`Settings.clave_servidor`): CRITICO_API_KEY para el Crítico, LLM_API_KEY para el resto."""
     if proveedor == "ollama":
         return ClienteOllama(modelo, settings.ollama_base_url, settings.llm_temperature, settings.llm_seed,
                              settings.ollama_timeout_s)
@@ -86,4 +88,9 @@ def crear_cliente(proveedor: str, modelo: str, settings) -> ClienteLLM:
         return ClienteAnthropic(modelo, settings.critico_api_key, settings.llm_temperature)
     if proveedor == "openai":
         return ClienteOpenAI(modelo, settings.critico_api_key, settings.llm_temperature)
+    from .proveedores import POR_ID, crear_cliente_de
+
+    if proveedor in POR_ID:  # google, groq, openrouter…: HTTP directo, con la clave del servidor
+        return crear_cliente_de({"proveedor": proveedor, "modelo": modelo,
+                                 "api_key": settings.clave_servidor(proveedor, rol)}, settings)
     raise ValueError(f"proveedor desconocido: {proveedor}")

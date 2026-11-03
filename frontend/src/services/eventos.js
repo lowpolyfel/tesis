@@ -13,7 +13,7 @@ export const seguirEntrevista = (entrevistaId, opciones) =>
   seguir(`${BASE_URL}/entrevistas/${encodeURIComponent(entrevistaId)}/eventos`, opciones);
 
 function seguir(ruta, { desde = 0, onMensaje, onEstado, onFin, onError } = {}) {
-  const url = new URL(ruta);
+  const url = new URL(ruta, window.location.origin);
   if (desde) url.searchParams.set("desde", desde);
   const fuente = new EventSource(url, { withCredentials: true }); // con la cookie de sesión
   let cerrado = false;

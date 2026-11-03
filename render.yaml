@@ -1,0 +1,55 @@
+# Blueprint de Render (plan gratuito): New → Blueprint → este repo.
+# Los valores con sync: false los pide Render al crear el servicio (no van en git).
+services:
+  - type: web
+    name: dudamel
+    runtime: docker
+    plan: free
+    branch: publicar
+    healthCheckPath: /salud
+    envVars:
+      # Todo por Google AI Studio (sin Ollama)
+      - key: LLM_PROVEEDOR
+        value: google
+      - key: CRITICO_PROVIDER
+        value: google
+      - key: LLM_API_KEY
+        sync: false
+      # Un modelo para todos los agentes; cámbialo por uno vigente de AI Studio
+      # (Configuración → Probar/Listar modelos en la app te dice cuáles hay)
+      - key: LLM_MODELO
+        value: gemini-3.6-flash
+      - key: EMBEDDING_PROVEEDOR
+        value: google
+      - key: EMBEDDING_MODEL
+        value: gemini-embedding-001
+      - key: OLLAMA_TIMEOUT_S
+        value: "180"
+      # MongoDB Atlas (M0 gratis); los grafos pausados también se guardan ahí
+      - key: MONGO_URI
+        sync: false
+      - key: MONGO_DB
+        value: tesis
+      - key: MONGO_TIMEOUT_MS
+        value: "10000"
+      - key: CHECKPOINTS
+        value: mongo
+      # Fernet: genérala una vez y no la cambies, o las claves guardadas dejan de leerse
+      - key: CLAVE_CIFRADO
+        sync: false
+      # Sesión por HTTPS
+      - key: SESION_COOKIE_SEGURA
+        value: "true"
+      # Correo: Render bloquea 25/465/587; Brevo acepta 2525 con STARTTLS
+      - key: SMTP_HOST
+        value: smtp-relay.brevo.com
+      - key: SMTP_PUERTO
+        value: "2525"
+      - key: SMTP_SEGURIDAD
+        value: starttls
+      - key: SMTP_USUARIO
+        sync: false
+      - key: SMTP_CONTRASENA
+        sync: false
+      - key: SMTP_REMITENTE
+        sync: false

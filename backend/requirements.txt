@@ -94,3 +94,6 @@ es_core_news_sm @ https://github.com/explosion/spacy-models/releases/download/es
 # Agregadas en la fase de proyectos, documentos y análisis
 pypdf==6.19.0
 python-multipart==0.0.32
+
+# Agregada para publicar sin disco persistente (checkpoints en Mongo)
+langgraph-checkpoint-mongodb==0.5.1
