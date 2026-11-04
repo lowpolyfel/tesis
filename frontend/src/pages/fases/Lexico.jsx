@@ -18,8 +18,9 @@ import { Aviso, Cargando, Chip, Confirmar, Plegable, Vacio } from "../../compone
  * con su intención (qué quiere lograr quien lo usa); la persona experta valida cada uno:
  *
  *   ✓ Validar     lo confirma tal cual
- *   ✎ Corregir    cambia lo que haga falta, o parte de otra intención de las que vieron
- *                 los agentes («Era esta»)
+ *   ✎ Corregir    cambia lo que haga falta
+ *   Era esta      elige, con un clic, otra de las intenciones que vieron los agentes
+ *                 («ajustar» abre el editor con ella, para cambiarle algo antes)
  *   ✕ Descartar   no es un término del dominio
  *
  * Lo que corrige, confirma entre varias intenciones o descarta, el sistema lo aprende: es
@@ -213,6 +214,9 @@ const Termino = memo(function Termino({ e, moodSeccion, onCambio }) {
     amb ? { mood: "aprende", etiqueta: "✓", aprendio: `«${e.simbolo}»` } : { mood: "success", etiqueta: "✓" });
   const descartar = () => hacer(() => descartarTermino(e.entrada_id), { mood: "sistema", aprendio: `«${e.simbolo}» no va` });
   const restaurar = () => hacer(() => restaurarTermino(e.entrada_id), { mood: "extractor" });
+  // la intención y el «qué es» de esa alternativa, tal cual; el sistema lo aprende como acuerdo
+  const elegir = (a) => hacer(() => corregirTermino(e.entrada_id, {}, a.id),
+    { mood: "aprende", etiqueta: "✓", aprendio: `«${e.simbolo}»: ${a.id}` });
 
   if (modo) {
     const alt = modo.alternativa ? amb?.alternativas.find((a) => a.id === modo.alternativa) : null;
@@ -285,7 +289,14 @@ const Termino = memo(function Termino({ e, moodSeccion, onCambio }) {
                     {a.retirada && <span className="block text-[12px] text-[var(--bone-faint)]">El Clasificador la retiró: {a.retirada}</span>}
                   </span>
                   {propuesta ? <span className="mono pt-0.5 text-[9.5px] text-[#57f7a7]">{amb.elegida_por_persona ? "la elegiste" : "la propuesta"}</span>
-                    : e.estado !== "descartado" && <button className="pill ghost sm" onClick={() => setModo({ alternativa: a.id })}>Era esta</button>}
+                    : e.estado !== "descartado" && (
+                      <span className="flex items-center gap-2">
+                        <button className="pill ghost sm" disabled={ocupado} onClick={() => elegir(a)}
+                          title="Queda esta intención y su significado; el sistema lo aprende">Era esta</button>
+                        <button className="mono text-[9.5px] text-[var(--bone-faint)] hover:text-[var(--bone)]" disabled={ocupado}
+                          onClick={() => setModo({ alternativa: a.id })} title="Abre el editor con esta intención para cambiarle algo">ajustar</button>
+                      </span>
+                    )}
                 </li>
               );
             })}
