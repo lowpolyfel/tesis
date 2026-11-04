@@ -64,6 +64,10 @@ def test_de_la_entrevista_a_la_especificacion(cliente):
     assert len(hechas) == 4  # paciente, asistente, cita, expediente (dar de alta tuvo dos intenciones)
     assert fase(c, "lexico")["hecho"] is False
     c.post(f"/lexico/{ids['dar de alta']}/validar")
+    # «Era esta» con un clic: solo la alternativa, sin otros cambios
+    elegida = c.post(f"/lexico/{ids['dar de alta']}/corregir", json={"alternativa": "I2"}).json()
+    assert elegida["estado"] == "corregido" and elegida["nocion"] == ["inscribir a un paciente nuevo"]
+    assert elegida["ambiguedad"]["elegida_por_persona"] == "I2" and elegida["aprendida"]
     nuevo = c.post(f"/proyectos/{pid}/lexico", json={"simbolo": "diagnóstico", "tipo": "objeto",
                                                       "nocion": ["Lo que concluye el doctor."], "intencion": "Saber qué tiene"})
     assert nuevo.status_code == 201 and nuevo.json()["via"] == "persona"
