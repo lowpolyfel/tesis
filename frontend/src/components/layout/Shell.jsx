@@ -33,6 +33,7 @@ export function seccionDe(pathname, params) {
   if (pathname === "/proyectos") return "proyectos";
   if (pathname === "/mas") return "mas";
   if (pathname === "/configuracion") return "configuracion";
+  if (pathname === "/cuestionario") return "cuestionario";
   if (/^\/requisitos\/[^/]+\/validacion/.test(pathname)) return "revision";
   if (/^\/requisitos\//.test(pathname)) return "requisito";
   return "avanzado";

@@ -74,6 +74,10 @@ class Settings(BaseSettings):
     gemini_backoff_max_s: float = Field(30.0, ge=0)
     gemini_fallback_model: str | None = None
 
+    # Cuestionario de evaluación (ADR 0032): correos (separados por coma) que ven los resultados
+    # agregados y descargan el CSV anónimo. Vacío: nadie.
+    cuestionario_admins: str = ""
+
     # Crítico: ollama, anthropic, openai o un id del catálogo («google», «groq»…)
     critico_provider: str = "ollama"
     critico_model: str = "qwen2.5:7b"
@@ -228,6 +232,9 @@ class Settings(BaseSettings):
             "spacy_model": self.spacy_model,
             "validacion_humana": self.validacion_humana,
         }
+
+    def admins_cuestionario(self) -> set[str]:
+        return {c.strip().lower() for c in self.cuestionario_admins.split(",") if c.strip()}
 
     def origenes_cors(self) -> list[str]:
         return [o.strip() for o in self.cors_origenes.split(",") if o.strip()]
