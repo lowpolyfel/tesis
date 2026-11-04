@@ -68,7 +68,7 @@ def cliente(tmp_path, analizador, monkeypatch):
     falsos = {"bueno": LLMFalso({"clasificador_intencion_v1": _respuesta(2)}, "ollama-bueno"),
               "flojo": LLMFalso({"clasificador_intencion_v1": _respuesta(1)}, "ollama-flojo"),
               "roto": LLMFalso({"clasificador_intencion_v1": lambda p: "no es json"}, "ollama-roto")}
-    monkeypatch.setattr(pm, "crear_cliente_de", lambda e, s: falsos[e["modelo"]])
+    monkeypatch.setattr(pm, "crear_cliente_de", lambda e, s, **_k: falsos[e["modelo"]])
     with TestClient(como_usuario(create_app(srv))) as c:
         c.srv = srv
         yield c
@@ -249,7 +249,7 @@ def test_una_serie_mide_la_estabilidad(cliente, monkeypatch):
     p2 = c.get(f"/pruebas-modelos/{segunda}").json()
     assert p2["serie"] == primera and p2["corrida"] == 2 and p2["uid"] != c.get(f"/pruebas-modelos/{primera}").json()["uid"]
     # una corrida más que, esta vez, no detecta nada: la detección varía y el rango lo dice
-    monkeypatch.setattr(pm, "crear_cliente_de", lambda e, s: LLMFalso({"clasificador_intencion_v1": _respuesta(1)}, "x"))
+    monkeypatch.setattr(pm, "crear_cliente_de", lambda e, s, **_k: LLMFalso({"clasificador_intencion_v1": _respuesta(1)}, "x"))
     r = c.post(f"/pruebas-modelos/{primera}/repetir", json={"veces": 1})
     assert r.status_code == 201 and r.json()["serie"] == primera
     _esperar(c, r.json()["creadas"][0])

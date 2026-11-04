@@ -91,7 +91,8 @@ def generar(deps, proyecto, entradas: list[dict], acuerdos: list[dict], entrevis
                 f"{len(avisos)} aviso(s)" if avisos else "todo se rastrea"))
     fecha = ahora()
     doc = {"proyecto_id": proyecto.proyecto_id, "fase": "metas", "contenido": {"metas": metas},
-           "huella_origen": huella_origen, "avisos": avisos, "modelo": r.modelo, "prompt_version": r.prompt_version,
+           "huella_origen": huella_origen, "avisos": avisos, "modelo": r.modelo, "respaldo": r.respaldo, "reintentos_proveedor": r.reintentos,
+           "prompt_version": r.prompt_version,
            "intentos": len(r.intentos), "generado": fecha, "actualizado": fecha,
            "historial": [{"fecha": fecha, "accion": "generar", "autor": "agentes", "detalle": f"{len(metas)} metas"}]}
     return DocumentosDeFase(deps.repo).guardar("metas", doc)

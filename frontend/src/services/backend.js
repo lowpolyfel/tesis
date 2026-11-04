@@ -192,7 +192,9 @@ export const obtenerEntrevista = (entrevistaId) => get(`/entrevistas/${id(entrev
 export const renombrarEntrevista = (entrevistaId, titulo) => patch(`/entrevistas/${id(entrevistaId)}`, { titulo });
 export const bitacoraDeEntrevista = (entrevistaId) => get(`/entrevistas/${id(entrevistaId)}/bitacora`);
 export const cancelarEntrevista = (entrevistaId) => post(`/entrevistas/${id(entrevistaId)}/cancelar`);
-export const reprocesarEntrevista = (entrevistaId) => post(`/entrevistas/${id(entrevistaId)}/reprocesar`);
+/** Retoma desde la etapa que falló; `{ desdeCero: true }` vuelve a empezar */
+export const reprocesarEntrevista = (entrevistaId, { desdeCero = false } = {}) =>
+  post(`/entrevistas/${id(entrevistaId)}/reprocesar${desdeCero ? "?desde_cero=true" : ""}`);
 export const borrarEntrevista = (entrevistaId) => borrar(`/entrevistas/${id(entrevistaId)}`);
 
 /* ---- LEL interactivo y memoria ---- */

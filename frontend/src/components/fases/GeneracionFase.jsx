@@ -4,6 +4,7 @@ import { isMobile } from "../orb/poses";
 import { poseSeccion } from "../orb/secciones";
 import Pasos from "../../escena/Pasos";
 import { generarFase } from "../../services/backend";
+import { errorLegible } from "../../services/errores";
 
 /*
  * Pantalla de carga de una fase que genera el Modelador (mapa, metas o requisitos; ADR 0024),
@@ -84,7 +85,7 @@ export default function GeneracionFase({ proyectoId, fase, seccionId, moodGenera
         if (!vivo || e.name === "AbortError") return;
         orb.setMood("error");
         orb.update("core", { label: "No se pudo", sub: "revisa los pasos", active: false, desde: null });
-        setError(e.message);
+        setError(errorLegible(e.message));
       });
 
     return () => {

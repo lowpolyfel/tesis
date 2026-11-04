@@ -168,7 +168,7 @@ def test_archivo_y_errores(cliente):
     assert c.post("/lexico/S42/validar").status_code == 404
     assert c.get(f"/proyectos/{pid}/fases/mapa").json() == {
         "documento": None, "al_dia": False, "disponible": False, "motivo": "Primero valida el léxico.",
-        "hecho": False, "generando": False}
+        "hecho": False, "generando": False, "ultimo_fallo": None}
     assert c.put(f"/proyectos/{pid}/fases/mapa", json={"contenido": {}}).status_code == 404
     assert c.post(f"/proyectos/{pid}/entrevistas/E01/x").status_code == 404
 

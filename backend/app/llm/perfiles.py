@@ -202,3 +202,8 @@ class ClienteDinamico:
 
     def completar(self, prompt, esquema: dict) -> str:
         return self.actual().completar(prompt, esquema)
+
+    def ultimo_uso(self) -> dict | None:
+        """Qué modelo respondió la última llamada (el de respaldo, si se usó); ver proveedores."""
+        f = getattr(self.actual(), "ultimo_uso", None)
+        return f() if f else None

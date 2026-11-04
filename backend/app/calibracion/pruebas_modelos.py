@@ -403,7 +403,7 @@ class Ejecutor:
         def proveedor(modelos: list[dict]) -> None:
             for m in modelos:
                 try:
-                    clasificador = Clasificador(crear_cliente_de(elecciones[m["id"]], s), s.significado_max_palabras)
+                    clasificador = Clasificador(crear_cliente_de(elecciones[m["id"]], s, con_respaldo=False), s.significado_max_palabras)
                 except Exception as e:  # noqa: BLE001 — sin URL, proveedor mal configurado
                     fallo = {"ok": False, "ms": None, "intentos": 0, "error": f"{type(e).__name__}: {e}"}
                     with self._candado:

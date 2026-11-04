@@ -37,9 +37,11 @@ class Intento:
 @dataclass
 class Respuesta(Generic[T]):
     valor: T
-    modelo: str
+    modelo: str  # el que respondió de verdad: el de respaldo si hizo falta (GEMINI_FALLBACK_MODEL)
     prompt_version: str
     intentos: list[Intento] = field(default_factory=list)
+    respaldo: str | None = None  # el modelo configurado que se reemplazó por el de respaldo
+    reintentos: int = 0  # reintentos por 503/429 que hizo el proveedor
 
     @property
     def hubo_reintento(self) -> bool:
@@ -61,6 +63,16 @@ class FalloEstructurado(Exception):
         }
 
 
+def _uso(cliente) -> dict | None:
+    """{modelo, respaldo, original, reintentos} de la última llamada, si el cliente lo sabe."""
+    f = getattr(cliente, "ultimo_uso", None)
+    try:
+        uso = f() if callable(f) else None
+    except Exception:  # noqa: BLE001 — un doble de pruebas sin perfil: se usa cliente.modelo
+        return None
+    return uso if isinstance(uso, dict) and uso.get("modelo") else None
+
+
 def extraer_json(texto: str) -> str:
     """Tolera bloques ``` y texto alrededor: toma del primer '{' al último '}'."""
     inicio, fin = texto.find("{"), texto.rfind("}")
@@ -79,14 +91,21 @@ def generar(
     usuario = prompt.usuario + INSTRUCCION_JSON.format(esquema=json.dumps(esquema_json, ensure_ascii=False))
     actual = PromptRenderizado(prompt.version, prompt.sistema, usuario)
     intentos: list[Intento] = []
+    respaldo, reintentos = None, 0
     for _ in range(2):
         crudo = cliente.completar(actual, esquema_json)
+        uso = _uso(cliente)
+        if uso:
+            reintentos += uso.get("reintentos", 0)
+            if uso.get("respaldo"):
+                respaldo = uso["original"]
         try:
             valor = esquema.model_validate_json(extraer_json(crudo), context=contexto)
             if verificar:
                 verificar(valor)
             intentos.append(Intento(crudo))
-            return Respuesta(valor, cliente.modelo, prompt.version, intentos)
+            modelo = uso["modelo"] if uso else cliente.modelo
+            return Respuesta(valor, modelo, prompt.version, intentos, respaldo=respaldo, reintentos=reintentos)
         except (ValidationError, ValueError) as e:
             intentos.append(Intento(crudo, str(e)))
             actual = PromptRenderizado(prompt.version, prompt.sistema, usuario + REINTENTO.format(error=e, anterior=crudo))

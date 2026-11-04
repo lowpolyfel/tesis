@@ -13,10 +13,21 @@ con la clave de la cuenta. Las sugerencias son solo para cuando aún no hay clav
 
 Los errores nunca incluyen la clave: dicen el proveedor, el código HTTP y el mensaje
 que respondió el servicio.
+
+**Gemini se satura** (503 UNAVAILABLE) o corta por cuota (429 RESOURCE_EXHAUSTED) con
+frecuencia en el nivel gratuito. Para Google, cada llamada se reintenta hasta
+GEMINI_REINTENTOS veces (máx. 5) solo ante esas dos respuestas, con espera exponencial y
+jitter (`esperas`); si se agotan y hay GEMINI_FALLBACK_MODEL, se intenta una vez con ese
+modelo. El cliente recuerda qué modelo respondió de verdad (`ultimo_uso`) para que la
+corrida lo registre.
 """
 from __future__ import annotations
 
+import random
 import re
+import threading
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import httpx
@@ -81,14 +92,74 @@ class FalloProveedor(RuntimeError):
     """El servicio respondió con error o no respondió. El mensaje nunca lleva la clave."""
 
 
-def _detalle(r: httpx.Response) -> str:
+def _error_de(r: httpx.Response) -> dict:
+    """El objeto `error` de la respuesta. Gemini, en su endpoint compatible con OpenAI, lo manda
+    dentro de una lista: [{"error": {"code": 503, "message": …, "status": "UNAVAILABLE"}}]."""
     try:
         datos = r.json()
-        error = datos.get("error", datos) if isinstance(datos, dict) else datos
-        mensaje = error.get("message") if isinstance(error, dict) else None
-        return str(mensaje or error)[:300]
     except ValueError:
+        return {}
+    if isinstance(datos, list) and datos and isinstance(datos[0], dict):
+        datos = datos[0]
+    if isinstance(datos, dict):
+        error = datos.get("error", datos)
+        return error if isinstance(error, dict) else {"message": str(error)}
+    return {}
+
+
+def _detalle(r: httpx.Response) -> str:
+    error = _error_de(r)
+    if not error:
         return r.text[:300]
+    mensaje = error.get("message") or str(error)
+    estado = error.get("status")
+    return (f"{mensaje} ({estado})" if estado and estado not in mensaje else str(mensaje))[:300]
+
+
+# ---------------------------------------------------------------- reintentos (Gemini)
+
+REINTENTABLES = {503: "UNAVAILABLE", 429: "RESOURCE_EXHAUSTED"}
+_dormir: Callable[[float], None] = time.sleep  # las pruebas lo sustituyen
+_azar: Callable[[], float] = random.random
+
+
+def reintentable(r: httpx.Response) -> bool:
+    """Solo 503/UNAVAILABLE y 429/RESOURCE_EXHAUSTED: lo demás (400, 401, 404, 500…) no mejora
+    con esperar."""
+    if r.status_code in REINTENTABLES:
+        return True
+    return _error_de(r).get("status") in REINTENTABLES.values()
+
+
+def espera(intento: int, base: float, tope: float, retry_after: str | None = None) -> float:
+    """Espera antes del reintento `intento` (0, 1, 2…): exponencial con jitter «igual»
+    (la mitad fija y la otra mitad al azar), sin pasar del tope. Si el servicio dice
+    Retry-After en segundos, se respeta (también con tope)."""
+    techo = min(tope, base * 2 ** intento)
+    s = techo / 2 + _azar() * techo / 2
+    if retry_after:
+        try:
+            s = max(s, float(retry_after))
+        except ValueError:
+            pass
+    return min(s, tope) if tope else s
+
+
+def con_reintentos(hacer: Callable[[], httpx.Response], reintentos: int, base: float, tope: float,
+                   al_reintentar: Callable[[int, httpx.Response, float], None] | None = None
+                   ) -> tuple[httpx.Response, int]:
+    """Llama `hacer()` y la repite mientras responda 503/429, hasta `reintentos` veces.
+    Devuelve (última respuesta, reintentos hechos)."""
+    r = hacer()
+    hechos = 0
+    while reintentable(r) and hechos < reintentos:
+        s = espera(hechos, base, tope, r.headers.get("retry-after"))
+        if al_reintentar:
+            al_reintentar(hechos + 1, r, s)
+        _dormir(s)
+        hechos += 1
+        r = hacer()
+    return r, hechos
 
 
 def _post(nombre: str, url: str, cuerpo: dict, headers: dict, timeout: float | None) -> httpx.Response:
@@ -104,25 +175,62 @@ def _post(nombre: str, url: str, cuerpo: dict, headers: dict, timeout: float | N
 
 
 class ClienteCompatibleOpenAI:
+    """/chat/completions. Con `reintentos` > 0 (Google), una respuesta 503 o 429 se repite con
+    espera exponencial; si se agotan y hay `respaldo`, se intenta una vez con ese modelo."""
+
     def __init__(self, nombre: str, modelo: str, base_url: str, api_key: str | None, temperatura: float,
-                 seed: int | None, timeout_s: float | None, etiqueta: str):
+                 seed: int | None, timeout_s: float | None, etiqueta: str, *, reintentos: int = 0,
+                 backoff_base_s: float = 1.0, backoff_max_s: float = 30.0, respaldo: str | None = None,
+                 prefijo: str | None = None):
         self.nombre, self.modelo, self.base_url, self._clave = nombre, etiqueta, base_url.rstrip("/"), api_key
         self._modelo, self.temperatura, self.seed, self.timeout_s = modelo, temperatura, seed, timeout_s
+        self.reintentos, self.backoff_base_s, self.backoff_max_s = reintentos, backoff_base_s, backoff_max_s
+        self.respaldo = respaldo if respaldo and respaldo != modelo else None
+        self._prefijo = prefijo
+        self._uso = threading.local()
 
-    def completar(self, prompt: PromptRenderizado, esquema: dict) -> str:
-        cuerpo = {"model": self._modelo, "temperature": self.temperatura,
+    def ultimo_uso(self) -> dict | None:
+        """Qué respondió la última llamada de este hilo: {modelo, respaldo, original, reintentos}."""
+        return getattr(self._uso, "valor", None)
+
+    def _etiqueta(self, modelo: str) -> str:
+        return f"{self._prefijo}:{modelo}" if self._prefijo else modelo
+
+    def _una(self, modelo: str, prompt: PromptRenderizado, reintentos: int) -> tuple[httpx.Response, int]:
+        cuerpo = {"model": modelo, "temperature": self.temperatura,
                   "messages": [{"role": "system", "content": prompt.sistema}, {"role": "user", "content": prompt.usuario}],
                   "response_format": {"type": "json_object"}}
         if self.seed is not None:
             cuerpo["seed"] = self.seed
         headers = {"Authorization": f"Bearer {self._clave}"} if self._clave else {}
         url = f"{self.base_url}/chat/completions"
-        r = _post(self.nombre, url, cuerpo, headers, self.timeout_s)
+
+        def hacer(c: dict) -> Callable[[], httpx.Response]:
+            return lambda: _post(self.nombre, url, c, headers, self.timeout_s)
+
+        r, hechos = con_reintentos(hacer(cuerpo), reintentos, self.backoff_base_s, self.backoff_max_s)
         if r.status_code == 400:  # hay servicios que no aceptan response_format o seed
-            cuerpo = {k: v for k, v in cuerpo.items() if k not in ("response_format", "seed")}
-            r = _post(self.nombre, url, cuerpo, headers, self.timeout_s)
+            sin = {k: v for k, v in cuerpo.items() if k not in ("response_format", "seed")}
+            r, mas = con_reintentos(hacer(sin), max(0, reintentos - hechos), self.backoff_base_s, self.backoff_max_s)
+            hechos += mas
+        return r, hechos
+
+    def completar(self, prompt: PromptRenderizado, esquema: dict) -> str:
+        self._uso.valor = None
+        r, hechos = self._una(self._modelo, prompt, self.reintentos)
+        usado, respaldo = self._modelo, False
+        if r.status_code >= 400 and reintentable(r) and self.respaldo:
+            primero = f"{r.status_code}: {_detalle(r)}"
+            r, _ = self._una(self.respaldo, prompt, 0)  # una sola vez con el modelo de respaldo
+            usado, respaldo = self.respaldo, True
+            if r.status_code >= 400:
+                raise FalloProveedor(f"{self.nombre} respondió {primero} tras {hechos} reintento(s), y el modelo de "
+                                     f"respaldo {self.respaldo} respondió {r.status_code}: {_detalle(r)}")
         if r.status_code >= 400:
-            raise FalloProveedor(f"{self.nombre} respondió {r.status_code}: {_detalle(r)}")
+            tras = f" tras {hechos} reintento(s)" if hechos else ""
+            raise FalloProveedor(f"{self.nombre} respondió {r.status_code}{tras}: {_detalle(r)}")
+        self._uso.valor = {"modelo": self._etiqueta(usado), "respaldo": respaldo,
+                           "original": self.modelo, "reintentos": hechos}
         try:
             return r.json()["choices"][0]["message"]["content"] or ""
         except (ValueError, KeyError, IndexError, TypeError) as e:
@@ -148,8 +256,10 @@ class ClienteAnthropic:
             raise FalloProveedor(f"Anthropic respondió algo inesperado: {r.text[:200]}") from e
 
 
-def crear_cliente_de(eleccion: dict, settings):
-    """`eleccion`: {proveedor, modelo, base_url, api_key} ya resuelta (con la clave en claro)."""
+def crear_cliente_de(eleccion: dict, settings, *, con_respaldo: bool = True):
+    """`eleccion`: {proveedor, modelo, base_url, api_key} ya resuelta (con la clave en claro).
+    `con_respaldo=False` (prueba de modelos, probar una clave): sin GEMINI_FALLBACK_MODEL, porque
+    lo que se mide es ese modelo."""
     from .cliente import ClienteOllama
 
     p = POR_ID[eleccion["proveedor"]]
@@ -163,8 +273,15 @@ def crear_cliente_de(eleccion: dict, settings):
     if p.tipo == "anthropic":
         return ClienteAnthropic(modelo, base, eleccion.get("api_key"), settings.llm_temperature,
                                 settings.ollama_timeout_s, etiqueta)
+    extra = {}
+    if p.id == "google":
+        extra = {"reintentos": getattr(settings, "gemini_reintentos", 0),
+                 "backoff_base_s": getattr(settings, "gemini_backoff_base_s", 1.0),
+                 "backoff_max_s": getattr(settings, "gemini_backoff_max_s", 30.0),
+                 "respaldo": (getattr(settings, "gemini_fallback_model", None) or None) if con_respaldo else None,
+                 "prefijo": p.id}
     return ClienteCompatibleOpenAI(p.nombre, modelo, base, eleccion.get("api_key"), settings.llm_temperature,
-                                   settings.llm_seed, settings.ollama_timeout_s, etiqueta)
+                                   settings.llm_seed, settings.ollama_timeout_s, etiqueta, **extra)
 
 
 

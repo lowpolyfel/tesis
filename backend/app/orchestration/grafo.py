@@ -73,6 +73,10 @@ def meta_llm(r: Respuesta) -> dict:
     fallidos = [{"salida_cruda": i.salida_cruda, "error": i.error} for i in r.intentos if i.error]
     if fallidos:
         meta["intentos_fallidos"] = fallidos
+    if r.reintentos:
+        meta["reintentos_proveedor"] = r.reintentos  # 503/429 que el proveedor pidió repetir
+    if r.respaldo:
+        meta["modelo_respaldo"] = {"configurado": r.respaldo, "usado": r.modelo}
     return meta
 
 

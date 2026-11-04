@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { estadoSimple } from "../constants/estados";
 import { useOrb } from "./orb/useOrb";
+import { errorLegible } from "../services/errores";
 
 /*
  * Piezas comunes de las pantallas. Una sola forma de decir cada cosa: volver,
@@ -105,7 +106,7 @@ export function Cargando({ children = "Cargando…" }) {
 
 export function Aviso({ error, children }) {
   if (!error && !children) return null;
-  return <p className="text-sm text-[var(--danger)]">{children ?? error?.message}</p>;
+  return <p className="text-sm text-[var(--danger)]">{children ?? errorLegible(error?.message)}</p>;
 }
 
 /* Lo que se muestra cuando una lista está vacía: una frase y, si hay, una acción */

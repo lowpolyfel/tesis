@@ -45,7 +45,7 @@ export default function Requisitos({ proyecto, onCambio }) {
   if (!doc) {
     return (
       <>
-        <SinGenerar disponible={vista.disponible} motivo={vista.motivo} generando={vista.generando} titulo="Los requisitos"
+        <SinGenerar disponible={vista.disponible} motivo={vista.motivo} generando={vista.generando} fallo={vista.ultimo_fallo} titulo="Los requisitos"
           texto="Con todo validado —la entrevista, el léxico con sus intenciones, el mapa y las metas—, los agentes escriben los requisitos funcionales y no funcionales que realizan cada meta específica. Cada requisito usa los términos del LEL en el sentido acordado y se rastrea a sus metas y a lo que se dijo en la entrevista."
           onGenerar={() => setGenerando(true)} />
         {generacion}

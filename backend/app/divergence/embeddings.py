@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from app.llm.proveedores import con_reintentos
+
 
 class ProveedorEmbeddings(Protocol):
     modelo: str
@@ -42,7 +44,8 @@ class EmbeddingsGemini:
     LOTE = 100  # máximo de textos por petición
 
     def __init__(self, modelo: str, api_key: str | None, timeout_s: float | None = None,
-                 dimensiones: int | None = None, cliente=None):
+                 dimensiones: int | None = None, cliente=None, reintentos: int = 0,
+                 backoff_base_s: float = 1.0, backoff_max_s: float = 30.0):
         import httpx
 
         if not api_key:
@@ -52,6 +55,9 @@ class EmbeddingsGemini:
         self.dimensiones = dimensiones
         self._clave = api_key
         self._cliente = cliente or httpx.Client(timeout=timeout_s)
+        # 503/429: los mismos reintentos que los agentes (sin modelo de respaldo: otro modelo de
+        # embeddings cambiaría las similitudes a media corrida)
+        self.reintentos, self.backoff_base_s, self.backoff_max_s = reintentos, backoff_base_s, backoff_max_s
 
     def vectorizar(self, textos: list[str]) -> list[list[float]]:
         import httpx
@@ -65,17 +71,21 @@ class EmbeddingsGemini:
                 if self.dimensiones:
                     p["outputDimensionality"] = self.dimensiones
                 pedidos.append(p)
-            try:
-                r = self._cliente.post(f"{self.URL}/{nombre}:batchEmbedContents", json={"requests": pedidos},
-                                       headers={"x-goog-api-key": self._clave})
-            except httpx.TimeoutException as e:
-                raise TimeoutError(f"Gemini ({self.modelo}) no respondió en {self.timeout_s} s") from e
+            def hacer(pedidos=pedidos) -> httpx.Response:
+                try:
+                    return self._cliente.post(f"{self.URL}/{nombre}:batchEmbedContents", json={"requests": pedidos},
+                                              headers={"x-goog-api-key": self._clave})
+                except httpx.TimeoutException as x:
+                    raise TimeoutError(f"Gemini ({self.modelo}) no respondió en {self.timeout_s} s") from x
+
+            r, hechos = con_reintentos(hacer, self.reintentos, self.backoff_base_s, self.backoff_max_s)
             if r.status_code >= 400:  # el mensaje de Google, nunca la clave
                 try:
                     detalle = r.json().get("error", {}).get("message", r.text[:200])
                 except ValueError:
                     detalle = r.text[:200]
-                raise RuntimeError(f"Gemini ({self.modelo}) respondió {r.status_code}: {detalle}")
+                tras = f" tras {hechos} reintento(s)" if hechos else ""
+                raise RuntimeError(f"Gemini ({self.modelo}) respondió {r.status_code}{tras}: {detalle}")
             vectores.extend(e["values"] for e in r.json()["embeddings"])
         return vectores
 
@@ -83,5 +93,7 @@ class EmbeddingsGemini:
 def crear_embeddings(s) -> ProveedorEmbeddings:
     """Los embeddings que dice el .env: Ollama (por omisión) o Gemini."""
     if s.embedding_proveedor == "google":
-        return EmbeddingsGemini(s.embedding_model, s.llm_api_key, s.ollama_timeout_s, s.embedding_dimensiones)
+        return EmbeddingsGemini(s.embedding_model, s.llm_api_key, s.ollama_timeout_s, s.embedding_dimensiones,
+                                reintentos=s.gemini_reintentos, backoff_base_s=s.gemini_backoff_base_s,
+                                backoff_max_s=s.gemini_backoff_max_s)
     return EmbeddingsOllama(s.embedding_model, s.ollama_base_url, s.ollama_timeout_s)

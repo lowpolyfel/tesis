@@ -153,7 +153,7 @@ def test_rutas_de_la_configuracion(cliente, monkeypatch):
 
     vistas = []
     monkeypatch.setattr(modelos, "crear_cliente_de",
-                        lambda e, _s: vistas.append(e) or LLMFalso({"prueba_proveedor": ['{"ok": true}']}))
+                        lambda e, _s, **_k: vistas.append(e) or LLMFalso({"prueba_proveedor": ['{"ok": true}']}))
     r = c.post("/cuenta/modelos/probar", json={"proveedor": "google", "modelo": "gemini-2.5-pro"}).json()
     assert r["ok"] is True and vistas[0]["api_key"] == CLAVE  # sin clave en el formulario: la guardada
     r = c.post("/cuenta/modelos/probar", json={"proveedor": "openai", "modelo": "gpt-4.1-mini"}).json()

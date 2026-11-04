@@ -19,6 +19,12 @@ services:
       # (Configuración → Probar/Listar modelos en la app te dice cuáles hay)
       - key: LLM_MODELO
         value: gemini-3.6-flash
+      # Gemini saturado (503) o sin cuota (429): 5 reintentos con espera exponencial y,
+      # si se agotan, una vez con este modelo (que exista en AI Studio; vacío: sin respaldo)
+      - key: GEMINI_REINTENTOS
+        value: "5"
+      - key: GEMINI_FALLBACK_MODEL
+        value: gemini-3.1-flash-lite
       - key: EMBEDDING_PROVEEDOR
         value: google
       - key: EMBEDDING_MODEL
