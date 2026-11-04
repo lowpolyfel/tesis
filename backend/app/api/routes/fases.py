@@ -169,9 +169,10 @@ def olvidar(aprendizaje_id: str, srv: ServicioDep, usuario: UsuarioDep) -> dict:
 def _vista_fase(srv: Servicio, p: Proyecto, fase: str) -> dict:
     estado = _estado(srv, p.proyecto_id)
     info = _fase(estado, fase)
-    return {"documento": DocumentosDeFase(srv.repo).obtener(fase, p.proyecto_id), "al_dia": info["al_dia"],
+    docs = DocumentosDeFase(srv.repo)
+    return {"documento": docs.obtener(fase, p.proyecto_id), "al_dia": info["al_dia"],
             "disponible": info["disponible"], "motivo": info["motivo"], "hecho": info["hecho"],
-            "generando": ocupado(f"{fase}:{p.proyecto_id}")}
+            "generando": ocupado(f"{fase}:{p.proyecto_id}"), "ultimo_fallo": docs.fallo(fase, p.proyecto_id)}
 
 
 @router.get("/proyectos/{proyecto_id}/fases/{fase}")
@@ -191,6 +192,14 @@ def generar(fase: Fase, p: ProyectoDep, srv: ServicioDep) -> StreamingResponse:
     docs = DocumentosDeFase(srv.repo)
 
     def trabajo(avisar):
+        try:
+            generar_fase(avisar)
+        except Exception as e:  # queda guardado para quien vuelva a la pantalla; en_cola lo informa
+            docs.registrar_fallo(fase, p.proyecto_id, f"{type(e).__name__}: {e}")
+            raise
+        docs.limpiar_fallo(fase, p.proyecto_id)
+
+    def generar_fase(avisar):
         with con_perfil(srv.perfil(p.proyecto_id)):
             entradas, acuerdos, entrevistas = _insumos(srv, p.proyecto_id)
             huellas = docs.huellas(p.proyecto_id, entradas, acuerdos)

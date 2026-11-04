@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { conservarFase, guardarFase, obtenerFase } from "../../services/backend";
 import { Aviso, Confirmar, Plegable } from "../ui";
+import { errorLegible } from "../../services/errores";
 
 /*
  * Lo común de las fases que genera el Modelador (mapa, metas y requisitos; ADR 0024):
@@ -61,13 +62,18 @@ export function Regenerar({ que, onConfirmar }) {
   );
 }
 
-export function SinGenerar({ disponible, motivo, titulo, texto, generando, onGenerar }) {
+export function SinGenerar({ disponible, motivo, titulo, texto, generando, onGenerar, fallo }) {
   return (
     <div className="tarjeta space-y-4 px-6 py-6">
       <p className="serif text-[26px] leading-tight">{titulo}</p>
       <p className="max-w-2xl text-[14.5px] leading-relaxed text-[var(--bone-dim)]">{texto}</p>
+      {fallo && !generando && (
+        <p className="max-w-2xl text-[13.5px] text-[var(--danger)]">
+          El último intento no terminó: {errorLegible(fallo.mensaje)} Lo de las fases anteriores sigue guardado; se retoma aquí.
+        </p>
+      )}
       {generando ? <p className="mono flex items-center gap-2 text-[10.5px] text-[var(--bone-dim)]"><span className="gira" /> El Modelador está trabajando…</p>
-        : disponible ? <button className="pill" onClick={onGenerar}>Generar con los agentes</button>
+        : disponible ? <button className="pill" onClick={onGenerar}>{fallo ? "Volver a generar" : "Generar con los agentes"}</button>
           : <p className="text-[13.5px] text-[#ffc457]">{motivo}</p>}
     </div>
   );

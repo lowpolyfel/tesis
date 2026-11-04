@@ -33,7 +33,7 @@ export default function Metas({ proyectoId, onCambio, onSeguir }) {
   if (!doc) {
     return (
       <>
-        <SinGenerar disponible={vista.disponible} motivo={vista.motivo} generando={vista.generando} titulo="Las metas del proyecto"
+        <SinGenerar disponible={vista.disponible} motivo={vista.motivo} generando={vista.generando} fallo={vista.ultimo_fallo} titulo="Las metas del proyecto"
           texto="Los agentes leen la entrevista, el léxico y el mapa validados y proponen las metas en tres niveles: lo que la organización quiere lograr, las metas estratégicas con las que el sistema contribuye y las metas específicas, concretas y verificables, que después realizarán los requisitos."
           onGenerar={() => setGenerando(true)} />
         {generacion}

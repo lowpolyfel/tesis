@@ -49,7 +49,7 @@ export default function Mapa({ proyectoId, onCambio, onSeguir }) {
   if (!doc) {
     return (
       <>
-        <SinGenerar disponible={vista.disponible} motivo={vista.motivo} generando={vista.generando}
+        <SinGenerar disponible={vista.disponible} motivo={vista.motivo} generando={vista.generando} fallo={vista.ultimo_fallo}
           titulo="El mapa conceptual del dominio"
           texto="Con el léxico validado, el Modelador arma un mapa con propósito: la pregunta que el sistema debe responder y los conceptos del dominio unidos por proposiciones que se leen como oraciones («doctor — registra → consulta»). Cada concepto viene de un término del LEL. Luego lo ajustas sobre el propio mapa."
           onGenerar={() => setGenerando(true)} />

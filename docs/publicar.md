@@ -64,6 +64,13 @@ Render (*Environment*) y guarda. Lo mismo con `EMBEDDING_MODEL` (`gemini-embeddi
 - **Cuota de Gemini.** Con la clave del servidor, todos los testers comparten la cuota
   gratuita de esa clave (peticiones por minuto y por día). Si se acaba, que cada quien ponga
   su propia clave de AI Studio en Configuración.
+- **Gemini saturado (503) o sin cuota (429).** Cada llamada a Gemini se reintenta hasta
+  `GEMINI_REINTENTOS` veces (5) con espera exponencial y jitter (≈1, 2, 4, 8, 16 s, tope
+  `GEMINI_BACKOFF_MAX_S`), solo ante esos dos errores. Si se agotan y hay
+  `GEMINI_FALLBACK_MODEL`, se intenta una vez con ese modelo; la entrevista guarda en
+  `modelos_usados` y `respaldos` qué modelo respondió en cada corrida. Si aun así falla,
+  **«Volver a procesar» retoma desde la etapa que falló**: la salida de cada etapa queda en
+  Mongo (`etapas_entrevista`), y lo que ya salió bien no se vuelve a pedir.
 - **Una cola, un trabajador.** Los análisis van de uno en uno; con varios testers a la vez,
   esperan turno.
 - **El umbral de divergencia** (`SIMILARITY_THRESHOLD=0.75`) se calibró con

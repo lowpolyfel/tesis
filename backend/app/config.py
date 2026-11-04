@@ -65,6 +65,15 @@ class Settings(BaseSettings):
     # Dimensión de los embeddings de Gemini (vacía: la del modelo)
     embedding_dimensiones: int | None = None
 
+    # Reintentos de Gemini (Google AI Studio): solo ante 503/UNAVAILABLE y 429/RESOURCE_EXHAUSTED,
+    # con espera exponencial y jitter (base·2^k, tope GEMINI_BACKOFF_MAX_S). Si se agotan, se
+    # intenta una vez más con GEMINI_FALLBACK_MODEL (vacío: sin respaldo). La prueba de modelos
+    # nunca usa el respaldo: mide un modelo concreto.
+    gemini_reintentos: int = Field(5, ge=0, le=5)
+    gemini_backoff_base_s: float = Field(1.0, ge=0)
+    gemini_backoff_max_s: float = Field(30.0, ge=0)
+    gemini_fallback_model: str | None = None
+
     # Crítico: ollama, anthropic, openai o un id del catálogo («google», «groq»…)
     critico_provider: str = "ollama"
     critico_model: str = "qwen2.5:7b"

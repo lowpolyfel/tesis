@@ -6,6 +6,7 @@ import {
   borrarEntrevista, cancelarEntrevista, entrevistasDeProyecto, obtenerEntrevista, reprocesarEntrevista,
 } from "../../services/backend";
 import { estadoEntrevista } from "../../constants/fases";
+import { ETAPA, explicarError } from "../../services/errores";
 import { useOrb } from "../../components/orb/useOrb";
 import { Aviso, Cargando, Chip, Confirmar, Plegable, Vacio } from "../../components/ui";
 
@@ -88,7 +89,7 @@ function Entrevista({ e, proyectoId, onCambio }) {
           {r.regionales > 0 && <span>{r.regionales} regional{r.regionales === 1 ? "" : "es"}</span>}
         </p>
       )}
-      {e.error && <p className="text-[13.5px] text-[var(--danger)]">{e.error}</p>}
+      {e.error && <ErrorEntrevista e={e} />}
       <Aviso error={error} />
 
       <div className="flex flex-wrap items-center gap-2">
@@ -97,7 +98,19 @@ function Entrevista({ e, proyectoId, onCambio }) {
         </Link>
         {trabajando && <button className="pill ghost sm" onClick={accion(() => cancelarEntrevista(e.entrevista_id))}>Cancelar</button>}
         {["error", "cancelada"].includes(e.estado) && !e.ocupada && (
-          <button className="pill sm" onClick={accion(() => reprocesarEntrevista(e.entrevista_id))}>Volver a procesar</button>
+          <>
+            <button className="pill sm" onClick={accion(() => reprocesarEntrevista(e.entrevista_id))}
+              title={e.retomar_desde ? `Retoma desde ${ETAPA[e.retomar_desde.nodo] ?? e.retomar_desde.nodo}` : "Empieza desde el principio"}>
+              Volver a procesar
+            </button>
+            {e.retomar_desde && (
+              <span className="text-[12px] text-[var(--bone-faint)]">
+                retoma desde {ETAPA[e.retomar_desde.nodo] ?? e.retomar_desde.nodo} ·{" "}
+                <button className="underline-offset-2 hover:text-[var(--bone)] hover:underline"
+                  onClick={accion(() => reprocesarEntrevista(e.entrevista_id, { desdeCero: true }))}>o desde el principio</button>
+              </span>
+            )}
+          </>
         )}
         {!trabajando && <button className="mono ml-auto px-1 text-[10px] text-[var(--bone-faint)] hover:text-[var(--danger)]" onClick={() => setBorrando(true)}>borrar</button>}
       </div>
@@ -177,6 +190,21 @@ function Bloque({ titulo, children }) {
     <div>
       <p className="etiqueta">{titulo}</p>
       <ul className="mt-1.5 space-y-1 text-[var(--bone-dim)]">{children}</ul>
+    </div>
+  );
+}
+
+/* El error de la entrevista dicho para una persona; el texto técnico queda plegado */
+function ErrorEntrevista({ e }) {
+  const x = explicarError(e.error);
+  if (!x.tipo) return <p className="text-[13.5px] text-[var(--danger)]">{e.error}</p>;
+  return (
+    <div className="space-y-1 text-[13.5px]">
+      <p className="text-[var(--danger)]">{x.titulo}.</p>
+      <p className="text-[var(--bone-dim)]">
+        {x.texto}{e.retomar_desde ? ` «Volver a procesar» retoma desde ${ETAPA[e.retomar_desde.nodo] ?? e.retomar_desde.nodo}, sin repetir lo anterior.` : ""}
+      </p>
+      <details className="text-[11px] text-[var(--bone-faint)]"><summary className="cursor-pointer">detalle técnico</summary>{x.tecnico}</details>
     </div>
   );
 }

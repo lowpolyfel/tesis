@@ -2,6 +2,8 @@
  * Una línea legible por mensaje del protocolo (bitácora en vivo y traza).
  * Solo describe el payload; no interpreta nada que el backend no haya dicho.
  */
+import { errorLegible } from "../services/errores";
+
 const n2 = (x) => (x == null ? "—" : Number(x).toFixed(2));
 const plural = (n, uno, otros) => `${n} ${n === 1 ? uno : otros}`;
 
@@ -64,7 +66,7 @@ export function resumenMensaje(m) {
       if (p.alcance === "termino") return `LEL: ${p.entrada_lel?.simbolo ?? p.termino} (${p.entrada_lel?.tipo ?? "—"})`;
       return `requisito reescrito${p.tipo_requisito ? ` (${p.tipo_requisito.replace("_", " ")})` : ""} · ${plural(p.entradas_lel?.length ?? 0, "entrada", "entradas")} del LEL · ${plural(p.metas?.length ?? 0, "meta", "metas")}${p.supuestos?.length ? ` · ${plural(p.supuestos.length, "supuesto", "supuestos")}` : ""}`;
     case "error":
-      return `${p.excepcion ?? "error"}${p.nodo ? ` en ${p.nodo}` : ""}: ${p.mensaje ?? ""}`;
+      return `${p.excepcion ?? "error"}${p.nodo ? ` en ${p.nodo}` : ""}: ${errorLegible(p.mensaje ?? "")}`;
     default:
       return "";
   }

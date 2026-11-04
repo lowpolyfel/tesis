@@ -13,6 +13,7 @@ import { useEnVivo } from "../../escena/useEnVivo";
 import { pasoSimple } from "../../escena/pasoSimple";
 import { resumenMensaje } from "../../escena/resumenMensaje";
 import { Chip, Volver } from "../../components/ui";
+import { errorLegible } from "../../services/errores";
 
 /*
  * La escena de la versión 2 (ADR 0024): los agentes procesan la entrevista completa.
@@ -214,7 +215,7 @@ function Columna({ doc, vivo, lateral, cancelando, onCancelar }) {
             <span className="mono mr-2 text-[10px]" style={{ color: tintaNodo(actual.emisor) }}>{nodo(actual.emisor).nombre}</span>
             {pasoSimple(actual)}
           </p>
-        ) : <p className="text-[15px] text-[var(--bone-dim)]">{vivo.error ? vivo.error.message : "Esperando a que la entrevista tenga turno…"}</p>}
+        ) : <p className="text-[15px] text-[var(--bone-dim)]">{vivo.error ? errorLegible(vivo.error.message) : "Esperando a que la entrevista tenga turno…"}</p>}
         <p className="mono mt-3 flex items-center gap-3 text-[10px] text-[var(--bone-faint)]">
           <button onClick={() => vivo.setRitmo(siguienteRitmo)} className="hover:text-[var(--bone)]" title="Velocidad de la animación">{vivo.ritmo}×</button>
           {vivo.animados < vivo.mensajes.length && <button onClick={vivo.acelerar} className="hover:text-[var(--bone)]">saltar</button>}
@@ -278,7 +279,7 @@ function Resultados({ doc, pid, onVerOtraVez }) {
       ) : (
         <>
           <h1 className="serif text-[clamp(36px,3.6vw,56px)] leading-[.95]">{doc.estado === "cancelada" ? "Se canceló." : "No se pudo terminar."}</h1>
-          {doc.error && <p className="text-[14px] text-[var(--danger)]">{doc.error}</p>}
+          {doc.error && <p className="text-[14px] text-[var(--danger)]">{errorLegible(doc.error)}</p>}
           <div className="flex flex-wrap gap-3">
             <Link className="pill" to={`/proyectos/${pid}?fase=entrevista`}>Volver a la entrevista</Link>
           </div>

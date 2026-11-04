@@ -110,6 +110,7 @@ def generar(deps, proyecto, entradas: list[dict], acuerdos: list[dict], entrevis
 
     escritos: list[dict] = []
     ultimo = None
+    respaldos: list[dict] = []  # metas estratégicas que respondió el modelo de respaldo
     for i, me in enumerate(estrategicas, 1):
         especificas = [m for m in todas if m["contribuye_a"] == me["id"]]
         if not especificas:
@@ -133,6 +134,8 @@ def generar(deps, proyecto, entradas: list[dict], acuerdos: list[dict], entrevis
             entrevista=hechos_en_texto(_relevantes(h, citas), limite=25),
             previos="\n".join(f"- {x['texto']}" for x in escritos) or "(ninguno todavía)")
         ultimo = r
+        if r.respaldo:
+            respaldos.append({"meta": me["id"], "configurado": r.respaldo, "usado": r.modelo})
         for x in r.valor.requisitos:
             buenos, _ = simbolos.filtrar(x.simbolos)
             for extra in simbolos.mencionados(x.texto):
@@ -160,6 +163,7 @@ def generar(deps, proyecto, entradas: list[dict], acuerdos: list[dict], entrevis
     fecha = ahora()
     doc = {"proyecto_id": proyecto.proyecto_id, "fase": "requisitos", "contenido": {"requisitos": escritos},
            "huella_origen": huella_origen, "avisos": avisos, "modelo": ultimo.modelo if ultimo else None,
+           "respaldos": respaldos,
            "prompt_version": ultimo.prompt_version if ultimo else None, "generado": fecha, "actualizado": fecha,
            "historial": [{"fecha": fecha, "accion": "generar", "autor": "agentes",
                           "detalle": f"{len(escritos)} requisitos"}]}

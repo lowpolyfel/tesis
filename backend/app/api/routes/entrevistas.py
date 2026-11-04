@@ -70,8 +70,12 @@ def _leer(texto: str, srv):
 
 def resumen(doc: dict, srv) -> dict:
     """La entrevista sin sus turnos (para listas), con cuántos son y si espera en la cola."""
+    retomar = None
+    if doc.get("estado") in ("error", "cancelada"):  # desde qué etapa seguiría «Volver a procesar»
+        punto = srv.entrevistas.punto_de_retomar(doc)
+        retomar = {"nodo": punto["nodo"], "despues_de": punto["desde"]} if punto else None
     return {**{k: v for k, v in doc.items() if k not in _PESADOS}, "n_turnos": len(doc.get("turnos", [])),
-            "ocupada": srv.entrevistas.ocupada(doc["entrevista_id"])}
+            "ocupada": srv.entrevistas.ocupada(doc["entrevista_id"]), "retomar_desde": retomar}
 
 
 def entrevista_existente(entrevista_id: str, request: Request, usuario: UsuarioDep) -> dict:
@@ -181,9 +185,11 @@ def cancelar(e: EntrevistaDep, srv: ServicioDep) -> dict:
 
 
 @router.post("/entrevistas/{entrevista_id}/reprocesar", status_code=202)
-def reprocesar(e: EntrevistaDep, srv: ServicioDep) -> dict:
+def reprocesar(e: EntrevistaDep, srv: ServicioDep, desde_cero: bool = False) -> dict:
+    """Retoma desde la etapa que falló (con la salida guardada de la anterior); `desde_cero=true`
+    vuelve a empezar."""
     try:
-        return resumen(srv.entrevistas.reprocesar(e["entrevista_id"]), srv)
+        return resumen(srv.entrevistas.reprocesar(e["entrevista_id"], desde_cero=desde_cero), srv)
     except ConflictoDeEstado as x:
         raise HTTPException(409, str(x)) from x
 

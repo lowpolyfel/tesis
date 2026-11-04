@@ -97,13 +97,14 @@ class ServicioEntrevistas:
         self.srv.cola.encolar("entrevista", eid, lambda: self.ejecutar(eid))
         return doc
 
-    def ejecutar(self, entrevista_id: str, continuar: bool = False) -> None:
-        """Corre el grafo hasta el LEL propuesto (o el error). `continuar`: desde su último checkpoint."""
+    def ejecutar(self, entrevista_id: str, continuar: bool = False, desde: dict | None = None) -> None:
+        """Corre el grafo hasta el LEL propuesto (o el error). `continuar`: desde su último checkpoint.
+        `desde`: el estado guardado de la última etapa que salió bien, con `reanudar_en`."""
         try:
             doc = self.almacen.obtener(entrevista_id)
             if doc is None:
                 return
-            entrada = None if continuar else {"entrevista_id": entrevista_id, "proyecto_id": doc["proyecto_id"]}
+            entrada = None if continuar else (desde or {"entrevista_id": entrevista_id, "proyecto_id": doc["proyecto_id"]})
             with con_perfil(self.srv.perfil(doc["proyecto_id"])):
                 self.grafo.invoke(entrada, self.hilo(doc))
         except Cancelado:
@@ -125,22 +126,50 @@ class ServicioEntrevistas:
         self.ejecutar(doc["entrevista_id"])
         return doc["entrevista_id"]
 
-    def reprocesar(self, entrevista_id: str) -> dict:
-        """Vuelve a procesar una entrevista que terminó en error o se canceló. Lo que había propuesto
-        y nadie validó sale del LEL; lo validado se queda."""
+    ORDEN = ("cargada", "leida", "extraida", "interpretada", "en_debate", "arbitrada", "modelada")
+
+    def punto_de_retomar(self, doc: dict) -> dict | None:
+        """{nodo, desde, estado} si la entrevista se puede retomar desde la etapa que falló (o en la
+        que se canceló): esa etapa y el estado que dejó la anterior. None: hay que empezar de cero."""
+        e = self.almacen.etapas(doc["entrevista_id"])
+        if not e or not e.get("en_curso") or e["en_curso"] == "cargada" or e["en_curso"] not in self.ORDEN:
+            return None
+        previa = e["orden"][-1] if e.get("orden") else None
+        estado = (e.get("salidas", {}).get(previa) or {}).get("estado") if previa else None
+        if not estado:
+            return None
+        return {"nodo": e["en_curso"], "desde": previa, "estado": estado}
+
+    def reprocesar(self, entrevista_id: str, desde_cero: bool = False) -> dict:
+        """Vuelve a procesar una entrevista que terminó en error o se canceló. Por omisión **retoma
+        desde la etapa que falló**, con la salida guardada de la anterior (`etapas_entrevista`):
+        lo que ya salió bien no se repite. Con `desde_cero`, o si no hay de dónde retomar, empieza
+        otra vez. En los dos casos, lo que había propuesto y nadie validó sale del LEL (lo crea de
+        nuevo la etapa del Modelador) y lo validado se queda."""
         doc = self.almacen.obtener(entrevista_id)
         if doc is None:
             raise KeyError(entrevista_id)
         if doc["estado"] not in (ea.ERROR, ea.CANCELADA):
             raise ConflictoEntrevista(f"{entrevista_id} está «{doc['estado']}»: solo se vuelve a procesar lo que "
                                       "terminó en error o se canceló")
+        punto = None if desde_cero else self.punto_de_retomar(doc)
         self._reservar(entrevista_id)
         self.lexico.quitar_entrevista(doc["proyecto_id"], entrevista_id)
-        self.almacen.reiniciar_bitacora(entrevista_id, doc["proyecto_id"])
+        self.almacen.reiniciar_bitacora(entrevista_id, doc["proyecto_id"], conservar=punto is not None)
+        if punto is None:
+            self.almacen.borrar_etapas(entrevista_id)
         proyecto = self.srv.proyectos.obtener(doc["proyecto_id"])
-        doc = self.almacen.actualizar(entrevista_id, estado=ea.CARGADA, corrida=doc.get("corrida", 1) + 1, error=None,
-                                      resumen=None, config=self.config(proyecto) if proyecto else doc["config"])
-        self.srv.cola.encolar("entrevista", entrevista_id, lambda: self.ejecutar(entrevista_id))
+        corrida = doc.get("corrida", 1) + 1
+        estado = punto["estado"]["estado"] if punto else ea.CARGADA
+        doc = self.almacen.actualizar(entrevista_id, estado=estado, corrida=corrida, error=None, resumen=None,
+                                      config=self.config(proyecto) if proyecto else doc["config"],
+                                      retomada=({"desde": punto["nodo"], "despues_de": punto["desde"], "corrida": corrida}
+                                                if punto else None))
+        desde = None
+        if punto:
+            desde = {**punto["estado"], "entrevista_id": entrevista_id, "proyecto_id": doc["proyecto_id"],
+                     "corrida": f"{entrevista_id}#{corrida}", "fallo": None, "reanudar_en": punto["nodo"]}
+        self.srv.cola.encolar("entrevista", entrevista_id, lambda: self.ejecutar(entrevista_id, desde=desde))
         return doc
 
     def cancelar(self, entrevista_id: str) -> dict:

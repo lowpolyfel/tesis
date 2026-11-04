@@ -6,6 +6,13 @@
   el mismo sobre que la traza de un requisito en la versión 1 (emisor, receptor, tipo,
   payload, modelo, versión del prompt). Es la trazabilidad de la fase del LEL y lo que
   anima la escena en vivo.
+- Colección `etapas_entrevista` (mismo id): la salida de cada etapa del grafo (el estado
+  completo al terminar cada nodo), la que está en curso y la que falló. «Volver a procesar»
+  retoma desde la etapa que falló con el estado de la anterior, sin repetir lo que ya salió
+  bien (ni volver a pagarle al modelo por ello):
+
+      {entrevista_id, proyecto_id, corrida, en_curso: nodo | null, fallo: {nodo, mensaje} | null,
+       orden: [nodos completados], salidas: {nodo: {fecha, corrida, estado}}}
 
 Solo el trabajador de la cola escribe mientras una entrevista se procesa; un candado
 cubre cada leer-y-escribir de este proceso (renombrar mientras corre).
@@ -22,6 +29,7 @@ from .turnos import EntrevistaLeida
 
 COLECCION = "entrevistas"
 COLECCION_BITACORAS = "bitacoras"
+COLECCION_ETAPAS = "etapas_entrevista"
 COLECCION_ETIQUETAS = "etiquetas_entrevista"  # el ground truth de la calibración (app/calibracion/entrevistas.py)
 COLECCION_ANOTACIONES = "etiquetas_anotadores"  # el ground truth por persona (app/calibracion/anotaciones.py)
 
@@ -88,12 +96,14 @@ class Entrevistas:
 
     def borrar(self, entrevista_id: str) -> bool:
         self.repo.borrar_doc(COLECCION_BITACORAS, entrevista_id)
+        self.repo.borrar_doc(COLECCION_ETAPAS, entrevista_id)
         self.repo.borrar_doc(COLECCION_ETIQUETAS, entrevista_id)  # su ground truth (ADR 0026)
         self.repo.borrar_docs(COLECCION_ANOTACIONES, entrevista_id=entrevista_id)  # y el de cada persona (ADR 0029)
         return self.repo.borrar_doc(COLECCION, entrevista_id)
 
     def borrar_de_proyecto(self, proyecto_id: str) -> None:
         self.repo.borrar_docs(COLECCION_BITACORAS, proyecto_id=proyecto_id)
+        self.repo.borrar_docs(COLECCION_ETAPAS, proyecto_id=proyecto_id)
         self.repo.borrar_docs(COLECCION, proyecto_id=proyecto_id)
 
     # ------------------------------------------------------------ bitácora
@@ -102,16 +112,89 @@ class Entrevistas:
         return self.repo.obtener_doc(COLECCION_BITACORAS, entrevista_id) or {
             "entrevista_id": entrevista_id, "mensajes": [], "transiciones": []}
 
-    def reiniciar_bitacora(self, entrevista_id: str, proyecto_id: str) -> None:
-        """Al volver a procesar: la bitácora anterior se conserva en `anteriores`."""
+    def reiniciar_bitacora(self, entrevista_id: str, proyecto_id: str, conservar: bool = False) -> None:
+        """Al volver a procesar: la bitácora anterior se conserva en `anteriores`. Con `conservar`
+        (se retoma desde la etapa que falló) siguen los mensajes de las etapas que salieron bien,
+        sin los de error, para que la escena cuente la historia completa."""
         with _candado:
             b = self.bitacora(entrevista_id)
             anteriores = b.get("anteriores", []) + ([{"mensajes": b["mensajes"], "transiciones": b["transiciones"]}]
                                                     if b["mensajes"] else [])
+            mensajes, transiciones = [], [{"estado": CARGADA, "secuencia": 0, "fecha": ahora_iso()}]
+            if conservar:
+                mensajes = [{**m, "secuencia": k} for k, m in
+                            enumerate((m for m in b["mensajes"] if m.get("tipo") != "error"), 1)]
+                transiciones = [t for t in b["transiciones"] if t.get("estado") not in (ERROR, CANCELADA)] \
+                    or transiciones
             self.repo.guardar_doc(COLECCION_BITACORAS, entrevista_id, {
-                "entrevista_id": entrevista_id, "proyecto_id": proyecto_id, "mensajes": [],
-                "transiciones": [{"estado": CARGADA, "secuencia": 0, "fecha": ahora_iso()}],
-                "anteriores": anteriores[-3:]})
+                "entrevista_id": entrevista_id, "proyecto_id": proyecto_id, "mensajes": mensajes,
+                "transiciones": transiciones, "anteriores": anteriores[-3:]})
+
+    # ------------------------------------------------------------ etapas (para retomar)
+
+    def etapas(self, entrevista_id: str) -> dict | None:
+        return self.repo.obtener_doc(COLECCION_ETAPAS, entrevista_id)
+
+    def _etapas(self, entrevista_id: str, proyecto_id: str | None) -> dict:
+        return self.etapas(entrevista_id) or {"entrevista_id": entrevista_id, "proyecto_id": proyecto_id,
+                                              "en_curso": None, "fallo": None, "orden": [], "salidas": {}}
+
+    def etapa_en_curso(self, entrevista_id: str, proyecto_id: str | None, nodo: str, corrida: str | None) -> None:
+        with _candado:
+            e = self._etapas(entrevista_id, proyecto_id)
+            e.update(en_curso=nodo, corrida=corrida, actualizada=ahora_iso())
+            self.repo.guardar_doc(COLECCION_ETAPAS, entrevista_id, e)
+
+    def etapa_completada(self, entrevista_id: str, proyecto_id: str | None, nodo: str, corrida: str | None,
+                         estado: dict) -> None:
+        """La salida de una etapa: el estado completo del grafo al terminarla. Se retoma desde aquí."""
+        with _candado:
+            e = self._etapas(entrevista_id, proyecto_id)
+            e["salidas"][nodo] = {"fecha": ahora_iso(), "corrida": corrida, "estado": estado}
+            e["orden"] = [n for n in e["orden"] if n != nodo] + [nodo]
+            e.update(en_curso=None, fallo=None, ultima=nodo, corrida=corrida, actualizada=ahora_iso())
+            self.repo.guardar_doc(COLECCION_ETAPAS, entrevista_id, e)
+
+    def etapa_fallida(self, entrevista_id: str, proyecto_id: str | None, nodo: str, mensaje: str) -> None:
+        with _candado:
+            e = self._etapas(entrevista_id, proyecto_id)
+            e.update(en_curso=nodo, fallo={"nodo": nodo, "mensaje": mensaje[:500], "fecha": ahora_iso()},
+                     actualizada=ahora_iso())
+            self.repo.guardar_doc(COLECCION_ETAPAS, entrevista_id, e)
+
+    def borrar_etapas(self, entrevista_id: str) -> None:
+        self.repo.borrar_doc(COLECCION_ETAPAS, entrevista_id)
+
+    def registrar_modelo(self, entrevista_id: str, *, corrida: str | None, rol: str, modelo: str | None,
+                         respaldo: str | None = None, reintentos: int = 0) -> None:
+        """Qué modelo respondió en esta corrida, por agente, y si fue el de respaldo
+        (GEMINI_FALLBACK_MODEL). Solo escribe cuando hay algo nuevo."""
+        if not modelo:
+            return
+        with _candado:
+            doc = self.obtener(entrevista_id)
+            if doc is None:
+                return
+            usados = doc.setdefault("modelos_usados", [])
+            cambio = False
+            fila = next((u for u in usados if u.get("corrida") == corrida and u.get("rol") == rol
+                         and u.get("modelo") == modelo), None)
+            if fila is None:
+                fila = {"corrida": corrida, "rol": rol, "modelo": modelo, "reintentos": 0}
+                usados.append(fila)
+                cambio = True
+            if respaldo:
+                fila["respaldo_de"] = respaldo
+                doc.setdefault("respaldos", []).append({"corrida": corrida, "rol": rol, "configurado": respaldo,
+                                                        "usado": modelo, "fecha": ahora_iso()})
+                doc["respaldos"] = doc["respaldos"][-50:]
+                cambio = True
+            if reintentos:
+                fila["reintentos"] = fila.get("reintentos", 0) + reintentos
+                cambio = True
+            if cambio:
+                doc["modelos_usados"] = usados[-100:]
+                self.repo.guardar_doc(COLECCION, entrevista_id, doc)
 
     def agregar_mensaje(self, entrevista_id: str, *, emisor: str, receptor: str, tipo: str, payload: dict,
                         ronda: int = 0, modelo: str | None = None, prompt_version: str | None = None) -> dict:

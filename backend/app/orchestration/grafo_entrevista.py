@@ -78,6 +78,7 @@ class EstadoEntrevista(TypedDict, total=False):
     terminos: dict[str, dict]  # clave → término en proceso
     ronda: int
     fallo: dict | None
+    reanudar_en: str | None  # «Volver a procesar» desde la etapa que falló: el nodo por el que se entra
 
 
 def ahora() -> str:
@@ -134,6 +135,9 @@ def construir_grafo_entrevista(deps: Dependencias, checkpointer,
                ronda: int = 0, respuesta: Respuesta | None = None, modelo: str | None = None) -> None:
         if respuesta is not None:
             payload = {**payload, **meta_llm(respuesta)}
+            entrevistas.registrar_modelo(st["entrevista_id"], corrida=st.get("corrida"), rol=emisor.value,
+                                         modelo=respuesta.modelo, respaldo=respuesta.respaldo,
+                                         reintentos=respuesta.reintentos)
         entrevistas.agregar_mensaje(st["entrevista_id"], emisor=emisor.value, receptor=receptor.value, tipo=tipo.value,
                                     payload=payload, ronda=ronda, modelo=respuesta.modelo if respuesta else modelo,
                                     prompt_version=respuesta.prompt_version if respuesta else None)
@@ -143,12 +147,20 @@ def construir_grafo_entrevista(deps: Dependencias, checkpointer,
         return {"estado": estado}
 
     def nodo(fn: Callable[[EstadoEntrevista], dict]) -> Callable[[EstadoEntrevista], dict]:
+        """Cada etapa deja su salida en `etapas_entrevista` (el estado completo al terminar): si la
+        siguiente falla, «Volver a procesar» entra por ella con ese estado."""
         @wraps(fn)
         def envuelto(st: EstadoEntrevista) -> dict:
-            if cancelado(st.get("entrevista_id")):
-                raise Cancelado(st.get("entrevista_id"))
+            eid, pid = st.get("entrevista_id"), st.get("proyecto_id")
+            entrevistas.etapa_en_curso(eid, pid, fn.__name__, st.get("corrida"))
+            if cancelado(eid):
+                raise Cancelado(eid)
             try:
-                return fn(st)
+                cambios = fn(st)
+                if not cambios.get("fallo"):
+                    final = {k: v for k, v in {**st, **cambios}.items() if k != "reanudar_en"}
+                    entrevistas.etapa_completada(eid, final.get("proyecto_id"), fn.__name__, final.get("corrida"), final)
+                return cambios
             except GraphBubbleUp:
                 raise
             except Exception as e:
@@ -162,6 +174,7 @@ def construir_grafo_entrevista(deps: Dependencias, checkpointer,
                 entrevistas.agregar_mensaje(st["entrevista_id"], emisor=emisor.value, receptor=Nodo.SISTEMA.value,
                                             tipo=TipoMensaje.ERROR.value, payload=fallo, ronda=st.get("ronda", 0),
                                             modelo=modelo, prompt_version=fallo.get("prompt_version"))
+                entrevistas.etapa_fallida(eid, pid, fn.__name__, f"{type(e).__name__}: {e}")
                 return {"fallo": fallo}
 
         return envuelto
@@ -610,7 +623,11 @@ def construir_grafo_entrevista(deps: Dependencias, checkpointer,
     g = StateGraph(EstadoEntrevista)
     for fn in (cargada, leida, extraida, interpretada, en_debate, arbitrada, modelada, error):
         g.add_node(fn.__name__, fn)
-    g.add_edge(START, "cargada")
+    def entrada(st: EstadoEntrevista) -> str:  # por omisión desde el principio; al retomar, por la que falló
+        return st.get("reanudar_en") or "cargada"
+
+    nodos = ["cargada", "leida", "extraida", "interpretada", "en_debate", "arbitrada", "modelada"]
+    g.add_conditional_edges(START, entrada, nodos)
     g.add_conditional_edges("cargada", o_error("leida"), ["leida", "error"])
     g.add_conditional_edges("leida", o_error("extraida"), ["extraida", "error"])
     g.add_conditional_edges("extraida", o_error("interpretada"), ["interpretada", "error"])

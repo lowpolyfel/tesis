@@ -28,6 +28,9 @@ from .lexico import huella_lexico, resumen as resumen_lexico
 
 FASES = ("entrevista", "lexico", "mapa", "metas", "requisitos")
 COLECCIONES = {"mapa": "fase_mapa", "metas": "fase_metas", "requisitos": "fase_requisitos"}
+# El último intento fallido de generar cada fase (un documento por proyecto): lo de atrás ya
+# quedó guardado, así que «Volver a generar» retoma justo en la fase que falló.
+COLECCION_FALLOS = "fallos_fase"
 MAX_HISTORIAL = 200
 
 
@@ -90,6 +93,22 @@ class DocumentosDeFase:
     def borrar_de_proyecto(self, proyecto_id: str) -> None:
         for coleccion in COLECCIONES.values():
             self.repo.borrar_doc(coleccion, proyecto_id)
+        self.repo.borrar_doc(COLECCION_FALLOS, proyecto_id)
+
+    # ------------------------------------------------------------ intentos fallidos
+
+    def fallo(self, fase: str, proyecto_id: str) -> dict | None:
+        return (self.repo.obtener_doc(COLECCION_FALLOS, proyecto_id) or {}).get(fase)
+
+    def registrar_fallo(self, fase: str, proyecto_id: str, mensaje: str) -> None:
+        doc = self.repo.obtener_doc(COLECCION_FALLOS, proyecto_id) or {"proyecto_id": proyecto_id}
+        doc[fase] = {"mensaje": mensaje[:600], "fecha": ahora()}
+        self.repo.guardar_doc(COLECCION_FALLOS, proyecto_id, doc)
+
+    def limpiar_fallo(self, fase: str, proyecto_id: str) -> None:
+        doc = self.repo.obtener_doc(COLECCION_FALLOS, proyecto_id)
+        if doc and doc.pop(fase, None) is not None:
+            self.repo.guardar_doc(COLECCION_FALLOS, proyecto_id, doc)
 
     # ------------------------------------------------------------ huellas en cadena
 

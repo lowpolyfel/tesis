@@ -1,5 +1,26 @@
 # Cambios
 
+## 2.6.0 — 2026-11-04
+
+Que un 503 de Gemini no tire el análisis (ADR 0031). No cambia los agentes, sus prompts ni la
+lógica del grafo: solo cómo se llama al proveedor y desde dónde se retoma.
+
+- **Reintentos con espera exponencial y jitter.** Las llamadas a Gemini (agentes y embeddings)
+  se reintentan hasta 5 veces, solo ante 503/UNAVAILABLE y 429/RESOURCE_EXHAUSTED; se respeta
+  `Retry-After`. Variables: `GEMINI_REINTENTOS`, `GEMINI_BACKOFF_BASE_S`, `GEMINI_BACKOFF_MAX_S`.
+- **Modelo de respaldo.** Si se agotan, una vez con `GEMINI_FALLBACK_MODEL`. La corrida guarda qué
+  modelo respondió por agente (`modelos_usados`) y cada vez que entró el respaldo (`respaldos`);
+  los mensajes de la bitácora lo dicen en `modelo_respaldo`, y el mapa, las metas y los
+  requisitos en su documento. La prueba de modelos y «Probar» en Configuración nunca usan el
+  respaldo: miden ese modelo.
+- **«Volver a procesar» retoma desde la etapa que falló.** Cada etapa del grafo de la entrevista
+  (lectura, extracción, interpretación, debate, arbitraje, léxico) guarda su salida en Mongo
+  (`etapas_entrevista`); al volver a procesar se entra por la que falló con el estado de la
+  anterior, sin repetir llamadas al modelo. «o desde el principio» vuelve a empezar. Si falla
+  el mapa o las metas, el intento queda guardado (`fallos_fase`) y se retoma en esa fase.
+- **Errores legibles.** Un 503 o 429 ya no se muestra como el JSON de Google: la pantalla dice qué
+  pasó, que lo hecho quedó guardado y desde dónde se retoma; el detalle técnico queda plegado.
+
 ## 2.5.0 — 2026-10-19
 
 Revisar la calidad sin hacerlo salida por salida en la pantalla (ADR 0030). No cambia los agentes,

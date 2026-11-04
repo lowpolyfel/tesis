@@ -84,7 +84,7 @@ def probar(entrada: EntradaPrueba, srv: ServicioDep, usuario: UsuarioDep) -> dic
     t0 = perf_counter()
     try:
         cliente = crear_cliente_de({"proveedor": p.id, "modelo": entrada.modelo, "base_url": base, "api_key": clave},
-                                   srv.deps.settings)
+                                   srv.deps.settings, con_respaldo=False)  # se prueba ese modelo, no el de respaldo
         respuesta = cliente.completar(PRUEBA, {"type": "object"})
     except (FalloProveedor, TimeoutError) as e:
         return {"ok": False, "ms": None, "error": str(e)}
