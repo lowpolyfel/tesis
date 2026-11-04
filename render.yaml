@@ -40,6 +40,9 @@ services:
       # Sesión por HTTPS
       - key: SESION_COOKIE_SEGURA
         value: "true"
+      # Prueba cerrada: el registro no pide código por correo
+      - key: AUTH_SIN_VERIFICACION
+        value: "true"
       # Correo: Render bloquea 25/465/587; Brevo acepta 2525 con STARTTLS
       - key: SMTP_HOST
         value: smtp-relay.brevo.com

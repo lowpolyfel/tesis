@@ -118,6 +118,9 @@ class Settings(BaseSettings):
     codigo_intentos: int = Field(5, ge=1)  # intentos por código
     codigo_reenvio_s: int = Field(60, ge=0)  # espera mínima para pedir otro
     auth_codigo_al_entrar: bool = False  # true: también pide un código por correo al entrar
+    # true: el registro no pide código; la cuenta queda confirmada y con la sesión abierta.
+    # Solo para pruebas cerradas (no comprueba que el correo sea de quien se registra)
+    auth_sin_verificacion: bool = False
     sesion_dias: int = Field(7, ge=1)
     sesion_cookie_segura: bool = False  # true si el backend se sirve por HTTPS
 

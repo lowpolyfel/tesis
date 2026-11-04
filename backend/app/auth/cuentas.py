@@ -167,6 +167,10 @@ class Cuentas:
             else:
                 u = Usuario.model_validate(self.repo.crear_doc(COLECCION, "U", lambda uid: Usuario(
                     usuario_id=uid, nombre=nombre, correo=correo, contrasena=cifrada).model_dump(mode="json")))
+            if self.s.auth_sin_verificacion:  # prueba cerrada: sin código, la cuenta queda confirmada
+                u.verificado = True
+                self._guardar(u)
+                return u
         return self._enviar_codigo(u, "registro")
 
     def verificar(self, correo: str, codigo: str) -> Usuario:
@@ -207,10 +211,14 @@ class Cuentas:
                 raise CredencialesInvalidas("Correo o contraseña incorrectos.")
             u.fallos, u.bloqueado_hasta = 0, None
             self._guardar(u)
+        if not u.verificado and self.s.auth_sin_verificacion:
+            with self._candado:
+                u.verificado = True
+                self._guardar(u)
         if not u.verificado:
             self._enviar_codigo(u, "registro")
             raise SinVerificar("Confirma tu correo: te enviamos un código.")
-        if self.s.auth_codigo_al_entrar:
+        if self.s.auth_codigo_al_entrar and not self.s.auth_sin_verificacion:
             self._enviar_codigo(u, "entrar")
             return u, True
         return u, False

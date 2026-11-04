@@ -82,12 +82,15 @@ def _pendiente(srv: Servicio, correo: str, que: str) -> dict:
 
 
 @router.post("/registro", status_code=201)
-def registro(entrada: EntradaRegistro, srv: ServicioDep) -> dict:
-    """Crea la cuenta sin verificar y manda el código al correo. 409 si el correo ya tiene cuenta."""
+def registro(entrada: EntradaRegistro, srv: ServicioDep, respuesta: Response) -> dict:
+    """Crea la cuenta sin verificar y manda el código al correo. 409 si el correo ya tiene cuenta.
+    Con AUTH_SIN_VERIFICACION=true no hay código: devuelve la cuenta y abre la sesión."""
     try:
-        srv.cuentas.registrar(entrada.nombre, entrada.correo, entrada.contrasena)
+        u = srv.cuentas.registrar(entrada.nombre, entrada.correo, entrada.contrasena)
     except (ErrorCuenta, ErrorCorreo) as e:
         raise _error(e) from e
+    if srv.deps.settings.auth_sin_verificacion:
+        return _con_sesion(respuesta, srv, u).model_dump(mode="json")
     return _pendiente(srv, entrada.correo, "registro")
 
 

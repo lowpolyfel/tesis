@@ -133,3 +133,26 @@ def test_borrar_un_requisito_y_no_si_esta_en_proceso(srv):
     assert c.delete(f"/proyectos/{pid}").status_code == 409
     srv._liberar(b)
     assert c.delete(f"/proyectos/{pid}").status_code == 204
+
+
+def test_sin_verificacion_el_registro_abre_la_sesion_sin_codigo(srv):
+    """AUTH_SIN_VERIFICACION=true (prueba cerrada): ni registro ni entrar mandan código."""
+    srv.deps.settings.auth_sin_verificacion = True
+    srv.deps.settings.auth_codigo_al_entrar = True  # tampoco pide el código al entrar
+    c = TestClient(create_app(srv))
+    r = c.post("/auth/registro", json={"nombre": "Ana", "correo": "ana@ejemplo.mx", "contrasena": CLAVE})
+    assert r.status_code == 201 and r.json()["correo"] == "ana@ejemplo.mx" and "pendiente" not in r.json()
+    assert r.cookies.get(COOKIE_SESION)
+    assert c.get("/auth/yo").json()["nombre"] == "Ana"
+    otro = TestClient(create_app(srv))
+    r = otro.post("/auth/entrar", json={"correo": "ana@ejemplo.mx", "contrasena": CLAVE})
+    assert r.status_code == 200 and r.json()["nombre"] == "Ana"
+    assert srv.cuentas.correo.enviados == []
+
+
+def test_sin_verificacion_confirma_una_cuenta_que_quedo_pendiente(srv):
+    c = TestClient(create_app(srv))
+    c.post("/auth/registro", json={"nombre": "Ana", "correo": "ana@ejemplo.mx", "contrasena": CLAVE})
+    srv.deps.settings.auth_sin_verificacion = True
+    r = c.post("/auth/entrar", json={"correo": "ana@ejemplo.mx", "contrasena": CLAVE})
+    assert r.status_code == 200 and r.json()["nombre"] == "Ana"

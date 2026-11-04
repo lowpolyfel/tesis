@@ -162,7 +162,7 @@ function fuerza(c) {
 const NIVELES = ["muy corta", "débil", "aceptable", "buena", "fuerte"];
 
 export function Registro() {
-  const { usuario } = useSesion();
+  const { usuario, iniciar } = useSesion();
   const navigate = useNavigate();
   const [f, setF] = useState({ nombre: "", correo: "", contrasena: "", repetir: "" });
   const { error, enviando, sacude, enviar } = useEnvio();
@@ -177,7 +177,10 @@ export function Registro() {
     e.preventDefault();
     if (corta || distinta) return;
     const r = await enviar(() => registrarCuenta(f));
-    if (r) navigate(`/verificar?${new URLSearchParams({ correo: r.correo, para: "registro" })}`, { state: { sinSmtp: r.sin_smtp, minutos: r.minutos } });
+    if (r && !r.pendiente) { // servidor sin verificación por correo (prueba cerrada): ya hay sesión
+      iniciar(r);
+      navigate("/proyectos", { replace: true });
+    } else if (r) navigate(`/verificar?${new URLSearchParams({ correo: r.correo, para: "registro" })}`, { state: { sinSmtp: r.sin_smtp, minutos: r.minutos } });
   };
 
   return (
