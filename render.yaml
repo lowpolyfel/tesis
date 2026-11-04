@@ -25,6 +25,9 @@ services:
         value: "5"
       - key: GEMINI_FALLBACK_MODEL
         value: gemini-3.1-flash-lite
+      # Correos (separados por coma) que ven los resultados del cuestionario y bajan el CSV
+      - key: CUESTIONARIO_ADMINS
+        sync: false
       - key: EMBEDDING_PROVEEDOR
         value: google
       - key: EMBEDDING_MODEL

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useApi } from "../hooks/useApi";
-import { CONTEXTO_MAX, crearProyecto, fasesDeProyecto, listarProyectos, resumenProyecto } from "../services/backend";
+import { CONTEXTO_MAX, crearProyecto, cuestionario, fasesDeProyecto, listarProyectos, resumenProyecto } from "../services/backend";
 import { FASES, fase as datosFase } from "../constants/fases";
 import { estadoCorto } from "../components/fases/Camino";
 import { PROYECTO_GENERAL_ID } from "../constants/proyectos";
@@ -42,6 +42,8 @@ export default function Proyectos() {
         <p className="max-w-xl text-[15px] text-[var(--bone-dim)]">Cada proyecto va de la entrevista con el cliente a sus requisitos: léxico, mapa conceptual y metas, validados por ti. Elige uno o crea otro.</p>
       </Encabezado>
 
+      <TarjetaCuestionario />
+
       {creando && <NuevoProyecto onCancelar={() => setCreando(false)} />}
       <Aviso error={error} />
       {!proyectos && !error && <Cargando>Cargando proyectos…</Cargando>}
@@ -61,6 +63,39 @@ export default function Proyectos() {
       )}
     </div>
   );
+}
+
+/*
+ * El cuestionario de evaluación (ADR 0032): siempre a la vista, pero se abre hasta que la cuenta
+ * termina un proyecto con sus cinco fases (existe su documento de requisitos).
+ */
+function TarjetaCuestionario() {
+  const { datos: c } = useApi(cuestionario);
+  if (!c) return null;
+  const estado = c.respuesta?.estado;
+  const contestadas = Object.keys(c.respuesta?.respuestas ?? {}).length;
+  const { titulo, texto, accion } = !c.disponible
+    ? { titulo: "Se abre al terminar un proyecto", texto: "Cuando un proyecto tuyo llegue hasta los requisitos (las cinco fases), aquí podrás contestar el cuestionario sobre tu experiencia.", accion: null }
+    : estado === "enviado"
+      ? { titulo: "Enviado. ¡Gracias!", texto: "Tus respuestas ya cuentan para la evaluación. Puedes revisarlas o corregirlas.", accion: "Revisar" }
+      : estado === "borrador"
+        ? { titulo: "A medias", texto: `Llevas ${contestadas} de ${c.preguntas.total} preguntas. Lo contestado quedó guardado.`, accion: "Continuar" }
+        : { titulo: "Ya puedes contestarlo", texto: "Terminaste un proyecto hasta los requisitos. Cuéntanos cómo te fue comparado con hacerlo a mano: son unos 12 minutos y es anónimo.", accion: "Contestar" };
+  const cuerpo = (
+    <>
+      <div className="min-w-0 flex-1 space-y-1">
+        <p className="etiqueta">{c.disponible ? "" : "🔒 "}Cuestionario de evaluación</p>
+        <p className="serif text-[22px] leading-tight">{titulo}</p>
+        <p className="max-w-2xl text-[14px] leading-relaxed text-[var(--bone-dim)]">{texto}</p>
+      </div>
+      {accion && <span className={`pill ${estado === "enviado" ? "ghost sm" : "sm"}`}>{accion}</span>}
+      {c.es_admin && <span className="mono text-[10px] text-[var(--bone-faint)]">coordinación: resultados adentro</span>}
+    </>
+  );
+  const clase = "tarjeta flex flex-wrap items-center gap-4 p-5";
+  return c.disponible || c.es_admin
+    ? <Link to="/cuestionario" className={`${clase} tarjeta-viva`}>{cuerpo}</Link>
+    : <div className={`${clase} opacity-80`} aria-disabled="true">{cuerpo}</div>;
 }
 
 function Tarjeta({ p, c }) {

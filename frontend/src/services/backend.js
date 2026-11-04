@@ -287,3 +287,10 @@ export const anotacion = (anotacionId) => get(`/anotaciones/${id(anotacionId)}`)
 /** respuesta: "si" | "no" | "no_se" | null */
 export const responderAnotacion = (anotacionId, termino, respuesta) => put(`/anotaciones/${id(anotacionId)}/respuesta`, { termino, respuesta });
 export const borrarAnotacion = (anotacionId) => borrar(`/anotaciones/${id(anotacionId)}`);
+
+/* ---- Cuestionario de evaluación (ADR 0032): uno por cuenta; se abre al terminar un proyecto */
+export const cuestionario = () => get("/cuestionario");
+export const guardarCuestionario = (respuestas) => put("/cuestionario", { respuestas });
+export const enviarCuestionario = (respuestas) => post("/cuestionario/enviar", { respuestas });
+export const resultadosCuestionario = () => get("/cuestionario/resultados");
+export const urlCuestionarioCsv = () => `${BASE_URL}/cuestionario/resultados.csv`;

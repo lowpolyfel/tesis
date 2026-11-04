@@ -1,5 +1,22 @@
 # Cambios
 
+## 2.7.0 — 2026-11-04
+
+Cuestionario de evaluación de la experiencia (ADR 0032, `docs/cuestionario-evaluacion.md`).
+No cambia los agentes, el grafo ni las fases.
+
+- **En el lobby de proyectos**, una tarjeta «Cuestionario de evaluación». Está cerrada hasta
+  que la cuenta tiene al menos un proyecto que llegó a la quinta fase (existe su documento de
+  requisitos); luego dice «Contestar», «Continuar» (a medias) o «Revisar» (enviado).
+- **El formulario** (`/cuestionario`) tiene las 60 preguntas en sus 7 secciones, con los SUS
+  25–34 en su orden y redacción. Se guarda solo mientras se contesta (borrador), se envía al
+  final con todas las obligatorias y se puede corregir después. Uno por cuenta (colección
+  `cuestionarios`, id = la cuenta).
+- **Resultados anónimos** para los correos de `CUESTIONARIO_ADMINS`: SUS (media, mediana, DE),
+  escalas con mediana y RIC (y % arriba del punto medio en la comparación), conteos con media,
+  mediana y rango, frecuencias, abiertas, cuántos tuvieron fallas de infraestructura, y un CSV
+  con una fila por persona (R01, R02…) sin cuenta ni correo.
+
 ## 2.6.0 — 2026-11-04
 
 Que un 503 de Gemini no tire el análisis (ADR 0031). No cambia los agentes, sus prompts ni la

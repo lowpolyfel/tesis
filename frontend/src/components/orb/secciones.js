@@ -20,6 +20,7 @@ export const SECCIONES = {
   analizar: { lado: 1, y: 0.2, mood: "idle", nombre: "Analizar" },
   mas: { lado: 1, y: 0.28, mood: "sistema", nombre: "Más" },
   configuracion: { lado: -1, y: 0.24, mood: "clasificador", nombre: "Configuración" },
+  cuestionario: { lado: -1, y: 0.2, mood: "humano", nombre: "Cuestionario" },
   avanzado: { lado: -1, y: 0.3, mood: "sistema", nombre: "Análisis" },
   // versión 2 (ADR 0024): las fases del proyecto alternan de lado, como las vistas de la versión 1
   entrevista: { lado: 1, y: 0.22, mood: "entrevista", nombre: "Entrevista" },

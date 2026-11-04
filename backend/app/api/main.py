@@ -26,6 +26,7 @@ from .routes import (
     calibracion_entrevistas,
     comparaciones,
     contexto,
+    cuestionario,
     documentos,
     entrevistas,
     evaluaciones,
@@ -118,7 +119,7 @@ def create_app(servicio: Servicio | None = None) -> FastAPI:
         restaurar()
         app.state.servicio.detener()
 
-    app = FastAPI(title="Dudamel: de la entrevista a los requisitos", version="2.6.0", lifespan=lifespan)
+    app = FastAPI(title="Dudamel: de la entrevista a los requisitos", version="2.7.0", lifespan=lifespan)
     app.state.servicio = servicio
     app.state.apagando = threading.Event()
     settings = servicio.deps.settings if servicio else get_settings()
@@ -136,7 +137,7 @@ def create_app(servicio: Servicio | None = None) -> FastAPI:
     for r in (requisitos.router, proyectos.router, documentos.router, analisis.router, comparaciones.router,
               calibracion.router, evaluaciones.router, artefactos.router, lel.router, preparacion.router,
               modelos.router, contexto.router, entrevistas.router, fases.router, calibracion_entrevistas.router,
-              pruebas_modelos.router):
+              pruebas_modelos.router, cuestionario.router):
         app.include_router(r, dependencies=[Depends(usuario_actual)])
     return app
 
