@@ -52,7 +52,7 @@ def test_registro_codigo_sesion_y_salir(srv):
     assert r.status_code == 422
     codigo = srv.cuentas.correo.ultimo("ana@ejemplo.mx")
     r = c.post("/auth/verificar", json={"correo": "ana@ejemplo.mx", "codigo": codigo})
-    assert r.status_code == 200 and set(r.json()) == {"usuario_id", "nombre", "correo", "creado"}
+    assert r.status_code == 200 and set(r.json()) == {"usuario_id", "nombre", "correo", "creado", "coordina_evaluacion"}
     cookie = r.cookies.get(COOKIE_SESION)
     assert cookie and "httponly" in r.headers["set-cookie"].lower() and "samesite=lax" in r.headers["set-cookie"].lower()
     assert c.get("/auth/yo").json()["nombre"] == "Ana"

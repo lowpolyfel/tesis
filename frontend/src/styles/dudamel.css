@@ -227,3 +227,43 @@ mark.resaltado{background:color-mix(in oklab,#41efff 22%,transparent);color:var(
   color:var(--bone-faint);font-weight:400;text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
 .tabla-viz td{padding:6px 8px;border-bottom:1px solid color-mix(in oklab,var(--bone) 6%,transparent);font-variant-numeric:tabular-nums}
 .tabla-viz tr.es-configurado td{color:var(--bone);font-weight:500}
+
+/* Resultados del cuestionario (ADR 0033). Divergente: naranja = «a mano» / «en desacuerdo», gris = punto
+   medio, azul = «con DUDAMEL» / «de acuerdo»; validada en claro y oscuro (pares vecinos ΔE ≥ 15).
+   El tono único de las barras de opciones es el polo azul. */
+:root{
+  --div1:#C2461A; --div2:#F08A5D; --div3:#6B6964; --div4:#6C9FE0; --div5:#1F5FB0;
+  --div1-tinta:#fff; --div2-tinta:#16130f; --div3-tinta:#fff; --div4-tinta:#16130f; --div5-tinta:#fff;
+  --barra-una:#6C9FE0;
+}
+:root[data-tema="claro"]{ --div3:#DDDBD6; --div3-tinta:#16130f; --barra-una:#1F5FB0; }
+.reporte .tramo{transition:filter .15s ease}
+.reporte .tramo:hover{filter:brightness(1.12)}
+.reporte .barra-una-fondo{background:var(--barra-una)}
+.reporte svg .barra-una{fill:var(--barra-una)}
+.reporte svg .marca:hover .barra-una{filter:brightness(1.15)}
+.reporte svg .reja{stroke:var(--line);stroke-width:1}
+.reporte svg .eje{stroke:var(--bone-faint);stroke-width:1}
+.reporte svg .eje-texto{fill:var(--bone-faint);font-family:var(--mono);font-size:10px}
+.reporte svg .eje-texto.fuerte{fill:var(--bone-dim)}
+.reporte svg .referencia{stroke:var(--bone-faint);stroke-width:1.5;stroke-dasharray:2 3}
+.reporte svg .media{stroke:var(--bone);stroke-width:2;stroke-dasharray:6 4}
+
+/* Impreso («Guardar como PDF»): papel blanco, tinta oscura, sin la esfera ni la barra, con los colores */
+@media print{
+  /* !important: la esfera escribe --bg en el style de la raíz */
+  :root,:root[data-tema="claro"]{
+    --bg:#fff !important; --bone:#1c1915; --bone-dim:rgba(28,25,21,.75); --bone-faint:rgba(28,25,21,.55); --line:rgba(28,25,21,.18);
+    --div3:#DDDBD6; --div3-tinta:#16130f; --barra-una:#1F5FB0; --aviso:#a86400;
+    color-scheme:light;
+  }
+  html,body{background:#fff !important}
+  canvas,.grain,[data-barra],.orb-ambient,.orb-vignette,.orb-membrane,.orb-scene{display:none !important}
+  .reporte *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .reporte .tarjeta{background:none;border-color:var(--line);box-shadow:none}
+  .reporte .evitar-corte,.reporte tr{break-inside:avoid}
+  .reporte .figura-reporte{break-inside:auto}
+  .reporte .figura-reporte > header{break-after:avoid;break-inside:avoid}
+  .reporte .figura-reporte > header + *{break-before:avoid}
+  @page{margin:16mm}
+}

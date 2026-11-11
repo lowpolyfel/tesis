@@ -29,6 +29,7 @@ import Evaluacion from "./pages/Evaluacion";
 import Conexion from "./pages/Conexion";
 import Configuracion from "./pages/Configuracion";
 import Cuestionario from "./pages/Cuestionario";
+import ResultadosCuestionario from "./pages/ResultadosCuestionario";
 
 /*
  * La esfera vive aquí, por encima de las rutas: nunca se desmonta.
@@ -100,6 +101,7 @@ export default function App() {
             <Route path="/conexion" element={<Conexion />} />
             <Route path="/configuracion" element={<Configuracion />} />
             <Route path="/cuestionario" element={<Cuestionario />} />
+            <Route path="/cuestionario/resultados" element={<ResultadosCuestionario />} />
           </Route>
           <Route path="/inicio" element={<AAnalizar />} />
           <Route path="/cargar" element={<AAnalizar />} />

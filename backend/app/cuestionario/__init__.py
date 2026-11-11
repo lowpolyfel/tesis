@@ -170,6 +170,21 @@ SECCIONES = [
     ]},
 ]
 PREGUNTAS = {p["id"]: p for s in SECCIONES for p in s["preguntas"]}
+
+# Las escalas que se grafican juntas (barras apiladas al 100 %). En el SUS los pares están redactados
+# en negativo: «de acuerdo» en un par es malo.
+_ACUERDO_NIVELES = ["Totalmente en desacuerdo", "En desacuerdo", "Ni de acuerdo ni en desacuerdo", "De acuerdo",
+                    "Totalmente de acuerdo"]
+GRUPOS_ESCALA = [
+    {"id": "comparacion", "titulo": "Comparación con el trabajo manual", "niveles": COMPARACION,
+     "preguntas": [f"q{n}" for n in range(9, 21)]},
+    {"id": "sus", "titulo": "Facilidad de uso (SUS)", "niveles": _ACUERDO_NIVELES,
+     "preguntas": [f"q{n}" for n in range(25, 35)]},
+    {"id": "etapas", "titulo": "Las etapas intermedias", "niveles": _ACUERDO_NIVELES,
+     "preguntas": [f"q{n}" for n in range(35, 40)]},
+    {"id": "ambiguedad", "titulo": "La detección de ambigüedad", "niveles": _ACUERDO_NIVELES,
+     "preguntas": [f"q{n}" for n in range(42, 48)]},
+]
 ORDEN = [p["id"] for s in SECCIONES for p in s["preguntas"]]
 SUS = [f"q{n}" for n in range(25, 35)]
 MAX_TEXTO = 4000
@@ -267,7 +282,8 @@ def resultados(docs: list[dict]) -> dict:
     salida = {"version": VERSION, "enviados": n, "borradores": sum(1 for d in docs if d.get("estado") != "enviado"),
               "sus": {"n": len(sus), "media": statistics.fmean(sus) if sus else None,
                       "mediana": statistics.median(sus) if sus else None,
-                      "de": statistics.stdev(sus) if len(sus) > 1 else None},
+                      "de": statistics.stdev(sus) if len(sus) > 1 else None,
+                      "valores": sorted(sus)},  # ordenados: sin el orden de envío, no se ligan a nadie
               "preguntas": {}}
     for qid in ORDEN:
         p = PREGUNTAS[qid]
@@ -279,7 +295,8 @@ def resultados(docs: list[dict]) -> dict:
             if qid in [f"q{k}" for k in range(9, 21)]:
                 r["arriba_del_medio"] = sum(1 for v in vals if v > 3) / len(vals)
         elif p["tipo"] == "numero" and vals:
-            r.update(media=statistics.fmean(vals), mediana=statistics.median(vals), minimo=min(vals), maximo=max(vals))
+            r.update(media=statistics.fmean(vals), mediana=statistics.median(vals), minimo=min(vals), maximo=max(vals),
+                     valores=sorted(vals))
         elif p["tipo"] == "opcion":
             r["frecuencias"] = {o: vals.count(o) for o in p["opciones"]}
         elif p["tipo"] == "casillas":
