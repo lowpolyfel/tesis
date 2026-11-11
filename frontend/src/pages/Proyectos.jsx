@@ -89,7 +89,7 @@ function TarjetaCuestionario() {
         <p className="max-w-2xl text-[14px] leading-relaxed text-[var(--bone-dim)]">{texto}</p>
       </div>
       {accion && <span className={`pill ${estado === "enviado" ? "ghost sm" : "sm"}`}>{accion}</span>}
-      {c.es_admin && <span className="mono text-[10px] text-[var(--bone-faint)]">coordinación: resultados adentro</span>}
+      {c.es_admin && <span className="mono text-[10px] text-[var(--bone-faint)]">resultados adentro</span>}
     </>
   );
   const clase = "tarjeta flex flex-wrap items-center gap-4 p-5";

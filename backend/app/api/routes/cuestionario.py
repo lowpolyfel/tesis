@@ -4,7 +4,8 @@
 - `PUT /cuestionario`: guarda lo contestado hasta ahora (borrador; se puede dejar a medias).
 - `POST /cuestionario/enviar`: lo da por terminado; exige todas las obligatorias.
 - `GET /cuestionario/resultados`, `/resultados.csv` y `/resultados/overleaf.zip` (LaTeX con
-  figuras): lo agregado y anónimo, solo para los correos de `CUESTIONARIO_ADMINS` (ADR 0033).
+  figuras): lo agregado y anónimo, para todas las cuentas salvo que `CUESTIONARIO_ADMINS` dé una
+  lista de correos (ADR 0033).
 
 Se abre cuando la cuenta tiene al menos un proyecto que llegó a la quinta fase (existe su
 documento de requisitos). Hay un cuestionario por cuenta: el id del documento es el de la
@@ -44,7 +45,7 @@ def proyectos_terminados(srv: Servicio, usuario: Usuario) -> list[dict]:
 
 
 def es_admin(srv: Servicio, usuario: Usuario) -> bool:
-    return usuario.correo.lower() in srv.deps.settings.admins_cuestionario()
+    return srv.deps.settings.coordina_cuestionario(usuario.correo)
 
 
 def _resumen(doc: dict | None) -> dict | None:
@@ -117,7 +118,7 @@ def enviar(entrada: EntradaCuestionario, srv: ServicioDep, usuario: UsuarioDep) 
 
 def _exigir_admin(srv: Servicio, usuario: Usuario) -> list[dict]:
     if not es_admin(srv, usuario):
-        raise HTTPException(403, "Solo quien coordina la evaluación ve los resultados (CUESTIONARIO_ADMINS).")
+        raise HTTPException(403, "Los resultados del cuestionario están restringidos a los correos de CUESTIONARIO_ADMINS.")
     return srv.repo.listar_docs(cq.COLECCION)
 
 

@@ -9,8 +9,8 @@ import { Aviso, Cargando, Encabezado, Volver } from "../components/ui";
 /*
  * Cuestionario de evaluación de la experiencia (ADR 0032, docs/cuestionario-evaluacion.md).
  * Uno por cuenta; se abre cuando la cuenta terminó al menos un proyecto hasta los requisitos.
- * Se guarda solo mientras se contesta (borrador) y se envía al final. Quien coordina la
- * evaluación (CUESTIONARIO_ADMINS) tiene además el acceso a los resultados (ResultadosCuestionario.jsx).
+ * Se guarda solo mientras se contesta (borrador) y se envía al final. Abajo, el acceso a los
+ * resultados (ResultadosCuestionario.jsx; todas las cuentas, salvo que CUESTIONARIO_ADMINS los limite).
  */
 export default function Cuestionario() {
   const { datos, error, recargar } = useApi(cuestionario);
@@ -270,12 +270,12 @@ function Escala({ p, valor, onCambio }) {
   );
 }
 
-/* Quien coordina la evaluación ve aquí el acceso a los resultados (la página aparte también está en el menú) */
+/* El acceso a los resultados (la página aparte también está en el menú) */
 function AccesoResultados() {
   return (
     <Link to="/cuestionario/resultados" className="tarjeta tarjeta-viva flex flex-wrap items-center gap-4 p-5">
       <div className="min-w-0 flex-1 space-y-1">
-        <p className="etiqueta">Solo coordinación</p>
+        <p className="etiqueta">Anónimos</p>
         <p className="serif text-[22px] leading-tight">Resultados de la evaluación</p>
         <p className="text-[14px] text-[var(--bone-dim)]">Gráficas y exportación en CSV, LaTeX para Overleaf o PDF; anónimos.</p>
       </div>

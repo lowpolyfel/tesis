@@ -1,5 +1,12 @@
 # Cambios
 
+## 2.8.1 — 2026-11-11
+
+- **Los resultados del cuestionario, para todas las cuentas.** La página «Resultados» (menú y
+  «Más») y la exportación en CSV, LaTeX y PDF ya no exigen estar en `CUESTIONARIO_ADMINS`: vacío
+  o `*` (lo de omisión), cualquier cuenta con sesión los ve. Con una lista de correos se siguen
+  limitando a esos. Siguen siendo anónimos (sin cuenta ni correo).
+
 ## 2.8.0 — 2026-11-11
 
 Página para exportar los resultados del cuestionario (ADR 0033). No cambia los agentes, el

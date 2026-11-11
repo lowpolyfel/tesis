@@ -57,6 +57,13 @@ azul para «con DUDAMEL» o «de acuerdo».
   blanco y tinta oscura, oculta la esfera y la barra, conserva los colores de las gráficas y no
   separa un título de su gráfica.
 
+### Actualización (2.8.1): para todas las cuentas
+
+A pedido, los resultados se habilitaron para todas las cuentas. `CUESTIONARIO_ADMINS` vacío o `*`
+(lo de omisión) deja ver y exportar a cualquier cuenta con sesión; una lista de correos los
+limita a esos. Lo que se muestra sigue siendo anónimo, pero las respuestas abiertas quedan a la
+vista de cualquier cuenta: si alguien escribe algo que lo identifique, lo verán todos.
+
 ## Alternativas consideradas
 
 - **Generar el PDF en el servidor con LaTeX:** se descarta porque Render no trae TeX. El .zip

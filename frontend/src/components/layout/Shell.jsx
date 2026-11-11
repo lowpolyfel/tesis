@@ -51,7 +51,7 @@ function destinosDelMenu(pid, coordina) {
     base.push(...FASES.map((f) => ({ id: f.id, etiqueta: f.id === "mapa" ? "Mapa" : f.nombre,
       a: `/proyectos/${pid}?fase=${f.id}`, mood: seccion(seccionDeFase(f.id)).mood })));
   }
-  // quien coordina la evaluación (CUESTIONARIO_ADMINS) tiene a mano los resultados para exportarlos
+  // los resultados del cuestionario, para exportarlos (todas las cuentas, salvo que CUESTIONARIO_ADMINS los limite)
   if (coordina) base.push({ id: "resultados_cuestionario", etiqueta: "Resultados", a: "/cuestionario/resultados", mood: "humano" });
   base.push({ id: "mas", etiqueta: "Más", a: pid ? `/mas?proyecto=${pid}` : "/mas", mood: "sistema" });
   return base;
