@@ -7,8 +7,8 @@ import { Aviso, Cargando, Encabezado, Volver } from "../components/ui";
 /*
  * Resultados del cuestionario de evaluación (ADR 0033): lo agregado y anónimo, con sus gráficas,
  * y la exportación en CSV (una fila por persona), LaTeX para Overleaf (figuras en pgfplots,
- * tablas booktabs) y PDF (esta misma página impresa: «Guardar como PDF»). Solo para los correos
- * de CUESTIONARIO_ADMINS.
+ * tablas booktabs) y PDF (esta misma página impresa: «Guardar como PDF»). Para todas las cuentas,
+ * salvo que CUESTIONARIO_ADMINS dé una lista de correos.
  *
  * Las escalas van en barras apiladas al 100 %: naranja = «a mano» o «en desacuerdo», gris = el
  * punto medio, azul = «con DUDAMEL» o «de acuerdo». La paleta divergente se validó con el
@@ -139,9 +139,9 @@ export default function ResultadosCuestionario() {
 function SinPermiso() {
   return (
     <div className="tarjeta space-y-2 p-6">
-      <p className="text-[15px]">Los resultados solo los ve quien coordina la evaluación.</p>
+      <p className="text-[15px]">En este servidor, los resultados están restringidos a algunas cuentas.</p>
       <p className="max-w-2xl text-[14px] leading-relaxed text-[var(--bone-dim)]">
-        Se configura en el servidor con la variable <code className="mono text-[12.5px]">CUESTIONARIO_ADMINS</code> (correos separados por coma; en Render, en «Environment»). Si quieres contestar el cuestionario, está en <Link className="enlace" to="/cuestionario">el lobby de proyectos</Link>.
+        Los limita la variable <code className="mono text-[12.5px]">CUESTIONARIO_ADMINS</code> (en Render, en «Environment»): con una lista de correos, solo esos los ven; vacía o con <code className="mono text-[12.5px]">*</code>, todas las cuentas. Si quieres contestar el cuestionario, está en <Link className="enlace" to="/cuestionario">el lobby de proyectos</Link>.
       </p>
     </div>
   );

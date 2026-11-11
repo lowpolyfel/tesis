@@ -48,9 +48,9 @@ class UsuarioPublico(BaseModel):
     nombre: str
     correo: str
     creado: datetime
-    coordina_evaluacion: bool = False  # su correo está en CUESTIONARIO_ADMINS (ve y exporta los resultados)
+    coordina_evaluacion: bool = False  # ve y exporta los resultados del cuestionario (CUESTIONARIO_ADMINS)
 
 
-def publico(u: Usuario, admins: set[str] | None = None) -> UsuarioPublico:
+def publico(u: Usuario, coordina: bool = False) -> UsuarioPublico:
     return UsuarioPublico(usuario_id=u.usuario_id, nombre=u.nombre, correo=u.correo, creado=u.creado,
-                          coordina_evaluacion=u.correo.lower() in (admins or set()))
+                          coordina_evaluacion=coordina)

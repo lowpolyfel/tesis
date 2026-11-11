@@ -197,3 +197,15 @@ def test_la_cuenta_dice_si_coordina_la_evaluacion(entorno):
     _, srv, _ = entorno
     assert yo(USUARIO_PRUEBA, srv).coordina_evaluacion is True  # Prueba@Ejemplo.mx, sin importar mayúsculas
     assert yo(OTRA, srv).coordina_evaluacion is False
+
+
+@pytest.mark.parametrize("admins", ["", "*", " * , coord@x.mx"])
+def test_sin_lista_todas_las_cuentas_ven_y_exportan_los_resultados(tmp_path, analizador, admins):
+    """Lo de omisión (CUESTIONARIO_ADMINS vacío) o «*»: cualquier cuenta ve los resultados."""
+    srv, _, _ = montar(tmp_path, analizador, {}, cuestionario_admins=admins)
+    with TestClient(como_usuario(create_app(srv), OTRA)) as c:
+        assert c.get("/cuestionario").json()["es_admin"] is True
+        assert c.get("/auth/yo").json()["coordina_evaluacion"] is True
+        assert c.get("/cuestionario/resultados").status_code == 200
+        assert c.get("/cuestionario/resultados.csv").status_code == 200
+        assert c.get("/cuestionario/resultados/overleaf.zip").status_code == 200

@@ -74,8 +74,8 @@ class Settings(BaseSettings):
     gemini_backoff_max_s: float = Field(30.0, ge=0)
     gemini_fallback_model: str | None = None
 
-    # Cuestionario de evaluación (ADR 0032): correos (separados por coma) que ven los resultados
-    # agregados y descargan el CSV anónimo. Vacío: nadie.
+    # Cuestionario de evaluación (ADR 0032 y 0033): quién ve los resultados agregados y los exporta.
+    # Vacío o «*»: todas las cuentas (lo de omisión). Una lista de correos separados por coma: solo esos.
     cuestionario_admins: str = ""
 
     # Crítico: ollama, anthropic, openai o un id del catálogo («google», «groq»…)
@@ -235,6 +235,11 @@ class Settings(BaseSettings):
 
     def admins_cuestionario(self) -> set[str]:
         return {c.strip().lower() for c in self.cuestionario_admins.split(",") if c.strip()}
+
+    def coordina_cuestionario(self, correo: str) -> bool:
+        """Si la cuenta ve los resultados del cuestionario: todas, salvo que se haya dado una lista."""
+        admins = self.admins_cuestionario()
+        return not admins or "*" in admins or correo.lower() in admins
 
     def origenes_cors(self) -> list[str]:
         return [o.strip() for o in self.cors_origenes.split(",") if o.strip()]

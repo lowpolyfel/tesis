@@ -37,7 +37,7 @@ const GRUPOS = [
     titulo: "Evaluación con usuarios",
     items: [
       { a: "/cuestionario", texto: "Cuestionario", que: "El cuestionario de la experiencia: se abre al terminar un proyecto hasta los requisitos.", mood: "humano" },
-      { a: "/cuestionario/resultados", texto: "Resultados del cuestionario", que: "Lo agregado y anónimo, con gráficas; se exporta en CSV, LaTeX para Overleaf o PDF. Solo para quien coordina la evaluación.", mood: "humano" },
+      { a: "/cuestionario/resultados", texto: "Resultados del cuestionario", que: "Lo agregado y anónimo, con gráficas; se exporta en CSV, LaTeX para Overleaf o PDF.", mood: "humano" },
     ],
   },
   {
