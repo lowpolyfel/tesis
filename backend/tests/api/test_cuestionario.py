@@ -121,8 +121,10 @@ def test_resultados_anonimos_solo_para_coordinacion(entorno):
 
     res = c.get("/cuestionario/resultados").json()
     assert res["enviados"] == 2 and res["borradores"] == 1
-    assert res["sus"] == {"n": 2, "media": 75.0, "mediana": 75.0, "de": pytest.approx(35.355, abs=1e-3)}
-    assert res["preguntas"]["q8"] == {"n": 2, "media": 3.0, "mediana": 3.0, "minimo": 2, "maximo": 4}
+    assert res["sus"] == {"n": 2, "media": 75.0, "mediana": 75.0, "de": pytest.approx(35.355, abs=1e-3),
+                          "valores": [50.0, 100.0]}
+    assert res["preguntas"]["q8"] == {"n": 2, "media": 3.0, "mediana": 3.0, "minimo": 2, "maximo": 4,
+                                       "valores": [2, 4]}
     assert res["preguntas"]["q12"]["arriba_del_medio"] == 0.5 and res["preguntas"]["q12"]["mediana"] == 3.5
     assert res["preguntas"]["q60"]["respuestas"] == ["Me gustó"]
     assert res["con_fallas_de_infraestructura"] == 1
@@ -139,3 +141,59 @@ def test_resultados_anonimos_solo_para_coordinacion(entorno):
     assert c.get("/cuestionario/resultados").status_code == 403
     assert c.get("/cuestionario/resultados.csv").status_code == 403
     assert c.get("/cuestionario").json()["es_admin"] is False
+
+
+def test_exportar_latex_para_overleaf(entorno, tmp_path):
+    import io
+    import shutil
+    import subprocess
+    import zipfile
+
+    c, _, repo = entorno
+    terminar_proyecto(repo)
+    vacio = zipfile.ZipFile(io.BytesIO(c.get("/cuestionario/resultados/overleaf.zip").content))
+    assert "Todavía no hay cuestionarios enviados" in vacio.read("main.tex").decode()
+    c.post("/cuestionario/enviar", json={"respuestas": completas(sus=[5, 1] * 5, q60="Bien & 100% {sí} 😅")})
+    repo.guardar_doc("cuestionarios", "U08", {**cq.nuevo("U08"), "estado": "enviado", "enviado": "2026-11-05",
+                                              "respuestas": completas(sus=[3] * 10), "sus": 50.0})
+    r = c.get("/cuestionario/resultados/overleaf.zip")
+    assert r.status_code == 200 and r.headers["content-type"] == "application/zip"
+    assert "attachment" in r.headers["content-disposition"]
+    z = zipfile.ZipFile(io.BytesIO(r.content))
+    nombres = set(z.namelist())
+    assert {"main.tex", "estilo-dudamel.tex", "estilo-cuestionario.tex", "figuras/sus.tex", "figuras/comparacion.tex",
+            "figuras/sus_items.tex", "figuras/etapas.tex", "figuras/ambiguedad.tex", "figuras/problemas.tex",
+            "tablas/escalas.tex", "tablas/abiertas.tex", "datos/respuestas.csv", "datos/sus.csv",
+            "datos/sus_items.csv", "resultados.json"} <= nombres
+    # el histograma y los ítems del SUS no comparten archivo de datos
+    assert z.read("datos/sus.csv").decode().startswith("centro,personas")
+    assert "U00" not in r.content.decode("latin-1") and "prueba@ejemplo.mx" not in r.content.decode("latin-1")
+    # lo que escribió la persona va escapado y sin el emoji (pdfLaTeX no lo conoce)
+    assert r"Bien \& 100\% \{sí\} ?" in z.read("tablas/abiertas.tex").decode()
+    if shutil.which("pdflatex"):
+        z.extractall(tmp_path / "paq")
+        for _ in range(2):
+            p = subprocess.run(["pdflatex", "-interaction=nonstopmode", "-halt-on-error", "main.tex"], cwd=tmp_path / "paq",
+                               capture_output=True, timeout=180, check=False)
+        assert p.returncode == 0, p.stdout.decode(errors="replace")[-2000:]
+
+    c.app.dependency_overrides.clear()
+    como_usuario(c.app, OTRA)
+    assert c.get("/cuestionario/resultados/overleaf.zip").status_code == 403
+
+
+def test_resultados_traen_las_preguntas_y_los_grupos_para_graficar(entorno):
+    c, _, _ = entorno
+    r = c.get("/cuestionario/resultados").json()  # sin enviados, igual responde
+    assert r["enviados"] == 0 and r["cuestionario"]["total"] == 60
+    assert [g["id"] for g in r["grupos"]] == ["comparacion", "sus", "etapas", "ambiguedad"]
+    assert r["grupos"][1]["preguntas"] == [f"q{n}" for n in range(25, 35)]
+
+
+def test_la_cuenta_dice_si_coordina_la_evaluacion(entorno):
+    from app.api.routes.auth import yo
+    from tests.fakes import USUARIO_PRUEBA
+
+    _, srv, _ = entorno
+    assert yo(USUARIO_PRUEBA, srv).coordina_evaluacion is True  # Prueba@Ejemplo.mx, sin importar mayúsculas
+    assert yo(OTRA, srv).coordina_evaluacion is False

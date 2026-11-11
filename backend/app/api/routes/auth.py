@@ -72,7 +72,7 @@ def _con_sesion(respuesta: Response, srv: Servicio, usuario) -> UsuarioPublico:
     s = srv.deps.settings
     respuesta.set_cookie(COOKIE_SESION, srv.cuentas.abrir_sesion(usuario), max_age=s.sesion_dias * 86400,
                          httponly=True, samesite="lax", secure=s.sesion_cookie_segura, path="/")
-    return publico(usuario)
+    return publico(usuario, s.admins_cuestionario())
 
 
 def _pendiente(srv: Servicio, correo: str, que: str) -> dict:
@@ -135,9 +135,9 @@ def salir(request: Request, srv: ServicioDep, respuesta: Response) -> None:
 
 
 @router.get("/yo", response_model=UsuarioPublico)
-def yo(usuario: UsuarioDep) -> UsuarioPublico:
+def yo(usuario: UsuarioDep, srv: ServicioDep) -> UsuarioPublico:
     """La cuenta con sesión; 401 si no hay."""
-    return publico(usuario)
+    return publico(usuario, srv.deps.settings.admins_cuestionario())
 
 
 @router.post("/recuperar", status_code=202)

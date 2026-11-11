@@ -3,8 +3,8 @@
 - `GET /cuestionario`: si la cuenta ya puede contestarlo, las preguntas y su respuesta guardada.
 - `PUT /cuestionario`: guarda lo contestado hasta ahora (borrador; se puede dejar a medias).
 - `POST /cuestionario/enviar`: lo da por terminado; exige todas las obligatorias.
-- `GET /cuestionario/resultados` y `/resultados.csv`: lo agregado y anónimo, solo para los
-  correos de `CUESTIONARIO_ADMINS`.
+- `GET /cuestionario/resultados`, `/resultados.csv` y `/resultados/overleaf.zip` (LaTeX con
+  figuras): lo agregado y anónimo, solo para los correos de `CUESTIONARIO_ADMINS` (ADR 0033).
 
 Se abre cuando la cuenta tiene al menos un proyecto que llegó a la quinta fase (existe su
 documento de requisitos). Hay un cuestionario por cuenta: el id del documento es el de la
@@ -16,11 +16,12 @@ import csv
 import io
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, Response
 from pydantic import BaseModel, ConfigDict
 
 from app import cuestionario as cq
 from app.auth import Usuario
+from app.cuestionario.latex import paquete_overleaf
 from app.fases.documento import DocumentosDeFase
 from app.orchestration import Servicio
 
@@ -122,7 +123,16 @@ def _exigir_admin(srv: Servicio, usuario: Usuario) -> list[dict]:
 
 @router.get("/cuestionario/resultados")
 def resultados(srv: ServicioDep, usuario: UsuarioDep) -> dict:
-    return cq.resultados(_exigir_admin(srv, usuario))
+    """Lo agregado, con las preguntas y los grupos de escalas para que la página de resultados los grafique."""
+    return {**cq.resultados(_exigir_admin(srv, usuario)), "cuestionario": cq.publico(), "grupos": cq.GRUPOS_ESCALA}
+
+
+@router.get("/cuestionario/resultados/overleaf.zip")
+def resultados_overleaf(srv: ServicioDep, usuario: UsuarioDep) -> Response:
+    """Paquete LaTeX (pgfplots y booktabs) con figuras, tablas y datos; compila en Overleaf (ADR 0033)."""
+    fecha = cq.ahora()[:10]
+    return Response(paquete_overleaf(_exigir_admin(srv, usuario), fecha), media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="cuestionario-dudamel-{fecha}.zip"'})
 
 
 @router.get("/cuestionario/resultados.csv", response_class=PlainTextResponse)

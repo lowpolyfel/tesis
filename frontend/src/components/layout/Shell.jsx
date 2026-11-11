@@ -33,7 +33,7 @@ export function seccionDe(pathname, params) {
   if (pathname === "/proyectos") return "proyectos";
   if (pathname === "/mas") return "mas";
   if (pathname === "/configuracion") return "configuracion";
-  if (pathname === "/cuestionario") return "cuestionario";
+  if (pathname.startsWith("/cuestionario")) return "cuestionario";
   if (/^\/requisitos\/[^/]+\/validacion/.test(pathname)) return "revision";
   if (/^\/requisitos\//.test(pathname)) return "requisito";
   return "avanzado";
@@ -45,12 +45,14 @@ function proyectoActual(pathname, params) {
   return m?.[1] ?? params.get("proyecto") ?? proyectoRecordado();
 }
 
-function destinosDelMenu(pid) {
+function destinosDelMenu(pid, coordina) {
   const base = [{ id: "proyectos", etiqueta: "Proyectos", a: "/proyectos", mood: "idle" }];
   if (pid) {  // las fases de la versión 2 (ADR 0024), en orden
     base.push(...FASES.map((f) => ({ id: f.id, etiqueta: f.id === "mapa" ? "Mapa" : f.nombre,
       a: `/proyectos/${pid}?fase=${f.id}`, mood: seccion(seccionDeFase(f.id)).mood })));
   }
+  // quien coordina la evaluación (CUESTIONARIO_ADMINS) tiene a mano los resultados para exportarlos
+  if (coordina) base.push({ id: "resultados_cuestionario", etiqueta: "Resultados", a: "/cuestionario/resultados", mood: "humano" });
   base.push({ id: "mas", etiqueta: "Más", a: pid ? `/mas?proyecto=${pid}` : "/mas", mood: "sistema" });
   return base;
 }
@@ -62,7 +64,9 @@ export default function Shell({ modo }) {
   const [menu, setMenu] = useState(false);
   const abrirMenu = useCallback(() => setMenu(true), []);
   const pid = proyectoActual(pathname, params);
-  const destinos = useMemo(() => destinosDelMenu(pid), [pid]);
+  const { usuario } = useSesion();
+  const coordina = !!usuario?.coordina_evaluacion;
+  const destinos = useMemo(() => destinosDelMenu(pid, coordina), [pid, coordina]);
 
   useEffect(() => setMenu(false), [pathname]);
 

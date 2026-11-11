@@ -1,5 +1,19 @@
 # Cambios
 
+## 2.8.0 — 2026-11-11
+
+Página para exportar los resultados del cuestionario (ADR 0033). No cambia los agentes, el
+grafo, las fases ni el cuestionario.
+
+- **«Resultados» en el menú** (y en «Más» → «Evaluación con usuarios»): `/cuestionario/resultados`,
+  para los correos de `CUESTIONARIO_ADMINS` (la cuenta trae `coordina_evaluacion`).
+- **Gráficas:** histograma del SUS con la media y la referencia de 68; barras apiladas al 100 % de
+  las escalas (comparación, ítems del SUS, etapas, ambigüedad); barras de cada pregunta de opción;
+  tablas de conteos, escalas y respuestas abiertas. Paleta divergente validada en claro y oscuro.
+- **Exportar:** CSV (una fila por persona), **LaTeX para Overleaf** (.zip con `main.tex`, figuras
+  en pgfplots, tablas booktabs, datos y `resultados.json`; compila con pdfLaTeX y XeLaTeX) y
+  **PDF** (la página impresa, en papel blanco y con las gráficas a color).
+
 ## 2.7.0 — 2026-11-04
 
 Cuestionario de evaluación de la experiencia (ADR 0032, `docs/cuestionario-evaluacion.md`).

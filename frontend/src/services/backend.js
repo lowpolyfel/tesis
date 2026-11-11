@@ -294,3 +294,4 @@ export const guardarCuestionario = (respuestas) => put("/cuestionario", { respue
 export const enviarCuestionario = (respuestas) => post("/cuestionario/enviar", { respuestas });
 export const resultadosCuestionario = () => get("/cuestionario/resultados");
 export const urlCuestionarioCsv = () => `${BASE_URL}/cuestionario/resultados.csv`;
+export const urlCuestionarioOverleaf = () => `${BASE_URL}/cuestionario/resultados/overleaf.zip`;

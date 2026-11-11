@@ -2,15 +2,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import { useApi } from "../hooks/useApi";
 import {
-  cuestionario, enviarCuestionario, guardarCuestionario, resultadosCuestionario, urlCuestionarioCsv,
+  cuestionario, enviarCuestionario, guardarCuestionario,
 } from "../services/backend";
-import { Aviso, Cargando, Encabezado, Plegable, Volver } from "../components/ui";
+import { Aviso, Cargando, Encabezado, Volver } from "../components/ui";
 
 /*
  * Cuestionario de evaluación de la experiencia (ADR 0032, docs/cuestionario-evaluacion.md).
  * Uno por cuenta; se abre cuando la cuenta terminó al menos un proyecto hasta los requisitos.
  * Se guarda solo mientras se contesta (borrador) y se envía al final. Quien coordina la
- * evaluación (CUESTIONARIO_ADMINS) ve además los resultados agregados y baja el CSV anónimo.
+ * evaluación (CUESTIONARIO_ADMINS) tiene además el acceso a los resultados (ResultadosCuestionario.jsx).
  */
 export default function Cuestionario() {
   const { datos, error, recargar } = useApi(cuestionario);
@@ -21,7 +21,7 @@ export default function Cuestionario() {
       {!datos && !error && <Cargando>Cargando el cuestionario…</Cargando>}
       {datos && !datos.disponible && <Cerrado motivo={datos.motivo} />}
       {datos?.disponible && <Formulario datos={datos} alCambiar={recargar} />}
-      {datos?.es_admin && <Resultados preguntas={datos.preguntas?.secciones.flatMap((s) => s.preguntas) ?? []} />}
+      {datos?.es_admin && <AccesoResultados />}
     </div>
   );
 }
@@ -270,85 +270,16 @@ function Escala({ p, valor, onCambio }) {
   );
 }
 
-/* ---------------------------------------------------------------- resultados (coordinación) */
-
-const f1 = (x) => (x == null ? "—" : Number.isInteger(x) ? String(x) : x.toFixed(1));
-
-function Resultados({ preguntas }) {
+/* Quien coordina la evaluación ve aquí el acceso a los resultados (la página aparte también está en el menú) */
+function AccesoResultados() {
   return (
-    <Plegable titulo="Resultados de la evaluación" nota="solo coordinación · anónimos" alAbrir>
-      <ResultadosCargados preguntas={preguntas} />
-    </Plegable>
-  );
-}
-
-function ResultadosCargados({ preguntas }) {
-  const { datos: r, error } = useApi(resultadosCuestionario);
-  if (error) return <Aviso error={error} />;
-  if (!r) return <Cargando>Calculando…</Cargando>;
-  return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
-        <Dato valor={r.enviados} nombre="enviados" />
-        <Dato valor={r.borradores} nombre="a medias" />
-        <Dato valor={f1(r.sus.media)} nombre="SUS media" />
-        <Dato valor={f1(r.sus.mediana)} nombre="SUS mediana" />
-        <Dato valor={f1(r.sus.de)} nombre="SUS desv. est." />
-        <Dato valor={r.con_fallas_de_infraestructura} nombre="con fallas (P50)" />
-        <a className="pill ghost sm" href={urlCuestionarioCsv()} download>Descargar CSV</a>
+    <Link to="/cuestionario/resultados" className="tarjeta tarjeta-viva flex flex-wrap items-center gap-4 p-5">
+      <div className="min-w-0 flex-1 space-y-1">
+        <p className="etiqueta">Solo coordinación</p>
+        <p className="serif text-[22px] leading-tight">Resultados de la evaluación</p>
+        <p className="text-[14px] text-[var(--bone-dim)]">Gráficas y exportación en CSV, LaTeX para Overleaf o PDF; anónimos.</p>
       </div>
-      <p className="max-w-2xl text-[12.5px] leading-relaxed text-[var(--bone-faint)]">Solo cuentan los enviados. El SUS va de 0 a 100 y no es un porcentaje. El CSV trae una fila por persona (R01, R02…) sin cuenta ni correo; las abiertas van para codificación temática.</p>
-      {r.enviados > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px] text-left text-[13px]">
-            <thead className="etiqueta"><tr><th className="py-2 pr-3">P</th><th className="py-2 pr-3">Pregunta</th><th className="py-2 pr-3">n</th><th className="py-2">Resumen</th></tr></thead>
-            <tbody>
-              {preguntas.map((p) => (
-                <tr key={p.id} className="border-t border-[var(--line)] align-top">
-                  <td className="mono py-2 pr-3 text-[11px] text-[var(--bone-faint)]">{p.n}</td>
-                  <td className="py-2 pr-3 text-[var(--bone-dim)]">{p.texto}</td>
-                  <td className="mono py-2 pr-3 text-[11px]">{r.preguntas[p.id]?.n ?? 0}</td>
-                  <td className="py-2"><Resumen p={p} x={r.preguntas[p.id]} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Dato({ valor, nombre }) {
-  return (
-    <div>
-      <p className="text-[24px] leading-none">{valor ?? "—"}</p>
-      <p className="etiqueta mt-1.5">{nombre}</p>
-    </div>
-  );
-}
-
-function Resumen({ p, x }) {
-  if (!x || !x.n) return <span className="text-[var(--bone-faint)]">—</span>;
-  if (p.tipo === "escala") {
-    return (
-      <span>
-        mediana {f1(x.mediana)} · RIC {f1(x.q1)}–{f1(x.q3)}
-        {x.arriba_del_medio != null && <> · {Math.round(x.arriba_del_medio * 100)}% arriba del 3</>}
-      </span>
-    );
-  }
-  if (p.tipo === "numero") return <span>media {f1(x.media)} · mediana {f1(x.mediana)} · rango {x.minimo}–{x.maximo}</span>;
-  if (p.tipo === "texto") {
-    return (
-      <ul className="list-disc space-y-1 pl-4 text-[var(--bone-dim)]">
-        {x.respuestas.map((t, i) => <li key={i}>{t}</li>)}
-      </ul>
-    );
-  }
-  return (
-    <ul className="space-y-0.5">
-      {Object.entries(x.frecuencias).filter(([, k]) => k > 0).map(([o, k]) => <li key={o}><span className="mono text-[11px]">{k}</span> · {o}</li>)}
-    </ul>
+      <span className="pill ghost sm">Ver resultados</span>
+    </Link>
   );
 }

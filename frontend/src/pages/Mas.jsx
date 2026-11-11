@@ -34,6 +34,13 @@ const GRUPOS = [
     ],
   },
   {
+    titulo: "Evaluación con usuarios",
+    items: [
+      { a: "/cuestionario", texto: "Cuestionario", que: "El cuestionario de la experiencia: se abre al terminar un proyecto hasta los requisitos.", mood: "humano" },
+      { a: "/cuestionario/resultados", texto: "Resultados del cuestionario", que: "Lo agregado y anónimo, con gráficas; se exporta en CSV, LaTeX para Overleaf o PDF. Solo para quien coordina la evaluación.", mood: "humano" },
+    ],
+  },
+  {
     titulo: "Tu cuenta",
     items: [
       { a: "/configuracion", texto: "Configuración", que: "Qué proveedor y modelo usa cada agente (Ollama, Gemini, OpenAI, Claude…) y sus claves.", mood: "clasificador" },
@@ -53,7 +60,7 @@ export default function Mas() {
   const pid = params.get("proyecto");
   const con = (a) => {
     if (a === "/v1" || a === "/analizar") return `/proyectos/${pid}${a}`;
-    return pid && !a.startsWith("/catalogos") && a !== "/evaluacion" ? `${a}?proyecto=${pid}` : a;
+    return pid && !a.startsWith("/catalogos") && !a.startsWith("/cuestionario") && a !== "/evaluacion" ? `${a}?proyecto=${pid}` : a;
   };
 
   return (
